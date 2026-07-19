@@ -1,0 +1,33 @@
+version: 1
+tools:
+  allow:
+    - "github_*"
+    - "playwright_*"
+  deny:
+    - "delete_*"
+    - "admin_*"
+  param_restrictions:
+    search_repositories:
+      q:
+        max_length: 200
+ssrf:
+  mode: block
+  block_private_ips: true
+  allow_domains:
+    - "*.github.com"
+  block_domains:
+    - "10.*"
+    - "192.168.*"
+rate_limit:
+  default: "60/min"
+  per_agent:
+    claude-code: "120/min"
+injection_detection:
+  enabled: false
+  sensitivity: medium
+servers:
+  github:
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-github"

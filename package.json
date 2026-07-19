@@ -1,0 +1,46 @@
+{
+  "name": "mcp-guard",
+  "version": "0.1.0",
+  "description": "轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "mcp-guard": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./cli": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "commander": "^13.1.0",
+    "js-yaml": "^4.1.0",
+    "micromatch": "^4.0.8",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/micromatch": "^4.0.10",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

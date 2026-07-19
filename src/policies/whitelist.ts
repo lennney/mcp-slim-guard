@@ -22,7 +22,14 @@ export class WhitelistPolicy implements Policy {
   readonly name = "whitelist";
   readonly phase = "tool_call" as const;
 
-  constructor(private config: ToolsConfig) {}
+  constructor(private config: ToolsConfig) {
+    // Filter empty strings to prevent micromatch crash
+    this.config = {
+      allow: config.allow.filter((p) => p.length > 0),
+      deny: config.deny.filter((p) => p.length > 0),
+      param_restrictions: config.param_restrictions,
+    };
+  }
 
   async check(ctx: PolicyContext): Promise<PolicyResult> {
     const { toolName } = ctx;
@@ -78,6 +85,15 @@ export class WhitelistPolicy implements Policy {
         }
 
         if (rule.pattern && typeof value === "string") {
+          // Defend against ReDoS: skip regex on long strings (>1000 chars)
+          // or on patterns with nested quantifiers
+          if (value.length > 1000 || /\([^()]*\+[^()]*\)[+*]/.test(rule.pattern)) {
+            return {
+              allowed: false,
+              reason: `Param "${param}" rejected: unsafe pattern or input`,
+              policy: "whitelist",
+            };
+          }
           try {
             if (!new RegExp(rule.pattern).test(value)) {
               return {

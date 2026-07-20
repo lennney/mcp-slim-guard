@@ -4,7 +4,7 @@ tools:
     - "github_*"
     - "playwright_*"
   deny:
-    - "delete_*"
+    - "*_delete_*"
     - "admin_*"
   param_restrictions:
     search_repositories:
@@ -25,6 +25,9 @@ rate_limit:
 injection_detection:
   enabled: false
   sensitivity: medium
+compressor:
+  enabled: false
+  level: light
 servers:
   github:
     command: npx

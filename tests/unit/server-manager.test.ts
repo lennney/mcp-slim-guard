@@ -182,14 +182,20 @@ describe("ServerManager", () => {
     expect(result!.originalToolName).toBe("list_stuff");
   });
 
-  // 5. resolveTool() returns null for unknown tool
-  it("resolveTool should return null for unknown tool", async () => {
+  // 5. resolveTool() resolves any tool on a known server (policy checks later)
+  it("resolveTool should resolve any tool on known server, return null for unknown server", async () => {
     const manager = await makeServerManager(
       { srv: serverCfg() },
       { srv: [{ name: "exists" }] },
     );
 
-    expect(manager.resolveTool("srv_nonexistent")).toBeNull();
+    // Any tool on known server resolves (policy enforces later)
+    const resolved = manager.resolveTool("srv_nonexistent");
+    expect(resolved).not.toBeNull();
+    expect(resolved!.serverName).toBe("srv");
+    expect(resolved!.originalToolName).toBe("nonexistent");
+
+    // Unknown server returns null
     expect(manager.resolveTool("unknown_server_tool")).toBeNull();
     expect(manager.resolveTool("no_underscore")).toBeNull();
     expect(manager.resolveTool("")).toBeNull();

@@ -86,16 +86,16 @@ function makeMinimalConfig(): GuardConfig {
     },
     rate_limit: { default: 100 },
     injection_detection: { enabled: false },
+    compressor: { enabled: false, level: "light" },
     servers: {},
   };
 }
 
-/** Create a mock pipeline with vi.fn() execute */
+/** Create a mock Pipeline with executeWithTrail */
 function makeMockPipeline() {
   return {
-    execute: vi
-      .fn<[PolicyContext], Promise<PolicyResult>>()
-      .mockResolvedValue({ allowed: true }),
+    execute: vi.fn().mockResolvedValue({ allowed: true }),
+    executeWithTrail: vi.fn().mockResolvedValue({ result: { allowed: true }, trail: [] }),
     getPolicyNames: vi.fn().mockReturnValue([]),
   };
 }
@@ -106,6 +106,8 @@ function makeMockAudit() {
     log: vi.fn(),
     getEntries: vi.fn().mockReturnValue([]),
     clear: vi.fn(),
+    newSession: vi.fn().mockReturnValue("s_test"),
+    logDiscovery: vi.fn(),
   };
 }
 
@@ -247,7 +249,7 @@ describe("GuardProxy", () => {
     });
 
     // Pipeline allows
-    pipeline.execute.mockResolvedValue({ allowed: true });
+    pipeline.executeWithTrail.mockResolvedValue({ result: { allowed: true }, trail: [] });
 
     // Upstream returns a result
     const upstreamResult = {
@@ -281,9 +283,9 @@ describe("GuardProxy", () => {
     expect(serverManager.resolveTool).toHaveBeenCalledWith("github_search");
 
     // Verify pipeline was called with correct context
-    expect(pipeline.execute).toHaveBeenCalledTimes(1);
-    expect(pipeline.execute).toHaveBeenCalledWith({
-      toolName: "search",
+    expect(pipeline.executeWithTrail).toHaveBeenCalledTimes(1);
+    expect(pipeline.executeWithTrail).toHaveBeenCalledWith({
+      toolName: "github_search",
       arguments: { q: "mcp" },
       serverName: "github",
     });
@@ -311,10 +313,13 @@ describe("GuardProxy", () => {
     });
 
     // Pipeline blocks
-    pipeline.execute.mockResolvedValue({
-      allowed: false,
-      reason: "Rate limit exceeded",
-      policy: "ratelimit",
+    pipeline.executeWithTrail.mockResolvedValue({
+      result: {
+        allowed: false,
+        reason: "Rate limit exceeded",
+        policy: "ratelimit",
+      },
+      trail: [{ policy: "ratelimit", result: "block", reason: "Rate limit exceeded" }],
     });
 
     const proxy = new GuardProxy(
@@ -358,7 +363,7 @@ describe("GuardProxy", () => {
       serverName: "srv",
       originalToolName: "tool1",
     });
-    pipeline.execute.mockResolvedValue({ allowed: true });
+    pipeline.executeWithTrail.mockResolvedValue({ result: { allowed: true }, trail: [] });
     serverManager.callTool.mockResolvedValue({
       content: [{ type: "text", text: "done" }],
     });
@@ -380,9 +385,12 @@ describe("GuardProxy", () => {
 
     expect(audit.log).toHaveBeenCalledTimes(1);
     expect(audit.log).toHaveBeenCalledWith(
-      { toolName: "tool1", arguments: { x: 1 }, serverName: "srv" },
+      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv" },
       { allowed: true },
-      expect.any(Number),
+      [],                // trail
+      expect.any(String), // sessionId
+      1,                  // requestId
+      expect.any(Number), // durationMs
     );
   });
 
@@ -396,10 +404,13 @@ describe("GuardProxy", () => {
       serverName: "srv",
       originalToolName: "tool1",
     });
-    pipeline.execute.mockResolvedValue({
-      allowed: false,
-      reason: "Blocked by whitelist",
-      policy: "whitelist",
+    pipeline.executeWithTrail.mockResolvedValue({
+      result: {
+        allowed: false,
+        reason: "Blocked by whitelist",
+        policy: "whitelist",
+      },
+      trail: [{ policy: "whitelist", result: "block", reason: "Blocked by whitelist" }],
     });
 
     const proxy = new GuardProxy(
@@ -419,8 +430,11 @@ describe("GuardProxy", () => {
 
     expect(audit.log).toHaveBeenCalledTimes(1);
     expect(audit.log).toHaveBeenCalledWith(
-      { toolName: "tool1", arguments: { x: 1 }, serverName: "srv" },
+      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv" },
       { allowed: false, reason: "Blocked by whitelist", policy: "whitelist" },
+      [{ policy: "whitelist", result: "block", reason: "Blocked by whitelist" }],
+      expect.any(String),
+      1,
       expect.any(Number),
     );
   });
@@ -461,7 +475,7 @@ describe("GuardProxy", () => {
     });
 
     // Pipeline should NOT be called for unknown tools
-    expect(pipeline.execute).not.toHaveBeenCalled();
+    expect(pipeline.executeWithTrail).not.toHaveBeenCalled();
     // callTool should NOT be called
     expect(serverManager.callTool).not.toHaveBeenCalled();
   });
@@ -533,7 +547,7 @@ describe("GuardProxy", () => {
       serverName: "my_complex_server",
       originalToolName: "my_tool",
     });
-    pipeline.execute.mockResolvedValue({ allowed: true });
+    pipeline.executeWithTrail.mockResolvedValue({ result: { allowed: true }, trail: [] });
     serverManager.callTool.mockResolvedValue({
       content: [{ type: "text", text: "done" }],
     });
@@ -559,9 +573,9 @@ describe("GuardProxy", () => {
     };
     await callHandler!(request);
 
-    // Verify the exact PolicyContext passed to pipeline.execute
-    expect(pipeline.execute).toHaveBeenCalledWith({
-      toolName: "my_tool",
+    // Verify the exact PolicyContext passed to pipeline.executeWithTrail
+    expect(pipeline.executeWithTrail).toHaveBeenCalledWith({
+      toolName: "my_complex_server_my_tool",
       arguments: { repo: "org/project", limit: 10 },
       serverName: "my_complex_server",
     });
@@ -569,11 +583,14 @@ describe("GuardProxy", () => {
     // Also verify audit received the same context
     expect(audit.log).toHaveBeenCalledWith(
       {
-        toolName: "my_tool",
+        toolName: "my_complex_server_my_tool",
         arguments: { repo: "org/project", limit: 10 },
         serverName: "my_complex_server",
       },
       { allowed: true },
+      [],
+      expect.any(String),
+      1,
       expect.any(Number),
     );
   });

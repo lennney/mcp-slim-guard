@@ -47,7 +47,12 @@ export class SSRFPolicy implements Policy {
 
     for (const url of urls) {
       try {
-        const hostname = new URL(url).hostname;
+        let hostname = new URL(url).hostname;
+
+        // Strip brackets from IPv6 hostnames (URL.hostname includes them)
+        if (hostname.startsWith("[") && hostname.endsWith("]")) {
+          hostname = hostname.slice(1, -1);
+        }
 
         // 1. 域名黑名单检查
         if (this.isDomainBlocked(hostname)) {
@@ -86,6 +91,10 @@ export class SSRFPolicy implements Policy {
       if (net.isIPv4(hostname)) return [hostname];
       if (net.isIPv6(hostname)) return [hostname];
 
+      // Normalize alternative IP representations (decimal/hex/octal)
+      const normalized = normalizeToIPv4(hostname);
+      if (normalized !== null) return [normalized];
+
       const records = await dns.resolve4(hostname);
       return records;
     } catch {
@@ -95,6 +104,8 @@ export class SSRFPolicy implements Policy {
 
   private isPrivateIP(ip: string): boolean {
     if (!this.config.block_private_ips) return false;
+    // IPv6 check
+    if (net.isIPv6(ip)) return isPrivateIPv6(ip);
     const int = ipToInt(ip);
     return PRIVATE_RANGES.some((r) => int >= r.start && int <= r.end);
   }
@@ -118,6 +129,143 @@ export function ipToInt(ip: string): number {
   return (
     ip.split(".").reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0
   );
+}
+
+// --- IPv6 Private Range Detection ---
+
+/**
+ * Check whether an IPv6 address belongs to a private/restricted range.
+ * Handles abbreviated and IPv4-mapped forms.
+ */
+function isPrivateIPv6(ip: string): boolean {
+  const normalized = normalizeIPv6(ip);
+
+  // Loopback: all zeros except last group is 0001
+  if (normalized === "0000:0000:0000:0000:0000:0000:0000:0001") return true;
+
+  // Unspecified: all zeros
+  if (normalized === "0000:0000:0000:0000:0000:0000:0000:0000") return true;
+
+  // IPv4-mapped: check the embedded IPv4 address.
+  // normalizeIPv6 preserves IPv4-mapped notation for accurate extraction.
+  // Handle both dotted-decimal ("::ffff:127.0.0.1") and hex ("::ffff:7f00:1") forms.
+  if (normalized.startsWith("::ffff:")) {
+    const tail = normalized.slice(7);
+    // Dotted-decimal form: "127.0.0.1"
+    if (tail.includes(".")) {
+      if (net.isIPv4(tail)) {
+        const int = ipToInt(tail);
+        return PRIVATE_RANGES.some((r) => int >= r.start && int <= r.end);
+      }
+      return false;
+    }
+    // Hex form: "7f00:1" or "7f00:0001" — extract IPv4 from last 32 bits
+    const tailParts = tail.split(":");
+    if (tailParts.length === 2) {
+      const hi = parseInt(tailParts[0], 16);
+      const lo = parseInt(tailParts[1], 16);
+      if (!isNaN(hi) && !isNaN(lo)) {
+        const b0 = (hi >> 8) & 0xff;
+        const b1 = hi & 0xff;
+        const b2 = (lo >> 8) & 0xff;
+        const b3 = lo & 0xff;
+        const v4 = `${b0}.${b1}.${b2}.${b3}`;
+        const int = ipToInt(v4);
+        return PRIVATE_RANGES.some((r) => int >= r.start && int <= r.end);
+      }
+    }
+    return false;
+  }
+
+  // Link-local: fe80::/10
+  if (/^fe[89ab][0-9a-f]/i.test(normalized)) return true;
+
+  // Unique local: fc00::/7
+  if (/^fc[0-9a-f]/i.test(normalized) || /^fd[0-9a-f]/i.test(normalized))
+    return true;
+
+  return false;
+}
+
+/**
+ * Normalize an IPv6 address to its standard uncompressed form
+ * (8 groups of 4 hex digits, lowercase). Accepts abbreviated, compressed,
+ * and IPv4-mapped forms.
+ */
+function normalizeIPv6(ip: string): string {
+  // Handle IPv4-mapped IPv6 — preserve the mapped part
+  if (ip.toLowerCase().startsWith("::ffff:")) {
+    return ip.toLowerCase();
+  }
+
+  // Expand "::" to ":" + the right number of zero groups
+  if (ip.includes("::")) {
+    const [left, right] = ip.split("::") as [string, string | undefined];
+    const leftGroups = left ? left.split(":").filter(Boolean) : [];
+    const rightGroups = right ? right.split(":").filter(Boolean) : [];
+    const zeroCount = 8 - leftGroups.length - rightGroups.length;
+    const zeros = Array(zeroCount).fill("0");
+    const full = [...leftGroups, ...zeros, ...rightGroups];
+    return full.map((g) => g.padStart(4, "0").toLowerCase()).join(":");
+  }
+
+  // Already fully expanded? Just zero-pad and lowercase
+  return ip
+    .split(":")
+    .map((g) => g.padStart(4, "0").toLowerCase())
+    .join(":");
+}
+
+// --- Alternative IP Normalization ---
+
+/**
+ * Attempt to normalize a hostname that looks like an alternative IP
+ * representation (decimal, hex, or dotted-octal) to standard dotted-decimal.
+ * Returns null if the hostname is a regular domain.
+ */
+function normalizeToIPv4(hostname: string): string | null {
+  // Decimal integer: "2130706433" → 127.0.0.1
+  if (/^\d+$/.test(hostname)) {
+    const n = parseInt(hostname, 10);
+    if (n >= 0 && n <= 0xffffffff) {
+      return `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`;
+    }
+    return null;
+  }
+
+  // Hex: "0x7f000001" → 127.0.0.1
+  if (/^0x[0-9a-fA-F]+$/.test(hostname)) {
+    const n = parseInt(hostname, 16);
+    if (!isNaN(n) && n >= 0 && n <= 0xffffffff) {
+      return `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`;
+    }
+    return null;
+  }
+
+  // Dotted-octal: each octet is 0-prefixed octal like "0177.0.0.1"
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+    const parts = hostname.split(".");
+    const isOctal = parts.every((p) => /^0\d+$/.test(p));
+    if (isOctal) {
+      const octets = parts.map((p) => parseInt(p, 8));
+      if (octets.every((o) => o >= 0 && o <= 255)) {
+        return octets.join(".");
+      }
+    }
+  }
+
+  // Shorthand: "127.1" → 127.0.0.1 or "10.0.1" → 10.0.0.1
+  const shorthandMatch = /^\d+\.\d+(?:\.\d+)?$/.exec(hostname);
+  if (shorthandMatch) {
+    const parts = hostname.split(".");
+    const nums = parts.map((p) => parseInt(p, 10));
+    if (nums.every((n) => n >= 0 && n <= 255)) {
+      while (nums.length < 4) nums.push(0);
+      return nums.join(".");
+    }
+  }
+
+  return null;
 }
 
 /**

@@ -424,59 +424,48 @@ describe("SSRFPolicy — Bypass Vectors", () => {
     vi.clearAllMocks();
   });
 
-  // --- IPv6 Loopback Bypass ---
-  //
-  // BUG: ipToInt() splits on '.' and computes a 32-bit integer.
-  // For IPv6 addresses like "::1", split('.') returns ["::1"],
-  // parseInt("::1") = NaN → ipToInt returns 0.
-  // 0 is not in any PRIVATE_RANGES (all start at > 0), so isPrivateIP
-  // returns false for ALL IPv6 addresses, including loopback.
+  // --- IPv6 Loopback ---
 
-  describe("IPv6 loopback (GAP — bypass)", () => {
-    it("IPv6 full ::1 is NOT blocked by private IP check (GAP)", async () => {
+  describe("IPv6 loopback", () => {
+    it("IPv6 full ::1 IS blocked by private IP check", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      // ::1 is detected as IPv6 by net.isIPv6, returned directly,
-      // but isPrivateIP("::1") returns false because ipToInt("::1") = 0.
+      // ::1 is detected by net.isIPv6 → isPrivateIPv6 returns true
       const result = await policy.check(
         ctx("test", { url: "http://[::1]/admin" }),
       );
-      // This SHOULD be blocked but currently passes — documented GAP
-      expect(result.allowed).toBe(true);
+      expect(result.allowed).toBe(false);
+      if (result.allowed === false) {
+        expect(result.reason).toContain("private IP");
+      }
     });
 
-    it("IPv4-mapped IPv6 ::ffff:127.0.0.1 is NOT blocked (GAP)", async () => {
+    it("IPv4-mapped IPv6 ::ffff:127.0.0.1 IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
       const result = await policy.check(
         ctx("test", { url: "http://[::ffff:127.0.0.1]/" }),
       );
-      // ::ffff:127.0.0.1 is an IPv6 address representing 127.0.0.1
-      // net.isIPv6 returns true, ipToInt returns 0 → bypass
-      expect(result.allowed).toBe(true);
+      expect(result.allowed).toBe(false);
+      if (result.allowed === false) {
+        expect(result.reason).toContain("private IP");
+      }
     });
 
-    it("IPv6 0:0:0:0:0:0:0:1 (long form) is NOT blocked (GAP)", async () => {
+    it("IPv6 0:0:0:0:0:0:0:1 (long form loopback) IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
       const result = await policy.check(
         ctx("test", { url: "http://[0:0:0:0:0:0:0:1]/" }),
       );
-      expect(result.allowed).toBe(true);
+      expect(result.allowed).toBe(false);
     });
   });
 
   // --- Alternative IP Representations ---
   //
-  // new URL("http://2130706433/") returns hostname "2130706433"
-  // net.isIPv4("2130706433") → false (no dots)
-  // net.isIPv6("2130706433") → false
-  // Falls through to DNS: dns.resolve4("2130706433") → (mocked) fails → no IPs
-  // So the private IP check is never reached.
-  //
-  // This is a GAP — the URL parser should normalize these, but it doesn't.
+  // Decimal/hex/octal/shorthand IP representations are normalized
+  // by resolveHost() via normalizeToIPv4() before DNS resolution.
 
-  describe("Alternative IP representations (GAPs)", () => {
-    // Phase 2 GAP: decimal/hex/octal IP representations bypass DNS-based SSRF check.
-    // Fix requires: URL normalization before hostname extraction.
-    it.todo("decimal integer IP 2130706433 (127.0.0.1) is NOT blocked — Phase 2", async () => {
+  describe("Alternative IP representations", () => {
+    it("decimal integer IP 2130706433 (127.0.0.1) IS blocked", async () => {
       const mockResolve = vi.mocked(dns.resolve4);
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
@@ -484,11 +473,14 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       const result = await policy.check(
         ctx("test", { url: "http://2130706433/admin" }),
       );
-      // Treated as a domain, DNS fails → no IP check → allowed
-      expect(result.allowed).toBe(true);
+      // normalizeToIPv4 converts 2130706433 → 127.0.0.1 → private IP → blocked
+      expect(result.allowed).toBe(false);
+      if (result.allowed === false) {
+        expect(result.reason).toContain("private IP");
+      }
     });
 
-    it.todo("hex IP 0x7f000001 is NOT blocked — Phase 2", async () => {
+    it("hex IP 0x7f000001 (127.0.0.1) IS blocked", async () => {
       const mockResolve = vi.mocked(dns.resolve4);
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
@@ -496,10 +488,14 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       const result = await policy.check(
         ctx("test", { url: "http://0x7f000001/" }),
       );
-      expect(result.allowed).toBe(true);
+      // normalizeToIPv4 converts 0x7f000001 → 127.0.0.1 → private IP → blocked
+      expect(result.allowed).toBe(false);
+      if (result.allowed === false) {
+        expect(result.reason).toContain("private IP");
+      }
     });
 
-    it.todo("octal IP 0177.0.0.1 is NOT blocked — Phase 2", async () => {
+    it("octal IP 0177.0.0.1 (127.0.0.1) IS blocked", async () => {
       const mockResolve = vi.mocked(dns.resolve4);
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
@@ -507,10 +503,14 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       const result = await policy.check(
         ctx("test", { url: "http://0177.0.0.1/" }),
       );
-      expect(result.allowed).toBe(true);
+      // normalizeToIPv4 converts 0177.0.0.1 → 127.0.0.1 → private IP → blocked
+      expect(result.allowed).toBe(false);
+      if (result.allowed === false) {
+        expect(result.reason).toContain("private IP");
+      }
     });
 
-    it.todo("shorthand 127.1 is NOT blocked — Phase 2", async () => {
+    it("shorthand 127.1 (127.0.0.1) IS blocked", async () => {
       const mockResolve = vi.mocked(dns.resolve4);
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
@@ -518,7 +518,11 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       const result = await policy.check(
         ctx("test", { url: "http://127.1/" }),
       );
-      expect(result.allowed).toBe(true);
+      // normalizeToIPv4 converts 127.1 → 127.0.0.1 → private IP → blocked
+      expect(result.allowed).toBe(false);
+      if (result.allowed === false) {
+        expect(result.reason).toContain("private IP");
+      }
     });
   });
 
@@ -1198,7 +1202,7 @@ describe("PolicyPipeline — Adversarial", () => {
       new RateLimitPolicy(ratelimitConfig),
     ]);
 
-    // IPv6 loopback → should be blocked but is a GAP
+    // IPv6 loopback → now blocked by SSRF policy (IPv6 fix applied)
     const mockResolve = vi.mocked(dns.resolve4);
     mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
@@ -1206,9 +1210,7 @@ describe("PolicyPipeline — Adversarial", () => {
       ctx("test_tool", { url: "http://[::1]/admin" }),
     );
 
-    // Since SSRF is a GAP (IPv6 not blocked), pipeline continues
-    // Rate limit allows it → final result is allowed
-    // This documents the pipeline-level bypass
-    expect(result.allowed).toBe(true);
+    // IPv6 loopback is now detected and blocked → blocked by SSRF
+    expect(result.allowed).toBe(false);
   });
 });

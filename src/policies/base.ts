@@ -10,6 +10,13 @@ import type { Policy, PolicyContext, PolicyResult } from "../types.js";
 
 export type { Policy, PolicyContext, PolicyResult };
 
+/** 决策步骤 */
+export interface DecisionStep {
+  policy: string;
+  result: "pass" | "block" | "warn";
+  reason?: string;
+}
+
 /**
  * 串行策略管道 — 按注册顺序执行，任一拒绝即停止。
  * 前一个策略的结果影响后一个（短路求值）。
@@ -34,6 +41,31 @@ export class PolicyPipeline {
       }
     }
     return { allowed: true };
+  }
+
+  /**
+   * 串行执行所有策略，并返回完整的决策链路。
+   * 用于审计追溯——可以看到每个策略的 pass/block 结果。
+   */
+  async executeWithTrail(
+    ctx: PolicyContext,
+  ): Promise<{ result: PolicyResult; trail: DecisionStep[] }> {
+    const trail: DecisionStep[] = [];
+
+    for (const policy of this.policies) {
+      const result = await policy.check(ctx);
+      if (!result.allowed) {
+        trail.push({
+          policy: policy.name,
+          result: "block",
+          reason: (result as Extract<PolicyResult, { allowed: false }>).reason,
+        });
+        return { result, trail };
+      }
+      trail.push({ policy: policy.name, result: "pass" });
+    }
+
+    return { result: { allowed: true }, trail };
   }
 
   /** 获取已注册的策略名列表 */

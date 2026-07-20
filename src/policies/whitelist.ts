@@ -6,9 +6,11 @@
  * @module policies/whitelist
  */
 
-import { isMatch } from "micromatch";
+import micromatch from "micromatch";
 import type { Policy, PolicyContext, PolicyResult } from "../types.js";
 import type { ToolsConfig, ParamRule } from "../config-types.js";
+
+const { isMatch } = micromatch;
 
 /**
  * 工具白名单策略。

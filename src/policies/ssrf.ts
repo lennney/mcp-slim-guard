@@ -8,9 +8,11 @@
 
 import * as dns from "node:dns/promises";
 import * as net from "node:net";
-import { isMatch } from "micromatch";
+import micromatch from "micromatch";
 import type { Policy, PolicyContext, PolicyResult } from "../types.js";
 import type { SSRFConfig } from "../config-types.js";
+
+const { isMatch } = micromatch;
 
 // RFC 1918 + RFC 6598 + loopback + link-local
 const PRIVATE_RANGES: Array<{ start: number; end: number }> = [

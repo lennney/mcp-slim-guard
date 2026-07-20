@@ -18,9 +18,10 @@ import {
 
 import type { GuardConfig } from "./config-types.js";
 import type { PolicyContext, PolicyResult } from "./types.js";
-import { PolicyPipeline } from "./policies/base.js";
+import { PolicyPipeline, type DecisionStep } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
+import { getCompressedTools, handleWrapperTool, LIST_TOOLS, GET_SCHEMA, INVOKE, PREFIX } from "./compressor.js";
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -33,6 +34,8 @@ export class GuardProxy {
   private audit: AuditLogger;
   private serverManager: ServerManager;
   private server: Server | null = null;
+  private sessionId = "?";
+  private requestCounter = 0;
 
   /**
    * @param config - Guard configuration
@@ -67,17 +70,79 @@ export class GuardProxy {
   async start(transport: Transport): Promise<void> {
     await this.serverManager.start();
 
+    // Generate new session ID
+    this.sessionId = this.audit.newSession();
+    this.requestCounter = 0;
+
     this.server = new Server(
       { name: "mcp-guard", version: "0.1.0" },
       { capabilities: { tools: {} } },
     );
 
-    // Register tools/list handler — passthrough to ServerManager
+    // Full tool list (from upstream, with prefixed names)
+    const fullTools = this.serverManager.getTools();
+
+    // Register tools/list handler — compressor aware
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return { tools: this.serverManager.getTools() };
+      // Log discovery event
+      const allNames = fullTools.map(t => t.name);
+      this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", fullTools.length, allNames);
+
+      if (this.config.compressor?.enabled) {
+        return { tools: getCompressedTools(fullTools, this.config.compressor) };
+      }
+      return { tools: fullTools };
     });
 
-    // Register tools/call handler — resolve → policy check → audit → forward
+    // Core tool call logic: resolve → policy → audit → forward
+    const forwardToolCall = async (
+      prefixedName: string,
+      args: Record<string, unknown>,
+    ) => {
+      const resolved = this.serverManager.resolveTool(prefixedName);
+      if (!resolved) {
+        return {
+          content: [
+            { type: "text" as const, text: `Unknown tool: ${prefixedName}` },
+          ],
+          isError: true,
+        };
+      }
+
+      const { serverName, originalToolName } = resolved;
+      const ctx: PolicyContext = {
+        toolName: prefixedName,
+        arguments: args,
+        serverName,
+      };
+
+      const startTime = Date.now();
+      const { result, trail } = await this.pipeline.executeWithTrail(ctx);
+      const durationMs = Date.now() - startTime;
+      const reqId = ++this.requestCounter;
+
+      this.audit.log(ctx, result, trail, this.sessionId, reqId, durationMs);
+
+      if (!result.allowed) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: (result as Extract<PolicyResult, { allowed: false }>).reason ?? "Blocked by policy",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return await this.serverManager.callTool(
+        serverName,
+        originalToolName,
+        args,
+      );
+    };
+
+    // Register tools/call handler — compressor aware, all calls go through policy pipeline
     this.server.setRequestHandler(
       CallToolRequestSchema,
       async (request) => {
@@ -85,53 +150,24 @@ export class GuardProxy {
         const prefixedName = params.name;
         const args: Record<string, unknown> = params.arguments ?? {};
 
-        // Step 2: Resolve prefixed tool name
-        const resolved = this.serverManager.resolveTool(prefixedName);
-        if (!resolved) {
-          return {
-            content: [
-              { type: "text" as const, text: `Unknown tool: ${prefixedName}` },
-            ],
-            isError: true,
-          };
+        // Every tool call (including compressor wrappers) must pass the policy pipeline.
+        // The pipeline enforces whitelist/rate-limit/injection/ssrf and writes an audit entry.
+        if (this.config.compressor?.enabled && prefixedName.startsWith(PREFIX)) {
+          const wrapperResult = await handleWrapperTool(
+            prefixedName,
+            args,
+            fullTools,
+            (targetName, targetArgs) => forwardToolCall(targetName, targetArgs),
+          );
+          if (wrapperResult) {
+            // Audit the wrapper call itself through the normal pipeline so it is
+            // subject to whitelist/rate-limit and shows up in logs.
+            return await forwardToolCall(prefixedName, args);
+          }
         }
 
-        const { serverName, originalToolName } = resolved;
-
-        // Step 4: Build PolicyContext
-        const ctx: PolicyContext = {
-          toolName: originalToolName,
-          arguments: args,
-          serverName,
-        };
-
-        // Step 5: Run policy pipeline
-        const startTime = Date.now();
-        const result: PolicyResult = await this.pipeline.execute(ctx);
-        const durationMs = Date.now() - startTime;
-
-        // Step 6: Audit log
-        this.audit.log(ctx, result, durationMs);
-
-        // Step 7: Blocked by policy
-        if (!result.allowed) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: result.reason ?? "Blocked by policy",
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        // Step 8-9: Forward to upstream server and return result
-        return await this.serverManager.callTool(
-          serverName,
-          originalToolName,
-          args,
-        );
+        // Normal tool call
+        return forwardToolCall(prefixedName, args);
       },
     );
 
@@ -147,6 +183,42 @@ export class GuardProxy {
       this.server = null;
     }
     await this.serverManager.stop();
+  }
+
+  /**
+   * Hot-reload config and policy pipeline without restarting.
+   * Keeps the MCP Server alive — swaps the policy pipeline, audit logger,
+   * and server manager (if new ones are provided).
+   *
+   * @param newConfig - Updated GuardConfig
+   * @param newPipeline - New policy pipeline built from the updated config
+   * @param newAudit - Optional new audit logger
+   * @param newServerManager - Optional new server manager (already started)
+   */
+  reload(
+    newConfig: GuardConfig,
+    newPipeline: PolicyPipeline,
+    newAudit?: AuditLogger,
+    newServerManager?: ServerManager,
+  ): void {
+    this.config = newConfig;
+    this.pipeline = newPipeline;
+    if (newAudit) {
+      this.audit = newAudit;
+    }
+    if (newServerManager) {
+      this.serverManager = newServerManager;
+      // Refresh the cached tool list used by compressor handlers
+      this.serverManager = newServerManager;
+    }
+    this.audit.log(
+      { toolName: "<reload>", arguments: {}, serverName: "system" },
+      { allowed: true },
+      [],
+      this.sessionId,
+      ++this.requestCounter,
+      0,
+    );
   }
 
   /**

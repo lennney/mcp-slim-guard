@@ -152,13 +152,10 @@ export class ServerManager {
         continue;
       }
 
-      const conn = this.connections.get(candidateServerName);
-      if (!conn) {
-        continue;
-      }
-
-      const toolExists = conn.tools.some((t) => t.name === candidateToolName);
-      if (toolExists) {
+      // Check only that the server exists — policy (whitelist/deny) is enforced
+      // later in the pipeline. If the upstream doesn't have the tool, the
+      // callTool → upstream will return the native error.
+      if (this.connections.has(candidateServerName)) {
         return {
           serverName: candidateServerName,
           originalToolName: candidateToolName,

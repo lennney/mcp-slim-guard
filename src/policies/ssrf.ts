@@ -193,14 +193,18 @@ function isPrivateIPv6(ip: string): boolean {
  * and IPv4-mapped forms.
  */
 function normalizeIPv6(ip: string): string {
+  // Strip IPv6 zone ID (%eth0, %en0, etc.)
+  const zoneIdx = ip.indexOf("%");
+  const clean = ip.slice(0, zoneIdx !== -1 ? zoneIdx : ip.length);
+
   // Handle IPv4-mapped IPv6 — preserve the mapped part
-  if (ip.toLowerCase().startsWith("::ffff:")) {
-    return ip.toLowerCase();
+  if (clean.toLowerCase().startsWith("::ffff:")) {
+    return clean.toLowerCase();
   }
 
   // Expand "::" to ":" + the right number of zero groups
-  if (ip.includes("::")) {
-    const [left, right] = ip.split("::") as [string, string | undefined];
+  if (clean.includes("::")) {
+    const [left, right] = clean.split("::") as [string, string | undefined];
     const leftGroups = left ? left.split(":").filter(Boolean) : [];
     const rightGroups = right ? right.split(":").filter(Boolean) : [];
     const zeroCount = 8 - leftGroups.length - rightGroups.length;
@@ -210,7 +214,7 @@ function normalizeIPv6(ip: string): string {
   }
 
   // Already fully expanded? Just zero-pad and lowercase
-  return ip
+  return clean
     .split(":")
     .map((g) => g.padStart(4, "0").toLowerCase())
     .join(":");

@@ -40,7 +40,7 @@ export class SSRFPolicy implements Policy {
   constructor(private config: SSRFConfig) {}
 
   async check(ctx: PolicyContext): Promise<PolicyResult> {
-    if (this.config.mode === "off") return { allowed: true };
+    if (this.config.mode !== "block") return { allowed: true };
 
     // 从参数中提取所有 URL
     const urls = extractURLs(ctx.arguments);

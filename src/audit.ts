@@ -56,11 +56,19 @@ export class AuditLogger {
    * @param durationMs - 策略评估耗时（毫秒，可选）
    */
   log(ctx: PolicyContext, result: PolicyResult, durationMs?: number): void {
+    // Defend against circular references in arguments
+    let safeArgs: Record<string, unknown>;
+    try {
+      safeArgs = JSON.parse(JSON.stringify(ctx.arguments));
+    } catch {
+      safeArgs = { _error: "arguments contained non-serializable values" };
+    }
+
     const entry: AuditEntry = {
       timestamp: new Date().toISOString(),
       toolName: ctx.toolName,
       serverName: ctx.serverName,
-      arguments: ctx.arguments,
+      arguments: safeArgs,
       action: result.allowed ? "allowed" : "blocked",
       ...(result.allowed === false ? { reason: result.reason } : {}),
       ...(durationMs !== undefined ? { durationMs } : {}),

@@ -48,6 +48,7 @@ function makeConfig(overrides?: Partial<GuardConfig>): GuardConfig {
     },
     rate_limit: { default: "" },
     injection_detection: { enabled: false },
+    compressor: { enabled: false, level: "light" },
     servers: {
       [SERVER_NAME]: {
         command: "node",
@@ -175,7 +176,7 @@ describe("GuardProxy Full Pipeline", () => {
   // -------------------------------------------------------------------------
   it("should block tools matching deny pattern", async () => {
     const config = makeConfig({
-      tools: { allow: ["*"], deny: ["echo"] },
+      tools: { allow: ["*"], deny: ["mock_echo"] },
     });
     const ctx = await buildProxy(config);
     try {
@@ -194,7 +195,7 @@ describe("GuardProxy Full Pipeline", () => {
 
   it("should allow non-denied tools when deny pattern is set", async () => {
     const config = makeConfig({
-      tools: { allow: ["*"], deny: ["echo"] },
+      tools: { allow: ["*"], deny: ["mock_echo"] },
     });
     const ctx = await buildProxy(config);
     try {
@@ -278,8 +279,8 @@ describe("GuardProxy Full Pipeline", () => {
       expect(entries.length).toBeGreaterThanOrEqual(2);
 
       const entryNames = entries.map((e) => e.toolName);
-      expect(entryNames).toContain("echo");
-      expect(entryNames).toContain("add");
+      expect(entryNames).toContain("mock_echo");
+      expect(entryNames).toContain("mock_add");
 
       for (const entry of entries) {
         expect(entry.action).toBe("allowed");
@@ -294,7 +295,7 @@ describe("GuardProxy Full Pipeline", () => {
 
   it("should generate audit entries for blocked tool calls", async () => {
     const config = makeConfig({
-      tools: { allow: ["*"], deny: ["echo"] },
+      tools: { allow: ["*"], deny: ["mock_echo"] },
     });
     const ctx = await buildProxy(config);
     try {
@@ -307,7 +308,7 @@ describe("GuardProxy Full Pipeline", () => {
       expect(entries.length).toBeGreaterThanOrEqual(1);
 
       const entry = entries[0];
-      expect(entry.toolName).toBe("echo");
+      expect(entry.toolName).toBe("mock_echo");
       expect(entry.action).toBe("blocked");
       expect(entry.reason).toBeDefined();
       expect(entry.serverName).toBe(SERVER_NAME);

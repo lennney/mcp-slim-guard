@@ -67,6 +67,12 @@ vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
   mkdirSync: vi.fn(),
+  statSync: vi.fn().mockReturnValue({ size: 0 }),
+  watch: vi.fn().mockReturnValue({ close: vi.fn() }),
+  unlinkSync: vi.fn(),
+  openSync: vi.fn().mockReturnValue(0),
+  readSync: vi.fn(),
+  closeSync: vi.fn(),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────
@@ -90,7 +96,7 @@ const MockConfigLoader = ConfigLoaderModule as unknown as {
 
 const MOCK_GUARD_CONFIG: Record<string, unknown> = {
   version: 1,
-  tools: { allow: ["github_*"], deny: ["delete_*"] },
+  tools: { allow: ["github_*"], deny: ["*_delete_*"] },
   ssrf: {
     mode: "block",
     block_private_ips: true,
@@ -99,6 +105,14 @@ const MOCK_GUARD_CONFIG: Record<string, unknown> = {
   },
   rate_limit: { default: "60/min" },
   injection_detection: { enabled: false, sensitivity: "medium" },
+  compressor: { enabled: false, level: "light" },
+  audit: {
+    output: "file",
+    filePath: "mcp-guard-audit.log",
+    maxSize: "10MB",
+    maxFiles: 5,
+    compress: false,
+  },
   servers: {
     github: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"], env: {} },
   },
@@ -210,16 +224,22 @@ describe("CLI", () => {
   // ── log ──────────────────────────────────────────────────────────
 
   describe("log", () => {
-    it("shows log command", async () => {
+    it("shows message when no audit log file exists", async () => {
+      // fs.existsSync mocked to return false by default
       await main(["node", "cli.js", "log"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("Audit log entries:");
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("No audit log found"));
     });
 
     it("shows tail mode with --tail", async () => {
+      const { existsSync, readFileSync, statSync } = await import("node:fs");
+      (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue('{"toolName":"test","action":"allowed"}\n');
+      (statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: 50 });
+
       await main(["node", "cli.js", "log", "--tail"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("Tailing audit log...");
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tailing"));
     });
   });
 
@@ -231,7 +251,7 @@ describe("CLI", () => {
 
       expect(consoleLogSpy).toHaveBeenCalledWith("To remove mcp-guard:");
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Delete mcp-guard.yml"),
+        expect.stringContaining("uninit --force"),
       );
     });
   });

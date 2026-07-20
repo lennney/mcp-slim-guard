@@ -1042,6 +1042,7 @@ describe("ConfigLoader — Robustness", () => {
       "  default: '60/min'\n" +
       "injection_detection:\n" +
       "  enabled: false\n" +
+      "compressor: { enabled: false, level: light }\n" +
       "servers: {}\n";
     fs.writeFileSync(ymlPath, bomYaml, "utf-8");
     // js-yaml handles BOM in recent versions; if not, it should throw instead of silently producing wrong config
@@ -1631,7 +1632,9 @@ describe("ConfigLoader — YAML Injection", () => {
       "tools: { allow: ['*'], deny: [] }\n" +
       "ssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\n" +
       "rate_limit: { default: '60/min' }\n" +
-      "injection_detection: { enabled: false, sensitivity: 'medium' }\n" +
+      "injection_detection:\n" +
+      "  enabled: false\n" +
+      "compressor: { enabled: false, level: light }\n" +
       "servers: {}\n";
     fs.writeFileSync(ymlPath, yamlContent);
 
@@ -1650,7 +1653,9 @@ describe("ConfigLoader — YAML Injection", () => {
       "tools: { allow: ['*'], deny: [] }\n" +
       "ssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\n" +
       "rate_limit: { default: '60/min' }\n" +
-      "injection_detection: { enabled: false, sensitivity: 'medium' }\n" +
+      "injection_detection:\n" +
+      "  enabled: false\n" +
+      "compressor: { enabled: false, level: light }\n" +
       "servers: {}\n";
     fs.writeFileSync(ymlPath, yamlContent);
 
@@ -1667,7 +1672,9 @@ describe("ConfigLoader — YAML Injection", () => {
         "tools: { allow: ['*'], deny: [] }\n" +
         "ssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\n" +
         "rate_limit: { default: '60/min' }\n" +
-        "injection_detection: { enabled: false, sensitivity: 'medium' }\n" +
+        "injection_detection:\n" +
+        "  enabled: false\n" +
+        "compressor: { enabled: false, level: light }\n" +
         "servers: {}\n";
       fs.writeFileSync(ymlPath, yamlContent);
       // js-yaml throws on duplicate mapping keys by default

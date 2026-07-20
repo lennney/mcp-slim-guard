@@ -98,11 +98,17 @@ export interface InjectionConfig {
   enabled: boolean;
   /**
    * 检测灵敏度。
-   * - `"low"`: 仅检测明显注入
-   * - `"medium"`: 中等灵敏度（默认）
-   * - `"high"`: 高灵敏度（可能增加误报率）
+   * - "low": 仅检测明显注入
+   * - "medium": 中等灵敏度（默认）
+   * - "high": 高灵敏度（可能增加误报率）
    */
   sensitivity?: "low" | "medium" | "high";
+  /**
+   * 注入检测模式。
+   * - "block": 检测到注入时直接拦截（默认）
+   * - "log": 仅记录日志，不拦截
+   */
+  mode?: "block" | "log";
 }
 
 /**
@@ -120,9 +126,50 @@ export interface GuardConfig {
   rate_limit: RateLimitConfig;
   /** 注入检测配置（P2 预留） */
   injection_detection: InjectionConfig;
+  /** Schema 压缩配置 */
+  compressor: CompressorConfig;
+  /** 审计日志配置 */
+  audit: AuditConfig;
   /**
    * 上游 MCP 服务器映射。
    * key 为服务器名，value 为 {@link UpstreamServer}。
    */
   servers: Record<string, UpstreamServer>;
+}
+
+/**
+ * Schema 压缩配置 — 无损压缩，通过 wrapper tools 延迟加载完整 schema。
+ *
+ * 借鉴 mcp-compressor (Atlassian) 的思路：不一次下发所有 tool schema，
+ * 而是暴露 `get_tool_schema` / `invoke_tool` 两个 wrapper，agent 按需获取。
+ */
+export interface CompressorConfig {
+  /** 是否启用压缩 */
+  enabled: boolean;
+  /**
+   * 压缩等级：
+   * - `"light"`: 暴露 list_tools(名字+描述) + get_tool_schema + invoke_tool
+   * - `"tight"`: 只暴露 get_tool_schema + invoke_tool（agent 需提前知道工具名）
+   */
+  level: "light" | "tight";
+}
+
+/**
+ * 审计日志配置。
+ */
+export interface AuditConfig {
+  /** 输出目标 */
+  output: "stdout" | "file";
+  /** 审计日志文件路径（output 为 file 时有效） */
+  filePath: string;
+  /**
+   * 每个日志文件的最大大小。
+   * 格式：数字 + 单位，如 "10MB"、"1GB"、"500KB"。
+   * 达到此大小时触发轮转。
+   */
+  maxSize?: string;
+  /** 保留的历史日志文件数（默认 5）。轮转后的文件为 .1、.2、...、.{maxFiles}。 */
+  maxFiles?: number;
+  /** 是否压缩历史日志文件（gzip），默认 false。 */
+  compress?: boolean;
 }

@@ -72,6 +72,7 @@ describe("GuardConfig", () => {
       },
       rate_limit: { default: 50 },
       injection_detection: { enabled: false },
+      compressor: { enabled: false, level: "light" },
       servers: {},
     };
 

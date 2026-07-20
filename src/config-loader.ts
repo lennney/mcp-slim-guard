@@ -9,8 +9,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as yaml from "js-yaml";
-import type { GuardConfig, UpstreamServer } from "./config-types.js";
+import type { GuardConfig, UpstreamServer, AuditConfig } from "./config-types.js";
 import type { MCPConfig } from "./types.js";
+import { validateConfigSchema, formatSchemaErrors } from "./config-schema.js";
 
 /**
  * 配置加载器 — 扫描和解析 MCP Guard 及上游 MCP 配置。
@@ -58,7 +59,7 @@ export class ConfigLoader {
       version: 1,
       tools: {
         allow: toolNames,
-        deny: ["delete_*", "drop_*", "admin_*"],
+        deny: ["*_delete_*", "*_drop_*", "*_admin_*"],
       },
       ssrf: {
         mode: "block",
@@ -72,6 +73,17 @@ export class ConfigLoader {
       injection_detection: {
         enabled: false,
         sensitivity: "medium",
+      },
+      compressor: {
+        enabled: false,
+        level: "light",
+      },
+      audit: {
+        output: "file",
+        filePath: "mcp-guard-audit.log",
+        maxSize: "10MB",
+        maxFiles: 5,
+        compress: false,
       },
       servers,
     };
@@ -98,6 +110,24 @@ export class ConfigLoader {
       throw new Error(
         "Invalid config: missing required sections (tools, ssrf, rate_limit)",
       );
+    }
+
+    // JSON Schema 校验
+    const schemaErrors = validateConfigSchema(config as unknown as Record<string, unknown>);
+    if (schemaErrors.length > 0) {
+      const msg = formatSchemaErrors(schemaErrors);
+      throw new Error(msg);
+    }
+
+    // Fill defaults for optional sections
+    if (!config.audit) {
+      config.audit = {
+        output: "file",
+        filePath: "mcp-guard-audit.log",
+        maxSize: "10MB",
+        maxFiles: 5,
+        compress: false,
+      };
     }
 
     return config;

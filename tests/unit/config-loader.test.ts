@@ -74,7 +74,7 @@ describe("ConfigLoader", () => {
       expect(config.servers.github.command).toBe("npx");
       expect(config.tools.allow).toContain("github_*");
       expect(config.tools.allow).toContain("playwright_*");
-      expect(config.tools.deny).toContain("delete_*");
+      expect(config.tools.deny).toContain("*_delete_*");
       expect(config.ssrf.mode).toBe("block");
       expect(config.rate_limit.default).toBe("60/min");
     });

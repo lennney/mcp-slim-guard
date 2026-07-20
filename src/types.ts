@@ -35,24 +35,34 @@ export type PolicyResult =
   | { allowed: false; reason: string; policy: string };
 
 /**
- * 审计日志条目。
+ * 审计日志条目（完整可追溯）。
  */
 export interface AuditEntry {
   /** 事件时间戳（ISO 8601） */
   timestamp: string;
-  /** MCP 工具名 */
+  /** 会话 ID — 同一 Agent 连接内唯一，可跨工具调用关联 */
+  sessionId: string;
+  /** 请求序号 — 同一会话内递增，从 1 开始 */
+  requestId: number;
+  /** MCP 工具名（含前缀，如 github_search_repos）*/
   toolName: string;
   /** 上游 MCP 服务器名 */
   serverName: string;
   /** 工具调用参数 */
   arguments: Record<string, unknown>;
   /**
-   * 执行的动作。
-   * - `"allowed"`: 工具调用被允许
-   * - `"blocked"`: 工具调用被阻止
+   * 事件类型。
+   * - `"allowed"`: 工具调用通过所有策略
+   * - `"blocked"`: 工具调用被策略拒绝
+   * - `"discovery"`: tools/list 事件
    */
-  action: "allowed" | "blocked";
-  /** 动作原因（阻止时必填） */
+  action: "allowed" | "blocked" | "discovery";
+  /**
+   * 策略决策链路。
+   * 按执行顺序记录每个策略的 pass/block，用于追溯"谁拦截的"。
+   */
+  decisionTrail: Array<{ policy: string; result: "pass" | "block" | "warn"; reason?: string }>;
+  /** 原因（被阻止时） */
   reason?: string;
   /** 策略评估耗时（毫秒） */
   durationMs?: number;

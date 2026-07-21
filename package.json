@@ -1,11 +1,11 @@
 {
-  "name": "mcp-guard",
+  "name": "tinymcp",
   "version": "0.1.0",
-  "description": "轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速 + 注入检测",
+  "description": "轻量 MCP 代理 — 工具压缩 + SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "mcp-guard": "./dist/cli.js"
+    "tinymcp": "./dist/cli.js"
   },
   "exports": {
     ".": "./dist/index.js",

@@ -17,7 +17,7 @@ tags:
 ## 常用命令
 
 ```bash
-cd ~/mcp-guard
+cd ~/tinymcp
 npm run build               # 编译到 dist/
 npm test                    # 全量测试（305 tests, 18 files）
 npx vitest run              # 同上

@@ -59,3 +59,13 @@ tags:
 
 ### HTTP 测试不要用固定 sleep 等端口就绪
 - 固定 500ms 在 spawn/连接慢的机器上不够，导致 ECONNREFUSED；改成轮询 `fetch` 重试到端口就绪或超时，并给测试设足够的 testTimeout（>轮询窗口）。
+
+## 限速与连接标识（2026-07-21 续审）
+
+### per_agent 限速需要 agentId 真正传入 ctx
+- `RateLimitPolicy` 的 key 优先用 `ctx.agentId`，`per_agent` 覆盖也只在 `ctx.agentId` 命中时生效；但 `GuardProxy` 构造 `PolicyContext` 时从不设置 `agentId`，导致 `per_agent` 配置在生产中永远是死代码。
+- 修复：把连接 `sessionId` 作为 `agentId` 传入，per-caller 限速才能隔离不同调用方；单测断言 PolicyContext 时记得带上 `agentId`。
+
+### ServerManager.stop 要先关 client 再关 transport
+- 只关 transport 会留下 Client 持有回调/句柄；先 `client.close()`（协议层关闭）再 `transport.close()` 更干净。
+- 验证 stop 时要用真正的 MCP server 子进程（如 dist/mock-server.js），不要用 `node -e setInterval`——后者不是 MCP server，`client.connect` 会卡在协议握手，stop 永远等不到，诊断会误判。

@@ -54,10 +54,15 @@ export class SSRFPolicy implements Policy {
   constructor(private config: SSRFConfig) {}
 
   async check(ctx: PolicyContext): Promise<PolicyResult> {
-    if (this.config.mode !== "block") return { allowed: true };
+    const isBlock = this.config.mode === "block";
+    const isLog = this.config.mode === "log";
+    // off 模式完全跳过检测
+    if (!isBlock && !isLog) return { allowed: true };
 
     // 从参数中提取所有 URL
     const urls = extractURLs(ctx.arguments);
+    // log 模式下收集命中内网的观察结果（首个用于 warn reason）
+    let loggedHit: string | null = null;
 
     for (const url of urls) {
       try {
@@ -68,13 +73,17 @@ export class SSRFPolicy implements Policy {
           hostname = hostname.slice(1, -1);
         }
 
-        // 1. 域名黑名单检查
+        // 1. 域名黑名单检查（block 模式拦截，log 模式记录）
         if (this.isDomainBlocked(hostname)) {
-          return {
-            allowed: false,
-            reason: `SSRF blocked: domain "${hostname}" is in block list`,
-            policy: "ssrf",
-          };
+          if (isBlock) {
+            return {
+              allowed: false,
+              reason: `SSRF blocked: domain "${hostname}" is in block list`,
+              policy: "ssrf",
+            };
+          }
+          loggedHit ??= `SSRF log: domain "${hostname}" is in block list`;
+          continue;
         }
 
         // 2. 域名白名单检查 — 命中则跳过该 URL
@@ -84,11 +93,15 @@ export class SSRFPolicy implements Policy {
         const ips = await this.resolveHost(hostname);
         for (const ip of ips) {
           if (this.isPrivateIP(ip)) {
-            return {
-              allowed: false,
-              reason: `SSRF blocked: "${url}" resolves to private IP ${ip}`,
-              policy: "ssrf",
-            };
+            if (isBlock) {
+              return {
+                allowed: false,
+                reason: `SSRF blocked: "${url}" resolves to private IP ${ip}`,
+                policy: "ssrf",
+              };
+            }
+            // log 模式：记录但不阻止
+            loggedHit ??= `SSRF log: "${url}" resolves to private IP ${ip}`;
           }
         }
       } catch {
@@ -96,6 +109,10 @@ export class SSRFPolicy implements Policy {
       }
     }
 
+    // log 模式命中内网时返回 allowed + warn reason，让 audit trail 记录观察
+    if (loggedHit) {
+      return { allowed: true, reason: loggedHit };
+    }
     return { allowed: true };
   }
 
@@ -288,14 +305,18 @@ function normalizeToIPv4(hostname: string): string | null {
     }
   }
 
-  // Shorthand: "127.1" → 127.0.0.1 or "10.0.1" → 10.0.0.1
-  const shorthandMatch = /^\d+\.\d+(?:\.\d+)?$/.exec(hostname);
+  // Shorthand IPv4: 1-3 octets, POSIX inet_aton semantics — missing
+  // middle octets are filled with 0 and the last group stays last:
+  //   "127.1" → 127.0.0.1   "10.0.1" → 10.0.0.1   "192.168.1" → 192.168.0.1
+  // (Previously zeros were appended at the end, producing 127.1.0.0.)
+  const shorthandMatch = /^\d+(?:\.\d+(?:\.\d+)?)?$/.exec(hostname);
   if (shorthandMatch) {
     const parts = hostname.split(".");
     const nums = parts.map((p) => parseInt(p, 10));
     if (nums.every((n) => n >= 0 && n <= 255)) {
-      while (nums.length < 4) nums.push(0);
-      return nums.join(".");
+      const result = [...nums];
+      while (result.length < 4) result.splice(result.length - 1, 0, 0);
+      return result.join(".");
     }
   }
 

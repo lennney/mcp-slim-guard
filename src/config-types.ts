@@ -49,7 +49,8 @@ export interface ToolsConfig {
   deny: string[];
   /**
    * 按工具名的参数约束。
-   * key 为工具名（支持 glob 模式），value 为按参数名的规则映射。
+   * key 为带前缀的工具名（精确匹配，如 `github_search_repositories`），
+   * value 为按参数名的规则映射。注意：当前按精确工具名匹配，不支持 glob。
    */
   param_restrictions?: Record<string, Record<string, ParamRule>>;
 }

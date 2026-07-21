@@ -48,6 +48,33 @@ describe("AuditLogger rotation", () => {
     expect(files.some(f => f.startsWith("audit.log"))).toBe(true);
   });
 
+  it("rotates with gzip compression and does not mix new entries into the compressed stream", async () => {
+    const logPath = path.join(tmpDir, "audit.log");
+    const logger = new AuditLogger({
+      output: "file",
+      filePath: logPath,
+      maxSize: "200B",
+      maxFiles: 2,
+      compress: true,
+    });
+
+    // Fill past maxSize to force a rotation.
+    for (let i = 0; i < 30; i++) {
+      logger.log(ctx(`tool_${i}`), { allowed: true });
+    }
+    logger.checkRotation();
+
+    // The current log should exist and be writable.
+    expect(fs.existsSync(logPath)).toBe(true);
+
+    // Wait for async gzip to settle.
+    await new Promise((r) => setTimeout(r, 500));
+
+    const files = fs.readdirSync(tmpDir);
+    // A compressed backup should appear.
+    expect(files.some((f) => f === "audit.log.1.gz")).toBe(true);
+  });
+
   it("keeps at most maxFiles historical files", () => {
     const logPath = path.join(tmpDir, "audit.log");
     const logger = new AuditLogger({

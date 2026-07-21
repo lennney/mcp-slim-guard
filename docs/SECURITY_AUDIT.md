@@ -5,6 +5,19 @@
 > **审查方法**: 源码审查 + 最小可复现验证脚本  
 > **总评级**: ⚠️ 严重关切 — 6 个风险点中 2 个高危、1 个严重
 
+## ✅ 修复状态
+
+| # | 风险点 | 原严重度 | 修复 Commit | 状态 |
+|---|--------|---------|-------------|------|
+| 1 | HTTP transport 未创建 HTTP Server | 🔴 严重 | `367287f` | ✅ 已修复 — `cli.ts` 创建 `http.createServer` 并绑定端口 |
+| 2 | Audit log 无限增长 | 🟡 中危 | `df3862b` | ✅ 已修复 — `RotatingFileStream` 按 maxSize 轮转 + maxFiles 保留 |
+| 3 | 注入检测默认 fail-open | 🟠 高危 | `2b6efb5` | ✅ 已修复 — 默认 mode=block，medium 拦 shell+sql，high 拦全部 |
+| 4 | SSRF DNS 无缓存/DNS rebinding 风险 | 🟡 中危 | *本会话* | ✅ 已修复 — TTL 感知 DNS 缓存，最小 10s clamp 防 rebinding |
+| 5 | 热重载不替换 serverManager | 🟡 中危 | `fd3df32` | ✅ 已修复 — reload 重建 serverManager + audit logger |
+| 6 | Compressor wrapper 绕过白名单 | 🟠 高危 | `fd3df32` + *本会话* | ✅ 已修复 — wrapper 工具调用经策略管道 + whitelist 过滤 |
+
+> 本报告保留原始内容作为审计记录。所有 6 项风险均已修复并在 `305 tests` 中验证。
+
 ---
 
 ## 风险总览

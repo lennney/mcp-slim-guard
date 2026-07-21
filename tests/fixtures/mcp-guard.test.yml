@@ -23,8 +23,9 @@ rate_limit:
   per_agent:
     claude-code: "120/min"
 injection_detection:
-  enabled: false
+  enabled: true
   sensitivity: medium
+  mode: block
 compressor:
   enabled: false
   level: light

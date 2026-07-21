@@ -55,7 +55,7 @@ describe("SSRFPolicy", () => {
 
   it("blocks private IP via DNS resolution", async () => {
     const resolveMock = vi.mocked(dns.resolve4);
-    resolveMock.mockResolvedValue(["10.0.0.5"]);
+    resolveMock.mockResolvedValue([{ address: "10.0.0.5", ttl: 60 }]);
 
     const policy = new SSRFPolicy(config);
     const result = await policy.check(
@@ -69,13 +69,34 @@ describe("SSRFPolicy", () => {
 
   it("allows public IP", async () => {
     const resolveMock = vi.mocked(dns.resolve4);
-    resolveMock.mockResolvedValue(["142.250.80.46"]);
+    resolveMock.mockResolvedValue([{ address: "142.250.80.46", ttl: 120 }]);
 
     const policy = new SSRFPolicy(config);
     const result = await policy.check(
       ctx("test", { url: "https://google.com" }),
     );
     expect(result.allowed).toBe(true);
+  });
+
+  it("uses DNS cache for repeated lookups", async () => {
+    const resolveMock = vi.mocked(dns.resolve4);
+    resolveMock.mockResolvedValue([{ address: "10.0.0.5", ttl: 60 }]);
+
+    const policy = new SSRFPolicy(config);
+
+    // First call: DNS lookup, blocked
+    const r1 = await policy.check(
+      ctx("test", { url: "http://cached-host.local" }),
+    );
+    expect(r1.allowed).toBe(false);
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+
+    // Second call: same hostname → cache hit, DNS not called again
+    const r2 = await policy.check(
+      ctx("test", { url: "http://cached-host.local" }),
+    );
+    expect(r2.allowed).toBe(false);
+    expect(resolveMock).toHaveBeenCalledTimes(1); // Still 1 — cached
   });
 
   it("allows whitelisted domain without DNS check", async () => {
@@ -133,6 +154,26 @@ describe("SSRFPolicy", () => {
     expect(result.allowed).toBe(true);
   });
 
+  it("clamps minimum DNS cache TTL to 10s for security", async () => {
+    const resolveMock = vi.mocked(dns.resolve4);
+    resolveMock.mockResolvedValue([{ address: "10.0.0.5", ttl: 0 }]);
+
+    const policy = new SSRFPolicy(config);
+
+    // First call: DNS lookup, cached with min 10s TTL
+    await policy.check(
+      ctx("test", { url: "http://zero-ttl-host.local" }),
+    );
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+
+    // Second call (immediately): cache still valid (10s min clamp)
+    await policy.check(
+      ctx("test", { url: "http://zero-ttl-host.local" }),
+    );
+    // Still 1 call — cache hit, min TTL clamp prevents rebinding
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks private IP when block_private_ips is true", async () => {
     const policy = new SSRFPolicy(config);
     const result = await policy.check(
@@ -166,6 +207,19 @@ describe("extractURLs", () => {
     });
     expect(urls).toContain("https://example.com");
     expect(urls).toContain("http://test.com");
+  });
+
+  it("extracts file, ftp, gopher, dict, ldap, sftp URLs", () => {
+    const urls = extractURLs({
+      f: "file:///etc/passwd",
+      g: "gopher://internal:7070/",
+      d: "dict://internal:6379/config",
+      ftp: "ftp://evil.com/",
+    });
+    expect(urls).toContain("file:///etc/passwd");
+    expect(urls).toContain("gopher://internal:7070/");
+    expect(urls).toContain("dict://internal:6379/config");
+    expect(urls).toContain("ftp://evil.com/");
   });
 
   it("returns empty array when no URLs", () => {

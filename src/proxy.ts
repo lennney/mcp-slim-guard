@@ -150,19 +150,31 @@ export class GuardProxy {
         const prefixedName = params.name;
         const args: Record<string, unknown> = params.arguments ?? {};
 
-        // Every tool call (including compressor wrappers) must pass the policy pipeline.
-        // The pipeline enforces whitelist/rate-limit/injection/ssrf and writes an audit entry.
+        // Compressor wrapper tools: handle directly but with whitelist filtering + audit.
+        // mcp__list_tools / mcp__get_tool_schema → handled by compressor (discovery).
+        // mcp__invoke_tool → handleWrapperTool delegates to forwardToolCall internally.
+        // In all cases we audit the wrapper call and return wrapperResult directly.
         if (this.config.compressor?.enabled && prefixedName.startsWith(PREFIX)) {
           const wrapperResult = await handleWrapperTool(
             prefixedName,
             args,
             fullTools,
             (targetName, targetArgs) => forwardToolCall(targetName, targetArgs),
+            this.config.tools.allow,
+            this.config.tools.deny,
           );
           if (wrapperResult) {
-            // Audit the wrapper call itself through the normal pipeline so it is
-            // subject to whitelist/rate-limit and shows up in logs.
-            return await forwardToolCall(prefixedName, args);
+            // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
+            const reqId = ++this.requestCounter;
+            this.audit.log(
+              { toolName: prefixedName, arguments: args, serverName: "compressor" },
+              { allowed: true },
+              [],
+              this.sessionId,
+              reqId,
+              0,
+            );
+            return wrapperResult;
           }
         }
 

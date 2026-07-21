@@ -71,8 +71,9 @@ export class ConfigLoader {
         default: "60/min",
       },
       injection_detection: {
-        enabled: false,
+        enabled: true,
         sensitivity: "medium",
+        mode: "block",
       },
       compressor: {
         enabled: false,

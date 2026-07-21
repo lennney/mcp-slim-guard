@@ -92,7 +92,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .command("init")
     .description("Auto-discover MCP config and generate mcp-guard.yml")
-    .option("--compressor [level]", "Enable schema compression (lossless)", "off")
+    .option("--compressor [level]", "Enable schema compression (lossless). Levels: light (recommended), tight", "off")
     .action((options: { compressor?: string }) => {
       const cwd = process.cwd();
       const mcpConfigPath = ConfigLoader.discoverMCPConfig(cwd);

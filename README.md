@@ -1,0 +1,161 @@
+---
+type: Readme
+title: mcp-guard
+timestamp: '2026-07-20T23:30:00+08:00'
+description: 轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速 + 注入检测
+tags:
+- mcp-guard
+- readme
+- mcp
+- security
+---
+
+# 🛡️ mcp-guard
+
+> 一行命令给 MCP Server 加上安全策略代理
+
+`mcp-guard` 是轻量级 MCP 安全代理，放在 AI Agent 和你现有的 MCP Server 之间，透明的加上 SSRF 防护、工具白名单、速率限制、注入检测和审计日志。
+
+```
+AI Agent → mcp-guard ──→ 你的 MCP Server
+             │ 白名单 → SSRF → 注入检测 → 限速
+             └→ 审计日志 (JSON)
+```
+
+## 为什么需要
+
+MCP 协议没有内置安全性：任何 Agent 可以调用你暴露的**所有工具**，带上**任意参数**。如果你暴露了 `shell_exec`、`file_write` 或搜索工具，Agent prompt injection 就能变成远程代码执行。
+
+| 风险 | 攻击方式 | mcp-guard 防护 |
+|------|---------|---------------|
+| 工具越权 | Agent 调用敏感工具 | deny 列表 + glob 匹配 |
+| SSRF | 工具参数注入内网 URL | IP 黑名单 + 域名白名单 |
+| 滥用 | 工具调用 flood | Token Bucket 限速 |
+| 注入 | Shell/SQL/Prompt 注入参数 | 17 种启发式检测 |
+| 无审计 | 不知道谁调了什么 | pino JSON 日志 |
+
+## 快速开始
+
+```bash
+npm install -g mcp-guard
+
+# 1. 初始化（自动发现 .mcp.json 中的 MCP Server）
+cd your-project/
+mcp-guard init
+
+# 2. 验证策略（干跑，看会不会误杀）
+mcp-guard validate
+
+# 3. 启动代理
+mcp-guard start
+```
+
+生成的 `mcp-guard.yml`：
+
+```yaml
+tools:
+  allow:
+    - search_*           # 只允许 search_ 前缀的工具
+  deny:
+    - '*_delete_*'       # 禁止任何 delete 操作
+    - '*_drop_*'
+    - '*_admin_*'
+ssrf:
+  mode: block            # 阻止内网 IP 访问
+  block_private_ips: true
+rate_limit:
+  default: 60/min        # 每工具每分钟 60 次
+injection_detection:
+  enabled: true          # 默认开启注入检测
+  mode: block
+  sensitivity: medium
+```
+
+## 性能
+
+基准测试：mcp-guard 代理 agent-search-mcp 搜索，3 查询 × 3 轮。
+
+```
+Direct:    avg 1ms/call   (无代理)
+Guarded:   avg 3ms/call   (经过 mcp-guard)
+Overhead:  ~2ms/call      (纯策略管道开销)
+```
+
+<details>
+<summary>完整 benchmark</summary>
+
+```
+📊 mcp-guard Benchmark: Direct vs Guarded
+
+── Latency (cached, guard overhead) ──
+  Direct:   avg 1ms
+  Guarded:  avg 3ms
+  Overhead: +2ms
+
+── Audit ──
+  Lines:    9
+  Allowed:  9
+  Denied:   0
+```
+</details>
+
+## 命令
+
+| 命令 | 说明 |
+|------|------|
+| `mcp-guard init` | 自动发现 `.mcp.json`，生成 `mcp-guard.yml` |
+| `mcp-guard validate` | 干跑策略，输出每个工具的 allowed/denied/no-match 状态 |
+| `mcp-guard start` | 启动安全代理（STDIO 模式） |
+| `mcp-guard start --http --port 3000` | HTTP SSE 模式 |
+| `mcp-guard status` | 查看当前配置和策略摘要 |
+| `mcp-guard doctor` | 诊断上游 MCP Server 可达性 |
+| `mcp-guard log --tail` | 实时查看审计日志 |
+| `mcp-guard uninit` | 删除 mcp-guard.yml 回滚 |
+
+## 审计日志
+
+每次工具调用自动记录到 `mcp-guard-audit.log`：
+
+```json
+{
+  "action": "allowed",
+  "toolName": "search_free_search",
+  "serverName": "search",
+  "arguments": { "query": "Python async", "limit": 3 },
+  "durationMs": 18,
+  "timestamp": "2026-07-20T06:46:37.282Z"
+}
+```
+
+支持 `--tail` 实时跟随，兼容 `jq` 管道分析。
+
+## 策略管道
+
+策略按顺序执行，任一拒绝即停止：
+
+```
+Whitelist → SSRF → Injection → Rate Limit → Audit
+    ↓           ↓        ↓          ↓           ↓
+  glob 匹配   IP/域名  17 种模式  Token Bucket  pino JSON
+  fail-closed  黑名单   3 级灵敏度  60/min
+```
+
+- **热重载**：`kill -HUP <pid>` 零停机重新加载 `mcp-guard.yml`
+- **无损压缩**：`--compressor light|tight` 按需获取 tool schema（工具 > 30 个推荐）
+- **多 Server**：一个 guard 代理多个上游 MCP Server，前缀路由自动分发
+
+## 技术栈
+
+TypeScript · MCP SDK · 5 个依赖 · 15 个源文件 · 305 个测试
+
+## 与 mcp-compressor 搭配
+
+mcp-guard 内置了与 [mcp-compressor](https://github.com/atlassian-labs/mcp-compressor) 兼容的压缩模式。详见 [搭配指南](docs/COMPRESSOR.md)。
+
+```
+Agent → mcp-compressor (压缩) → mcp-guard (安全) → MCP Server
+```
+
+## License
+
+MIT

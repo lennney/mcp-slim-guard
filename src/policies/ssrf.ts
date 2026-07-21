@@ -2,6 +2,7 @@
  * SSRF 防护策略
  *
  * 从工具参数中提取 URL，DNS 解析后检查是否为私有 IP，支持域名白名单/黑名单。
+ * 内置 TTL 感知 DNS 缓存（默认 TTL 60s），减少 DNS 查询量和 DNS rebinding 窗口。
  *
  * @module policies/ssrf
  */
@@ -25,6 +26,16 @@ const PRIVATE_RANGES: Array<{ start: number; end: number }> = [
   { start: ipToInt("0.0.0.0"), end: ipToInt("0.255.255.255") },
 ];
 
+/** 默认 DNS 缓存 TTL（秒）— 用于 dns.resolve4 不带 TTL 的场景 */
+const DEFAULT_DNS_TTL = 60;
+
+/** DNS 缓存条目 */
+interface DNSCacheEntry {
+  ips: string[];
+  /** 绝对过期时间戳（毫秒） */
+  expiresAt: number;
+}
+
 /**
  * SSRF 防护策略。
  *
@@ -36,6 +47,9 @@ const PRIVATE_RANGES: Array<{ start: number; end: number }> = [
 export class SSRFPolicy implements Policy {
   readonly name = "ssrf";
   readonly phase = "tool_call" as const;
+
+  /** DNS 缓存：hostname → { ips, expiresAt } */
+  private dnsCache = new Map<string, DNSCacheEntry>();
 
   constructor(private config: SSRFConfig) {}
 
@@ -95,8 +109,24 @@ export class SSRFPolicy implements Policy {
       const normalized = normalizeToIPv4(hostname);
       if (normalized !== null) return [normalized];
 
-      const records = await dns.resolve4(hostname);
-      return records;
+      // 检查 DNS 缓存
+      const cached = this.dnsCache.get(hostname);
+      if (cached && Date.now() < cached.expiresAt) {
+        return cached.ips;
+      }
+
+      // DNS 解析（带 TTL）
+      const records = await dns.resolve4(hostname, { ttl: true });
+      const ips = records.map(r => r.address);
+      // 取最小 TTL（保守策略），至少 10 秒，最多 300 秒
+      const ttl = Math.max(10, Math.min(300,
+        records.reduce((min, r) => Math.min(min, r.ttl), Infinity)
+      ));
+      this.dnsCache.set(hostname, {
+        ips,
+        expiresAt: Date.now() + ttl * 1000,
+      });
+      return ips;
     } catch {
       return [];
     }
@@ -273,14 +303,17 @@ function normalizeToIPv4(hostname: string): string | null {
 }
 
 /**
- * 从参数递归提取所有 HTTP/HTTPS URL。
+ * 从参数递归提取所有支持的 URL 协议。
+ * 当前支持：http://, https://, file://, ftp://, gopher://, dict://, ldap://, sftp://
  * 仅提取字符串值中的 URL，支持嵌套对象。
  */
 export function extractURLs(args: Record<string, unknown>): string[] {
   const urls: string[] = [];
+  // Match all supported protocols in one pass
+  const urlRe = /(?:https?|file|ftp|gopher|dict|ldap|sftp):\/\/[^\s"'<>]+/gi;
   for (const value of Object.values(args)) {
     if (typeof value === "string") {
-      const matches = value.match(/https?:\/\/[^\s"'<>]+/gi);
+      const matches = value.match(urlRe);
       if (matches) urls.push(...matches);
     } else if (typeof value === "object" && value !== null) {
       urls.push(...extractURLs(value as Record<string, unknown>));

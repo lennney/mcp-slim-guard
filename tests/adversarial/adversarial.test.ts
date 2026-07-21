@@ -614,7 +614,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
     it("7f000001.nip.io resolves to 127.0.0.1 and IS blocked", async () => {
       const mockResolve = vi.mocked(dns.resolve4);
       // This is a real DNS service; when mocked it resolves to 127.0.0.1
-      mockResolve.mockResolvedValue(["127.0.0.1"]);
+      mockResolve.mockResolvedValue([{ address: "127.0.0.1", ttl: 60 }]);
 
       const policy = new SSRFPolicy(defaultConfig);
       const result = await policy.check(
@@ -634,23 +634,26 @@ describe("SSRFPolicy — Bypass Vectors", () => {
   // from the arguments, so they silently pass the SSRF check.
   // This is a data-extraction-level gap.
 
-  describe("protocol confusion (GAPs — not extracted)", () => {
-    it("file:// URL is not extracted by extractURLs", () => {
+  describe("protocol confusion (now detected)", () => {
+    it("file:// URL is extracted by extractURLs", () => {
       const urls = extractURLs({ url: "file:///etc/passwd" });
-      expect(urls).toEqual([]);
+      expect(urls).toHaveLength(1);
+      expect(urls[0]).toBe("file:///etc/passwd");
     });
 
-    it("gopher:// URL is not extracted by extractURLs", () => {
+    it("gopher:// URL is extracted by extractURLs", () => {
       const urls = extractURLs({ url: "gopher://localhost:25/" });
-      expect(urls).toEqual([]);
+      expect(urls).toHaveLength(1);
+      expect(urls[0]).toBe("gopher://localhost:25/");
     });
 
-    it("mixed http + file URL only extracts the http portion", () => {
+    it("mixed http + file URL extracts both protocols", () => {
       const urls = extractURLs({
         text: "See http://example.com and file:///etc/shadow",
       });
-      expect(urls).toHaveLength(1);
-      expect(urls[0]).toBe("http://example.com");
+      expect(urls).toHaveLength(2);
+      expect(urls).toContain("http://example.com");
+      expect(urls).toContain("file:///etc/shadow");
     });
   });
 
@@ -670,7 +673,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
 
     it("GCP metadata (metadata.google.internal) bypasses — allowed as public DNS", async () => {
       const mockResolve = vi.mocked(dns.resolve4);
-      mockResolve.mockResolvedValue(["142.250.80.46"]); // resolves to a public IP in our mock
+      mockResolve.mockResolvedValue([{ address: "142.250.80.46", ttl: 120 }]); // resolves to a public IP in our mock
 
       const policy = new SSRFPolicy(defaultConfig);
       const result = await policy.check(
@@ -720,7 +723,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       const longUrl = `http://example.com${longPath}`;
 
       const mockResolve = vi.mocked(dns.resolve4);
-      mockResolve.mockResolvedValue(["93.184.216.34"]);
+      mockResolve.mockResolvedValue([{ address: "93.184.216.34", ttl: 60 }]);
 
       const policy = new SSRFPolicy(defaultConfig);
       const result = await policy.check(
@@ -1518,9 +1521,10 @@ describe("SSRF — DNS with Many IPs", () => {
   it("handles DNS response with 500 IPs without crashing", async () => {
     const mockResolve = vi.mocked(dns.resolve4);
     // Return 500 IPs where only the last one is private
-    const ips = Array.from({ length: 500 }, (_, i) =>
-      i === 499 ? "127.0.0.1" : `10.0.${Math.floor(i / 256)}.${i % 254 + 1}`,
-    );
+    const ips = Array.from({ length: 500 }, (_, i) => ({
+      address: i === 499 ? "127.0.0.1" : `10.0.${Math.floor(i / 256)}.${i % 254 + 1}`,
+      ttl: 60,
+    }));
     mockResolve.mockResolvedValue(ips);
 
     const policy = new SSRFPolicy(publicConfig);

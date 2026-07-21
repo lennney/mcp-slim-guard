@@ -18,10 +18,11 @@ import {
 
 import type { GuardConfig } from "./config-types.js";
 import type { PolicyContext, PolicyResult } from "./types.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PolicyPipeline, type DecisionStep } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
-import { getCompressedTools, handleWrapperTool, LIST_TOOLS, GET_SCHEMA, INVOKE, PREFIX } from "./compressor.js";
+import { getCompressedTools, handleWrapperTool, PREFIX } from "./compressor.js";
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -36,6 +37,8 @@ export class GuardProxy {
   private server: Server | null = null;
   private sessionId = "?";
   private requestCounter = 0;
+  /** Cached full tool list (prefixed); refreshed on start() + reload(). */
+  private fullTools: Tool[] = [];
 
   /**
    * @param config - Guard configuration
@@ -80,18 +83,18 @@ export class GuardProxy {
     );
 
     // Full tool list (from upstream, with prefixed names)
-    const fullTools = this.serverManager.getTools();
+    this.fullTools = this.serverManager.getTools();
 
     // Register tools/list handler — compressor aware
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Log discovery event
-      const allNames = fullTools.map(t => t.name);
-      this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", fullTools.length, allNames);
+      const allNames = this.fullTools.map(t => t.name);
+      this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", this.fullTools.length, allNames);
 
       if (this.config.compressor?.enabled) {
-        return { tools: getCompressedTools(fullTools, this.config.compressor) };
+        return { tools: getCompressedTools(this.fullTools, this.config.compressor) };
       }
-      return { tools: fullTools };
+      return { tools: this.fullTools };
     });
 
     // Core tool call logic: resolve → policy → audit → forward
@@ -158,7 +161,7 @@ export class GuardProxy {
           const wrapperResult = await handleWrapperTool(
             prefixedName,
             args,
-            fullTools,
+            this.fullTools,
             (targetName, targetArgs) => forwardToolCall(targetName, targetArgs),
             this.config.tools.allow,
             this.config.tools.deny,
@@ -218,10 +221,10 @@ export class GuardProxy {
     if (newAudit) {
       this.audit = newAudit;
     }
-    if (newServerManager) {
+   if (newServerManager) {
       this.serverManager = newServerManager;
-      // Refresh the cached tool list used by compressor handlers
-      this.serverManager = newServerManager;
+      // Refresh the cached tool list served by tools/list + compressor discovery
+      this.fullTools = newServerManager.getTools();
     }
     this.audit.log(
       { toolName: "<reload>", arguments: {}, serverName: "system" },

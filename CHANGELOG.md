@@ -10,6 +10,18 @@ tags:
 
 # Changelog
 
+## [0.2.1] — 2026-07-21
+
+### Fixed
+- **SIGHUP hot-reload dropped the new ServerManager (critical)**: `cli.ts` rebuilt and started a new `ServerManager` on SIGHUP but never passed it to `proxy.reload()`, so the proxy kept the now-stopped old manager — every tool call failed after the first reload. The new manager is now forwarded to `reload()`.
+- **tools/list served stale tools after reload**: `fullTools` was a `start()`-local const captured by the `tools/list` and compressor discovery handlers, so hot-reload never refreshed the advertised tool list. Promoted to a field, refreshed on `start()` and `reload()`.
+- **AuditLogger in-memory entries grew unbounded**: `entries` was pushed on every audit/discovery event but `clear()` was never called in production — a memory leak. Entries are now capped at `maxMemoryEntries` (default 10000), dropping the oldest when exceeded.
+- **proxy.reload duplicate assignment**: removed the redundant `this.serverManager = newServerManager` and refresh `fullTools` from the new manager instead.
+- **HTTP transport test race**: replaced the fixed 500ms wait before `fetch` with port-readiness polling (30s window) and raised the test timeout to 45s, eliminating `ECONNREFUSED` flakiness when the upstream spawn is slow.
+
+### Added
+- Regression test: `reload()` refreshes `tools/list` to serve the new ServerManager's tools.
+
 ## [0.2.0] — 2026-07-20
 
 ### Fixed

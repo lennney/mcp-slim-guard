@@ -3,7 +3,7 @@
 /**
  * MCP Guard — CLI entry point
  *
- * Commander-based CLI for mcp-guard.
+ * Commander-based CLI for tinymcp.
  * Supports: init, start, status, log, uninit
  *
  * @module cli
@@ -85,13 +85,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   const program = new Command();
 
   program
-    .name("mcp-guard")
+    .name("tinymcp")
     .version(VERSION)
     .description("轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速");
 
   program
     .command("init")
-    .description("Auto-discover MCP config and generate mcp-guard.yml")
+    .description("Auto-discover MCP config and generate tinymcp.yml")
     .option("--compressor [level]", "Enable schema compression (lossless). Levels: light (recommended), tight", "off")
     .action((options: { compressor?: string }) => {
       const cwd = process.cwd();
@@ -114,20 +114,20 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         guardConfig.compressor = { enabled: true, level };
       }
 
-      const ymlPath = path.join(cwd, "mcp-guard.yml");
+      const ymlPath = path.join(cwd, "tinymcp.yml");
       const ymlContent = yaml.dump(guardConfig as unknown as Record<string, unknown>);
       fs.writeFileSync(ymlPath, ymlContent, "utf-8");
 
       const serverCount = Object.keys(guardConfig.servers).length;
       const policyList = buildPolicyList(guardConfig);
 
-      console.log("✅ Generated mcp-guard.yml");
+      console.log("✅ Generated tinymcp.yml");
       console.log(`   Servers: ${serverCount}`);
       console.log(`   Policies: ${policyList.join(", ")}`);
       console.log(`   SSRF: ${guardConfig.ssrf.mode}`);
       console.log(`   Rate limit: ${guardConfig.rate_limit.default}`);
       const auditOut = guardConfig.audit?.output ?? "file";
-      const auditPath = guardConfig.audit?.filePath ?? "mcp-guard-audit.log";
+      const auditPath = guardConfig.audit?.filePath ?? "tinymcp-audit.log";
       const auditMax = guardConfig.audit?.maxSize ?? "10MB";
       const auditFiles = guardConfig.audit?.maxFiles ?? 5;
       const auditGzip = guardConfig.audit?.compress ? ", gzip" : "";
@@ -143,18 +143,18 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: mcp-guard.yml not found. Run 'mcp-guard init' first.");
+        console.error("Error: tinymcp.yml not found. Run 'tinymcp init' first.");
         process.exit(1);
         return;
       }
 
       // Use config.audit with defaults
-      const auditCfg = config.audit ?? { output: "file" as const, filePath: "mcp-guard-audit.log" };
+      const auditCfg = config.audit ?? { output: "file" as const, filePath: "tinymcp-audit.log" };
       const auditOpts: { output: "stdout" | "file"; filePath?: string } = {
         output: auditCfg.output,
       };
       if (auditCfg.output === "file") {
-        auditOpts.filePath = auditCfg.filePath ?? path.join(cwd, "mcp-guard-audit.log");
+        auditOpts.filePath = auditCfg.filePath ?? path.join(cwd, "tinymcp-audit.log");
       }
       const audit = new AuditLogger(auditOpts);
       let serverManager = new ServerManager(config.servers);
@@ -171,7 +171,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       await proxy.start(transport);
 
-      console.log("🛡️ mcp-guard started");
+      console.log("🛡️ tinymcp started");
       if (options.http) {
         const port = parseInt(options.port, 10);
         const httpTransport = transport as StreamableHTTPServerTransport;
@@ -207,12 +207,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       console.log(`   Audit log: ${auditOpts.output === "file" ? auditOpts.filePath : "stdout"}`);
       console.log("   Send SIGHUP to reload config (kill -HUP <pid>)");
 
-      // SIGHUP → hot reload mcp-guard.yml (rebuilds pipeline + audit + serverManager)
+      // SIGHUP → hot reload tinymcp.yml (rebuilds pipeline + audit + serverManager)
       process.on("SIGHUP", async () => {
         try {
           const newConfig = ConfigLoader.findAndLoad(cwd);
           if (!newConfig) {
-            console.error("⚠️ [reload] mcp-guard.yml not found — keeping old config");
+            console.error("⚠️ [reload] tinymcp.yml not found — keeping old config");
             return;
           }
           // Stop old server manager connections
@@ -223,12 +223,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           const newPolicies = createPolicies(newConfig);
           const newPipeline = new PolicyPipeline(newPolicies);
           // Rebuild audit logger
-          const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "mcp-guard-audit.log" };
+          const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "tinymcp-audit.log" };
           const newAuditOpts: { output: "stdout" | "file"; filePath?: string } = {
             output: newAuditCfg.output,
           };
           if (newAuditCfg.output === "file") {
-            newAuditOpts.filePath = newAuditCfg.filePath ?? path.join(cwd, "mcp-guard-audit.log");
+            newAuditOpts.filePath = newAuditCfg.filePath ?? path.join(cwd, "tinymcp-audit.log");
           }
           const newAudit = new AuditLogger(newAuditOpts);
           proxy.reload(newConfig, newPipeline, newAudit);
@@ -246,15 +246,15 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: mcp-guard.yml not found. Run 'mcp-guard init' first.");
+        console.error("Error: tinymcp.yml not found. Run 'tinymcp init' first.");
         process.exit(1);
         return;
       }
 
       const serverCount = Object.keys(config.servers).length;
 
-      console.log("🛡️ mcp-guard status");
-      console.log(`   Config: mcp-guard.yml`);
+      console.log("🛡️ tinymcp status");
+      console.log(`   Config: tinymcp.yml`);
       console.log(`   Servers: ${serverCount}`);
       for (const [name, server] of Object.entries(config.servers)) {
         console.log(`     - ${name}: ${server.command}`);
@@ -271,7 +271,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         `   Compressor: ${config.compressor?.enabled ? config.compressor.level : "off (use --compressor to enable)"}`,
       );
       const auditOut = config.audit?.output ?? "file";
-      const auditPath = config.audit?.filePath ?? "mcp-guard-audit.log";
+      const auditPath = config.audit?.filePath ?? "tinymcp-audit.log";
       const auditMax = config.audit?.maxSize ?? "10MB";
       const auditFiles = config.audit?.maxFiles ?? 5;
       const auditGzip = config.audit?.compress ? ", gzip" : "";
@@ -285,12 +285,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: mcp-guard.yml not found. Run 'mcp-guard init' first.");
+        console.error("Error: tinymcp.yml not found. Run 'tinymcp init' first.");
         process.exit(1);
       }
 
-      console.log("🩺 mcp-guard doctor\n");
-      console.log(`Config: mcp-guard.yml (version ${config.version})`);
+      console.log("🩺 tinymcp doctor\n");
+      console.log(`Config: tinymcp.yml (version ${config.version})`);
       console.log(`Servers: ${Object.keys(config.servers).length}`);
       console.log(`SSRF mode: ${config.ssrf.mode}`);
       console.log(`Rate limit: ${config.rate_limit.default}\n`);
@@ -303,7 +303,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const serverNames = Object.keys(config.servers);
       if (serverNames.length === 0) {
         console.log("⚠️  No upstream servers configured.");
-        console.log("   Add servers to mcp-guard.yml or run 'mcp-guard init'.");
+        console.log("   Add servers to tinymcp.yml or run 'tinymcp init'.");
       }
 
       let okCount = 0;
@@ -378,11 +378,11 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: mcp-guard.yml not found. Run 'mcp-guard init' first.");
+        console.error("Error: tinymcp.yml not found. Run 'tinymcp init' first.");
         process.exit(1);
       }
 
-      console.log("🔍 mcp-guard validate — dry-run policy check\n");
+      console.log("🔍 tinymcp validate — dry-run policy check\n");
 
       const serverNames = Object.keys(config.servers);
       if (serverNames.length === 0) {
@@ -419,7 +419,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       if (allTools.length === 0) {
-        console.log("\n❌ No tools found. Check connectivity with 'mcp-guard doctor'.");
+        console.log("\n❌ No tools found. Check connectivity with 'tinymcp doctor'.");
         process.exit(1);
       }
 
@@ -475,7 +475,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       console.log(`\n🔒 SSRF: ${config.ssrf.mode === "off" ? "OFF ⚠️" : `${config.ssrf.mode}${config.ssrf.block_private_ips ? " + private IP blocking" : ""}`}`);
 
       const exitCode = denied.length + unmatched.length === total ? 1 : 0;
-      console.log(exitCode ? `\n❌ ALL tools blocked — check mcp-guard.yml` : `\n✅ All tools pass policy`);
+      console.log(exitCode ? `\n❌ ALL tools blocked — check tinymcp.yml` : `\n✅ All tools pass policy`);
       process.exit(exitCode);
     });
 
@@ -483,13 +483,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     .command("log")
     .description("View audit log")
     .option("--tail", "Follow log output in real-time")
-    .option("--file <path>", "Log file path", "mcp-guard-audit.log")
+    .option("--file <path>", "Log file path", "tinymcp-audit.log")
     .action((options: { tail?: boolean; file: string }) => {
       const logFile = options.file;
 
       if (!fs.existsSync(logFile)) {
         console.log(`No audit log found at: ${logFile}`);
-        console.log("Start mcp-guard first: mcp-guard start");
+        console.log("Start tinymcp first: tinymcp start");
         return;
       }
 
@@ -549,30 +549,30 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
   program
     .command("uninit")
-    .description("Remove mcp-guard config and cleanup")
-    .option("--force", "Actually delete mcp-guard.yml")
+    .description("Remove tinymcp config and cleanup")
+    .option("--force", "Actually delete tinymcp.yml")
     .action((options: { force?: boolean }) => {
       const cwd = process.cwd();
-      const ymlPath = path.join(cwd, "mcp-guard.yml");
+      const ymlPath = path.join(cwd, "tinymcp.yml");
 
       if (options.force) {
         if (fs.existsSync(ymlPath)) {
           fs.unlinkSync(ymlPath);
-          console.log("✅ Deleted mcp-guard.yml");
+          console.log("✅ Deleted tinymcp.yml");
         }
         // Also remove audit log if exists
-        const auditPath = path.join(cwd, "mcp-guard-audit.log");
+        const auditPath = path.join(cwd, "tinymcp-audit.log");
         if (fs.existsSync(auditPath)) {
           fs.unlinkSync(auditPath);
-          console.log("✅ Deleted mcp-guard-audit.log");
+          console.log("✅ Deleted tinymcp-audit.log");
         }
         console.log("\nNext steps:");
         console.log("  1. Point your MCP client config back to original servers");
         console.log("  2. Restart your MCP client");
-        console.log("  3. Run 'mcp-guard init' to re-enable guard");
+        console.log("  3. Run 'tinymcp init' to re-enable guard");
       } else {
-        console.log("To remove mcp-guard:");
-        console.log(`  1. Run: mcp-guard uninit --force  (deletes ${ymlPath})`);
+        console.log("To remove tinymcp:");
+        console.log(`  1. Run: tinymcp uninit --force  (deletes ${ymlPath})`);
         console.log("  2. Point your MCP client config back to original servers");
         console.log("  3. Restart your MCP client");
       }

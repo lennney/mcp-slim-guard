@@ -1,5 +1,5 @@
 /**
- * mcp-guard — Schema Compressor
+ * tinymcp — Schema Compressor
  *
  * Lossless schema compression via wrapper tools.
  * Inspired by mcp-compressor (Atlassian): instead of exposing all tool schemas

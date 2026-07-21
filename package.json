@@ -1,11 +1,11 @@
 {
-  "name": "tinymcp",
+  "name": "slim-mcp",
   "version": "0.1.0",
-  "description": "轻量 MCP 代理 — 工具压缩 + SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测",
+  "description": "轻量 MCP 代理 — 工具压缩瘦身 (-86%) + SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "tinymcp": "./dist/cli.js"
+    "slim-mcp": "./dist/cli.js"
   },
   "exports": {
     ".": "./dist/index.js",
@@ -36,7 +36,7 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "build": "tsc",
@@ -60,9 +60,5 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "license": "MIT"
+  }
 }

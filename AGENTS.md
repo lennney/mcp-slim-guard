@@ -17,7 +17,7 @@ tags:
 ## 常用命令
 
 ```bash
-cd ~/slim-mcp
+cd ~/micro-mcp
 npm run build               # 编译到 dist/
 npm test                    # 全量测试（305 tests, 18 files）
 npx vitest run              # 同上

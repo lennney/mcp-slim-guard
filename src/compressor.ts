@@ -1,5 +1,5 @@
 /**
- * slim-mcp — Schema Compressor
+ * micro-mcp — Schema Compressor
  *
  * Lossless schema compression via wrapper tools.
  * Inspired by mcp-compressor (Atlassian): instead of exposing all tool schemas

@@ -1,7 +1,7 @@
 {
   "name": "mcp-guard",
   "version": "0.1.0",
-  "description": "轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速",
+  "description": "轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速 + 注入检测",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -16,6 +16,28 @@
     "README.md",
     "LICENSE"
   ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "proxy",
+    "ssrf",
+    "guard",
+    "ai-security",
+    "llm"
+  ],
+  "homepage": "https://github.com/lennney/mcp-guard",
+  "bugs": {
+    "url": "https://github.com/lennney/mcp-guard/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lennney/mcp-guard.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli.js",

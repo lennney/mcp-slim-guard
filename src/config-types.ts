@@ -91,7 +91,13 @@ export interface RateLimitConfig {
 }
 
 /**
- * 注入检测配置（P2 预留）。
+ * 注入检测配置。
+ *
+ * 默认模式为 "block"，检测到 Shell/SQL/Prompt/路径遍历注入时直接拦截。
+ * - mode="log": 仅记录不拦截，用于调优灵敏度
+ * - sensitivity="low": 仅明显攻击
+ * - sensitivity="medium" (默认): shell + sql 拦截
+ * - sensitivity="high": 所有类别拦截
  */
 export interface InjectionConfig {
   /** 是否启用注入检测 */

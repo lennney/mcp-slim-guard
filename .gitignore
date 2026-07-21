@@ -3,3 +3,4 @@ dist/
 *.log
 coverage/
 .DS_Store
+test-workspace/

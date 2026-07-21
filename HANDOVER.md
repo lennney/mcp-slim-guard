@@ -14,6 +14,8 @@ tags:
 
 打磨 mcp-guard 至发布就绪状态 — 安全加固 + 文档完善 + 测试覆盖
 
+> 2026-07-21 更新：完成热重载 + 审计内存泄漏 + HTTP 测试竞态修复（见 CHANGELOG 0.2.1）
+
 ## 已完成
 
 - [x] Phase 1 核心策略管道（白名单/SSRF/限速/审计）
@@ -24,12 +26,14 @@ tags:
 - [x] SSRF DNS 缓存（TTL 感知，最小 10s clamp 防 rebinding）
 - [x] Compressor E2E 集成测试（12 tests）
 - [x] 文档 OKF 格式对齐 + CHANGELOG/SECURITY_AUDIT 更新
+- [x] 2026-07-21 热重载丢 ServerManager + tools/list 陈旧缓存 + 审计内存泄漏修复
+- [x] 2026-07-21 HTTP 测试固定 sleep 改轮询端口就绪
 
 ## 当前状态
 
 | 指标 | 数值 |
 |------|------|
-| 测试 | 305 tests, 18 files, 全绿 |
+| 测试 | 306 tests, 18 files, 全绿 |
 | 生产依赖 | 5 个（未新增）|
 | 源文件 | 15 个 |
 | Build | tsc --noEmit 通过 |

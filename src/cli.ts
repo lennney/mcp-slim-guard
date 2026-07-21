@@ -230,9 +230,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           if (newAuditCfg.output === "file") {
             newAuditOpts.filePath = newAuditCfg.filePath ?? path.join(cwd, "micro-mcp-audit.log");
           }
-          const newAudit = new AuditLogger(newAuditOpts);
-          proxy.reload(newConfig, newPipeline, newAudit);
-          console.log("✅ [reload] Config reloaded — new policies + servers + audit active");
+         const newAudit = new AuditLogger(newAuditOpts);
+          proxy.reload(newConfig, newPipeline, newAudit, serverManager);
+         console.log("✅ [reload] Config reloaded — new policies + servers + audit active");
         } catch (err) {
           console.error("⚠️ [reload] Failed:", err instanceof Error ? err.message : String(err));
         }

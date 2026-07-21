@@ -594,4 +594,58 @@ describe("GuardProxy", () => {
       expect.any(Number),
     );
   });
+  // -----------------------------------------------------------------------
+  // Regression: reload() refreshes the tool list served by tools/list
+  // -----------------------------------------------------------------------
+  it("reload() should refresh tools/list to serve the new ServerManager's tools", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+
+    serverManager.getTools.mockReturnValue([
+      { name: "old_tool", inputSchema: { type: "object" as const } },
+    ]);
+
+    const proxy = new GuardProxy(
+      config,
+      pipeline as never,
+      audit as never,
+      serverManager as never,
+    );
+    await proxy.start({} as never);
+
+    const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
+    const before = await listHandler({});
+    expect(before).toEqual({
+      tools: [{ name: "old_tool", inputSchema: { type: "object" } }],
+    });
+
+    // Build a new ServerManager with a different tool list and reload
+    const newServerManager = makeMockServerManager();
+    newServerManager.getTools.mockReturnValue([
+      { name: "new_tool", inputSchema: { type: "object" as const } },
+      { name: "another_tool", inputSchema: { type: "object" as const } },
+    ]);
+    const newPipeline = makeMockPipeline();
+    const newAudit = makeMockAudit();
+
+    proxy.reload(
+      { ...config, tools: { allow: ["new_*"], deny: [] } },
+      newPipeline as never,
+      newAudit as never,
+      newServerManager as never,
+    );
+
+    // tools/list must now reflect the NEW manager's tools, not the stale cache
+    const after = await listHandler({});
+    expect(after).toEqual({
+      tools: [
+        { name: "new_tool", inputSchema: { type: "object" } },
+        { name: "another_tool", inputSchema: { type: "object" } },
+      ],
+    });
+    // The new manager's getTools should have been consulted after reload
+    expect(newServerManager.getTools).toHaveBeenCalled();
+  });
 });

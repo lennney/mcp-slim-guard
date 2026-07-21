@@ -43,6 +43,8 @@ export interface AuditLoggerOptions {
   maxFiles?: number;
   /** 是否 gzip 压缩历史日志（默认 false） */
   compress?: boolean;
+  /** 内存中保留的审计条目上限（默认 10000），超出时丢弃最旧的 */
+  maxMemoryEntries?: number;
 }
 
 /** 默认单个日志文件大小上限：10 MB */
@@ -233,16 +235,21 @@ class RotatingFileStream extends Writable {
 // AuditLogger
 // ---------------------------------------------------------------------------
 
+/** 默认内存中保留的审计条目上限 */
+const DEFAULT_MAX_MEMORY_ENTRIES = 10000;
+
 export class AuditLogger {
   private entries: AuditEntry[] = [];
   private logger: pino.Logger;
   private sessionCounter = 0;
   private rotator: RotatingFileStream | null = null;
+  private maxMemoryEntries: number;
 
-  constructor(options: AuditLoggerOptions = {}) {
-    const { output = "stdout", filePath, level = "info" } = options;
+ constructor(options: AuditLoggerOptions = {}) {
+    const { output = "stdout", filePath, level = "info", maxMemoryEntries = DEFAULT_MAX_MEMORY_ENTRIES } = options;
+    this.maxMemoryEntries = maxMemoryEntries;
 
-    if (output === "file" && filePath) {
+   if (output === "file" && filePath) {
       const maxSize = options.maxSize ?? DEFAULT_MAX_SIZE;
       const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
       const compress = options.compress ?? false;
@@ -311,7 +318,7 @@ export class AuditLogger {
         : {}),
     };
 
-    this.entries.push(entry);
+    this.pushEntry(entry);
     this.logger.info(entry, "audit entry");
   }
 
@@ -334,10 +341,10 @@ export class AuditLogger {
       serverName,
       arguments: { count: toolCount, tools: toolNames },
       action: "discovery",
-      decisionTrail: [],
-    };
+    decisionTrail: [],
+  };
 
-    this.entries.push(entry);
+    this.pushEntry(entry);
     this.logger.info(entry, "audit discovery");
   }
 
@@ -349,6 +356,13 @@ export class AuditLogger {
   /** 清空内存中的审计条目 */
   clear(): void {
     this.entries = [];
+  }
+  /** 追加一条审计条目，超出内存上限时丢弃最旧的 */
+  private pushEntry(entry: AuditEntry): void {
+    this.entries.push(entry);
+    if (this.entries.length > this.maxMemoryEntries) {
+      this.entries.splice(0, this.entries.length - this.maxMemoryEntries);
+    }
   }
 
   /** 触发一次文件大小检查，需要轮转时立即轮转（主要用于测试） */

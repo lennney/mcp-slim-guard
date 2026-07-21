@@ -288,6 +288,7 @@ describe("GuardProxy", () => {
       toolName: "github_search",
       arguments: { q: "mcp" },
       serverName: "github",
+      agentId: "s_test",
     });
 
     // Verify callTool was forwarded
@@ -385,7 +386,7 @@ describe("GuardProxy", () => {
 
     expect(audit.log).toHaveBeenCalledTimes(1);
     expect(audit.log).toHaveBeenCalledWith(
-      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv" },
+      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv", agentId: "s_test" },
       { allowed: true },
       [],                // trail
       expect.any(String), // sessionId
@@ -430,7 +431,7 @@ describe("GuardProxy", () => {
 
     expect(audit.log).toHaveBeenCalledTimes(1);
     expect(audit.log).toHaveBeenCalledWith(
-      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv" },
+      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv", agentId: "s_test" },
       { allowed: false, reason: "Blocked by whitelist", policy: "whitelist" },
       [{ policy: "whitelist", result: "block", reason: "Blocked by whitelist" }],
       expect.any(String),
@@ -578,6 +579,7 @@ describe("GuardProxy", () => {
       toolName: "my_complex_server_my_tool",
       arguments: { repo: "org/project", limit: 10 },
       serverName: "my_complex_server",
+      agentId: "s_test",
     });
 
     // Also verify audit received the same context
@@ -586,6 +588,7 @@ describe("GuardProxy", () => {
         toolName: "my_complex_server_my_tool",
         arguments: { repo: "org/project", limit: 10 },
         serverName: "my_complex_server",
+        agentId: "s_test",
       },
       { allowed: true },
       [],

@@ -204,6 +204,18 @@ export class ServerManager {
    */
   async stop(): Promise<void> {
     for (const [, conn] of this.connections) {
+      // Close the client first so it finishes its protocol shutdown and
+      // releases the transport reference. Closing only the transport can
+      // leave the client holding callbacks/handles that keep the process
+      // alive after hot-reload or shutdown.
+      try {
+        await conn.client.close();
+      } catch (error) {
+        console.warn(
+          `[mcp-guard] Error closing client for "${conn.serverName}":`,
+          error,
+        );
+      }
       try {
         await conn.transport.close();
       } catch (error) {

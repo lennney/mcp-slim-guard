@@ -22,6 +22,10 @@ tags:
 ### Added
 - Regression test: `reload()` refreshes `tools/list` to serve the new ServerManager's tools.
 
+### Fixed (continued)
+- **per_agent rate limits never took effect**: `GuardProxy` did not set `agentId` on the `PolicyContext` it built for each call, so the rate-limit policy always fell back to `serverName` and `per_agent` overrides were dead config. The connection session id is now passed as `agentId`, so per-caller limits actually isolate callers.
+- **ServerManager.stop left client handles open**: `stop()` only closed the transport, leaving the `Client` holding callbacks/handles. Now closes the client first, then the transport, for a cleaner shutdown that does not keep the process alive after hot-reload.
+
 ## [0.2.0] — 2026-07-20
 
 ### Fixed

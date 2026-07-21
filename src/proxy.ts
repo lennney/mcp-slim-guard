@@ -112,12 +112,17 @@ export class GuardProxy {
         };
       }
 
-      const { serverName, originalToolName } = resolved;
-      const ctx: PolicyContext = {
-        toolName: prefixedName,
-        arguments: args,
-        serverName,
-      };
+     const { serverName, originalToolName } = resolved;
+     const ctx: PolicyContext = {
+       toolName: prefixedName,
+       arguments: args,
+       serverName,
+        // Surface the connection session id as agentId so per_agent rate
+        // limits can actually target individual callers. Without this the
+        // ratelimit policy always falls back to serverName and per_agent
+        // overrides never take effect.
+        agentId: this.sessionId,
+     };
 
       const startTime = Date.now();
       const { result, trail } = await this.pipeline.executeWithTrail(ctx);

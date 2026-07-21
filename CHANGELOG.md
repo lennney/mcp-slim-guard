@@ -26,6 +26,8 @@ tags:
 - **per_agent rate limits never took effect**: `GuardProxy` did not set `agentId` on the `PolicyContext` it built for each call, so the rate-limit policy always fell back to `serverName` and `per_agent` overrides were dead config. The connection session id is now passed as `agentId`, so per-caller limits actually isolate callers.
 - **ServerManager.stop left client handles open**: `stop()` only closed the transport, leaving the `Client` holding callbacks/handles. Now closes the client first, then the transport, for a cleaner shutdown that does not keep the process alive after hot-reload.
 
+- **Audit log rotation corrupted compressed backups (data integrity)**: in compress mode `rotate()` kicked off an async gzip of the current file while immediately reopening it for appending, so the gzip read stream and new writes hit the same file — new audit entries leaked into the compressed backup and old content could be truncated. The current file is now renamed to the backup name before the fd is rebuilt, and gzip reads the renamed file. Added the first rotation test that covers compression.
+
 ## [0.2.0] — 2026-07-20
 
 ### Fixed

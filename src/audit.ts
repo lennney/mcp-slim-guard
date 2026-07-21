@@ -195,17 +195,28 @@ class RotatingFileStream extends Writable {
     // 压缩当前文件（如果需要）或直接重命名为 .1
     const backupPath = `${this.filePath}.1`;
     if (this.compressEnabled) {
-      // 异步 gzip 压缩 (不阻塞写入)
-      this.compressFile(this.filePath, `${backupPath}.gz`).catch(() => {
-        // 如果压缩失败，尝试简单重命名
-        try {
-          renameSync(this.filePath, backupPath);
-        } catch {
-          // ignore
-        }
-      });
-      // 立即创建新的日志文件
+      // 先把当前文件挪到备份名再重建 fd，避免压缩读流和后续 append
+      // 写流操作同一个文件（会把新条目混进压缩流、截断旧内容）。
+      let rotated = false;
+      try {
+        renameSync(this.filePath, backupPath);
+        rotated = true;
+      } catch {
+        // 重命名失败（极少见）则回退到就地压缩 + 重建
+      }
       this.fd = openSync(this.filePath, "a");
+      const compressSource = rotated ? backupPath : this.filePath;
+      const compressDest = `${backupPath}.gz`;
+      // 异步 gzip 压缩备份文件（不阻塞写入）
+      this.compressFile(compressSource, compressDest).catch(() => {
+        // 压缩失败则保留未压缩备份（rename 已完成）或尝试就地重命名
+        if (!rotated) {
+          try { renameSync(this.filePath, backupPath); } catch { /* ignore */ }
+        }
+      }).then(() => {
+        // 压缩成功后删除未压缩备份，只保留 .gz
+        if (rotated) { try { unlinkSync(backupPath); } catch { /* ignore */ } }
+      }).catch(() => { /* unlink 噪音忽略 */ });
     } else {
       // 不压缩：直接重命名
       try {

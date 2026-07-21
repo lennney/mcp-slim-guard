@@ -64,7 +64,7 @@ export class ServerManager {
     for (const [serverName, serverConfig] of Object.entries(this.servers)) {
       try {
         const client = new Client(
-          { name: "slim-mcp", version: "0.1.0" },
+          { name: "micro-mcp", version: "0.1.0" },
           { capabilities: {} },
         );
 
@@ -87,7 +87,7 @@ export class ServerManager {
         });
       } catch (error) {
         console.warn(
-          `[slim-mcp] Failed to connect to server "${serverName}":`,
+          `[micro-mcp] Failed to connect to server "${serverName}":`,
           error,
         );
       }
@@ -208,7 +208,7 @@ export class ServerManager {
         await conn.transport.close();
       } catch (error) {
         console.warn(
-          `[slim-mcp] Error closing transport for "${conn.serverName}":`,
+          `[micro-mcp] Error closing transport for "${conn.serverName}":`,
           error,
         );
       }

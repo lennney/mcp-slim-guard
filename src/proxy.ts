@@ -75,7 +75,7 @@ export class GuardProxy {
     this.requestCounter = 0;
 
     this.server = new Server(
-      { name: "slim-mcp", version: "0.1.0" },
+      { name: "micro-mcp", version: "0.1.0" },
       { capabilities: { tools: {} } },
     );
 

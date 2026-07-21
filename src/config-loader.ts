@@ -81,7 +81,7 @@ export class ConfigLoader {
       },
       audit: {
         output: "file",
-        filePath: "slim-mcp-audit.log",
+        filePath: "micro-mcp-audit.log",
         maxSize: "10MB",
         maxFiles: 5,
         compress: false,
@@ -124,7 +124,7 @@ export class ConfigLoader {
     if (!config.audit) {
       config.audit = {
         output: "file",
-        filePath: "slim-mcp-audit.log",
+        filePath: "micro-mcp-audit.log",
         maxSize: "10MB",
         maxFiles: 5,
         compress: false,
@@ -135,11 +135,11 @@ export class ConfigLoader {
   }
 
   /**
-   * 查找并加载 slim-mcp.yml。
-   * 搜索文件名变体：slim-mcp.yml, slim-mcp.yaml, .slim-mcp.yml
+   * 查找并加载 micro-mcp.yml。
+   * 搜索文件名变体：micro-mcp.yml, micro-mcp.yaml, .micro-mcp.yml
    */
   static findAndLoad(cwd: string): GuardConfig | null {
-    const yamlPaths = ["slim-mcp.yml", "slim-mcp.yaml", ".slim-mcp.yml"];
+    const yamlPaths = ["micro-mcp.yml", "micro-mcp.yaml", ".micro-mcp.yml"];
     for (const name of yamlPaths) {
       const fullPath = path.join(cwd, name);
       if (fs.existsSync(fullPath)) {

@@ -189,6 +189,38 @@ describe("SSRFPolicy", () => {
     );
     expect(result.allowed).toBe(true);
   });
+
+  it("mode=log allows private IP but returns a warn reason", async () => {
+    // 不带 block_domains，确保走 private IP 检测分支而非域名黑名单
+    const policy = new SSRFPolicy({ ...config, mode: "log" as const, block_domains: [] });
+    const result = await policy.check(
+      ctx("test", { url: "http://10.0.0.1/admin" }),
+    );
+    // 放行（log 不阻止）
+    expect(result.allowed).toBe(true);
+    // 但携带 warn reason，让审计 trail 能记录这次内网命中
+    expect(result.reason).toMatch(/SSRF log/);
+    expect(result.reason).toContain("private IP");
+  });
+
+  it("mode=log passes public IP without a warn reason", async () => {
+    dns.resolve4.mockResolvedValue([{ address: "93.184.216.34", ttl: 60 }]);
+    const policy = new SSRFPolicy({ ...config, mode: "log" as const, allow_domains: [], block_domains: [] });
+    const result = await policy.check(
+      ctx("test", { url: "http://example.com/" }),
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBeUndefined();
+  });
+
+  it("mode=log records blocked-domain hit as a warn but does not block", async () => {
+    const policy = new SSRFPolicy({ ...config, mode: "log" as const, block_domains: ["evil.com"] });
+    const result = await policy.check(
+      ctx("test", { url: "http://evil.com/" }),
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toContain("evil.com");
+  });
 });
 
 describe("ipToInt", () => {

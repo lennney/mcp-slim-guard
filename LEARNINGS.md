@@ -83,3 +83,16 @@ tags:
 - `cli.ts` 在 start 和 SIGHUP 重建 audit 时只传了 output/filePath，maxSize/maxFiles/compress/maxMemoryEntries 全被静默忽略——配置文件里设的轮转/内存上限在生产中无效。
 - 抽 `buildAuditOptions(auditCfg, cwd)` 共享给 start 和 reload，确保两处一致且透传所有选项；新增 `maxMemoryEntries` 到 AuditConfig 让它可配置。
 - 类似陷阱：新增配置项时记得同时更新 (1) config-types (2) config-schema 校验 (3) cli 构建逻辑 (4) 测试——漏掉任一处就会变成死配置。
+
+## 改进方向落地（2026-07-21）
+
+### SSRF log 模式用 allowed+reason 实现 warn 记录
+- log 模式之前直接 `return allowed` 无记录。改为：走和 block 相同的检测，命中内网/黑名单时返回 `{ allowed: true, reason }`，pipeline 的 executeWithTrail 把它记成 warn 步骤（而非 pass），audit trail 即可体现。
+- 这要求 PolicyResult 的 allowed 分支支持可选 reason——扩展为 `{ allowed: true; reason?: string }`，向后兼容（现有 allowed:true 不带 reason 仍是 pass）。
+- 教训：adversarial.test.ts 里 "normalizeToIPv4 converts 127.1" 的注释归因是错的——实际拦截靠 Node URL 解析器把 127.1 标准化成 127.0.0.1，normalizeToIPv4 分支不可达。测试通过不代表归因正确。
+
+### normalizeToIPv4 shorthand 是防御兜底
+- Node URL 解析器当前把 decimal/hex/octal/shorthand 都标准化成 4-octet，normalizeToIPv4 这些分支实际不可达，但作为兜底保留并修正正确性（127.1 → 127.0.0.1，POSIX inet_aton 语义：缺失中间段补 0，最后段留在末尾）。
+
+### 正则编译要缓存
+- whitelist 的 param.pattern 每次工具调用都 new RegExp；高频调用下重复编译。按 pattern 字符串缓存 RegExp，行为不变。

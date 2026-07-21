@@ -22,6 +22,11 @@ tags:
 ### Added
 - Regression test: `reload()` refreshes `tools/list` to serve the new ServerManager's tools.
 
+### Changed (improvements)
+- **SSRF mode=log now actually records**: previously log mode passed through with no record (documented as a known gap). It now walks the same detection as block mode and, on a private-IP or block-domain hit, returns `allowed: true` with a `reason`, which the pipeline records as a `warn` step in the audit trail. `PolicyResult` gained an optional `reason` on the allowed branch; `executeWithTrail` records warn vs pass accordingly. New tests cover log-mode warn, public-IP pass, block-domain warn, and the pipeline warn trail.
+- **normalizeToIPv4 shorthand correctness**: the shorthand branch ("127.1" → ...) appended zeros at the end, producing `127.1.0.0` instead of `127.0.0.1`. Now uses POSIX inet_aton semantics (missing middle octets filled with 0, last group stays last). This is a defensive fix — Node's URL parser currently normalizes these forms upstream so the branch is rarely reached, but the fallback logic is now correct.
+- **whitelist param.pattern regex caching**: `new RegExp(rule.pattern)` was compiled on every matching tool call; now cached per pattern string. Behavior unchanged.
+
 ### Fixed (continued)
 - **per_agent rate limits never took effect**: `GuardProxy` did not set `agentId` on the `PolicyContext` it built for each call, so the rate-limit policy always fell back to `serverName` and `per_agent` overrides were dead config. The connection session id is now passed as `agentId`, so per-caller limits actually isolate callers.
 - **ServerManager.stop left client handles open**: `stop()` only closed the transport, leaving the `Client` holding callbacks/handles. Now closes the client first, then the transport, for a cleaner shutdown that does not keep the process alive after hot-reload.

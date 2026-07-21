@@ -83,4 +83,34 @@ describe("PolicyPipeline", () => {
     });
     expect(result.allowed).toBe(true);
   });
+
+  it("executeWithTrail records allowed-with-reason as a warn step", async () => {
+    const warnPolicy: Policy = {
+      name: "ssrf_log",
+      phase: "tool_call",
+      async check(_ctx: PolicyContext): Promise<PolicyResult> {
+        return { allowed: true, reason: "SSRF log: private IP hit" };
+      },
+    };
+    const passPolicy: Policy = {
+      name: "ratelimit",
+      phase: "tool_call",
+      async check(_ctx: PolicyContext): Promise<PolicyResult> {
+        return { allowed: true };
+      },
+    };
+    const pipeline = new PolicyPipeline([warnPolicy, passPolicy]);
+    const { result, trail } = await pipeline.executeWithTrail({
+      toolName: "t",
+      arguments: { url: "http://10.0.0.1" },
+      serverName: "s",
+    });
+    // 仍允许通过
+    expect(result.allowed).toBe(true);
+    // 第一个策略记为 warn（带 reason），第二个记为 pass
+    expect(trail).toEqual([
+      { policy: "ssrf_log", result: "warn", reason: "SSRF log: private IP hit" },
+      { policy: "ratelimit", result: "pass" },
+    ]);
+  });
 });

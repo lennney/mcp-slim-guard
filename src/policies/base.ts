@@ -62,7 +62,14 @@ export class PolicyPipeline {
         });
         return { result, trail };
       }
-      trail.push({ policy: policy.name, result: "pass" });
+      // allowed but carrying a reason → warn (e.g. SSRF log mode hit),
+      // so the audit trail records the observation instead of a plain pass.
+      const warnReason = (result as Extract<PolicyResult, { allowed: true }>).reason;
+      if (warnReason) {
+        trail.push({ policy: policy.name, result: "warn", reason: warnReason });
+      } else {
+        trail.push({ policy: policy.name, result: "pass" });
+      }
     }
 
     return { result: { allowed: true }, trail };

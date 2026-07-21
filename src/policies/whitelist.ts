@@ -24,6 +24,9 @@ export class WhitelistPolicy implements Policy {
   readonly name = "whitelist";
   readonly phase = "tool_call" as const;
 
+  // 编译后的正则缓存：pattern 字符串 → RegExp，避免每次工具调用重复编译
+  private regexCache = new Map<string, RegExp>();
+
   constructor(private config: ToolsConfig) {
     // Filter empty strings to prevent micromatch crash
     this.config = {
@@ -97,7 +100,12 @@ export class WhitelistPolicy implements Policy {
             };
           }
           try {
-            if (!new RegExp(rule.pattern).test(value)) {
+            let regex = this.regexCache.get(rule.pattern);
+            if (!regex) {
+              regex = new RegExp(rule.pattern);
+              this.regexCache.set(rule.pattern, regex);
+            }
+            if (!regex.test(value)) {
               return {
                 allowed: false,
                 reason: `Param "${param}" does not match required pattern for tool "${toolName}"`,

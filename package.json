@@ -1,6 +1,6 @@
 {
   "name": "micro-mcp",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "轻量 MCP 代理 — 工具压缩瘦身 (-86%) + SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测",
   "type": "module",
   "main": "./dist/index.js",

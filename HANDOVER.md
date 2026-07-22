@@ -45,35 +45,55 @@ tags:
 
 - [x] 请求缓存 TTL+LRU + per-tool stats（Phase 1 P0，无缓存 → 只读结果缓存，LRU 淘汰，含 hits/misses/byTool 统计）
 - [x] 基准测试（Phase 1 P0，对标 slim-mcp 的 120 API 准确率测试）
-- [ ] MCP 2026-07-28 协议更新后审视兼容性
-- [ ] npm publish 准备（版本号 bump、README 最终审核）
-- [ ] 考虑 Dockerfile
+- [x] Phase 2 P0 收尾：HMR 热重载文档 + 审计日志轮转测试确认
+- [x] 项目重命名：mcp-guard → micro-mcp（全部文档 + package.json repo URL）
+- [x] npm publish 准备（版本号 0.4.0 + CHANGELOG 更新）
+- [x] Dockerfile
+- [ ] MCP 2026-07-28 协议兼容适配（见下方关键决策）
+
+## 下一步
+
+1. **MCP 2026-07-28 协议适配** — 关键变更：`initialize` 握手移除，需每请求注入 `_meta`；`resultType` 必填；`InputRequiredResult` 替代 server-initiated 请求
+2. npm publish（`npm publish --access public`）
+3. Phase 2 P1：Istio-style 策略模板 / 安全报告 CLI
 
 ## 关键决策
 
 | 日期 | 决策 | 原因 |
 |------|------|------|
-| 2026-07-20 | Compressor wrapper 路由：直接返回 wrapperResult 而非 forwardToolCall | 避免双重调用和 Unknown tool 错误 |
-| 2026-07-20 | SSRF DNS 缓存最小 TTL 10s | 防 DNS rebinding，避免 TTL=0 的域名被利用 |
-| 2026-07-20 | injection_detection 默认 enabled | 开箱安全，不让用户意外暴露 |
-| 2026-07-20 | 文档对齐 OKF 格式标准 | 统一工作区知识管理 |
+| 2026-07-22 | MCP 2026-07-28 协议更新审视 — 核心结论：**tools/call 和 tools/list 消息格式不变，cache 可消费 ttlMs** | 见下方详细分析 |
 | 2026-07-22 | Lazy loading 用 discover-then-call 路线（get_schema）而非 slim-mcp 的 promote-on-call+retry | 省一次 error 往返，显式可控 |
 | 2026-07-22 | 纯函数 pipeline `(tools) => tools` 替代 switch/case | 可组合、可独立测试、零状态零副作用 |
 | 2026-07-22 | slim 格式用 `{ type:"object", properties:{} }` 而非省略 inputSchema | MCP SDK Zod 校验要求 inputSchema 必须是 object |
 | 2026-07-22 | HIGH_PRIORITY 正则加 `^(?:[^_]+_)?` 前缀 | 适配 `server_toolname` 命名约定（github_search 而非 search） |
 | 2026-07-22 | 白名单过滤移到 pipeline 阶段 0 | 统一逻辑，删除 handleWrapperTool 内重复的 isToolVisible |
 
+## MCP 2026-07-28 协议兼容分析
+
+### 对 micro-mcp 影响评估
+
+| 变更 | 严重度 | 对 micro-mcp 的影响 |
+|------|--------|-------------------|
+| `initialize` 握手移除 | 🔴 高危 | proxy 需在每请求注入 `_meta`（protocolVersion + clientCapabilities） |
+| `resultType` 必填 | 🟡 中危 | proxy 返回结果需加 `resultType: "complete"` |
+| `InputRequiredResult` (MRTR) | 🟡 中危 | server-initiated 请求不再可拦截，嵌套在 result 内 |
+| `server/discover` 新方法 | 🟡 中危 | ServerManager 需转发或合成 |
+| `tools/call` 格式 | 🟢 不变 | **好消息：核心消息格式完全兼容** |
+| `tools/list` 格式 | 🟢 不变 | 工具定义字段不变 |
+| `isError: true` | 🟢 不变 | 错误处理保持一致 |
+| `ttlMs` + `cacheScope` | 🟢 利好 | ToolCache 可消费上游 TTL 提示，替代模式推断 |
+
+### 需要适配的代码
+
+1. `proxy.ts` `forwardToolCall`：注入 `resultType: "complete"`
+2. `server-manager.ts`：每次调用前注入 `_meta`
+3. `cache.ts`：`set()` 消费上游 `ttlMs` 提示（附加逻辑，非强制）
+4. `server-manager.ts`：添加 `server/discover` 转发
+
 ## 已尝试且失败的方法
 
 - ❌ Compressor wrapper 走 forwardToolCall：导致 mcp__list_tools 报 Unknown tool
 - ❌ slim 格式省略 inputSchema：MCP SDK Zod 校验拒绝 undefined inputSchema
-
-## 下一步
-
-1. 请求缓存 TTL+LRU（Phase 1 剩余 P0）
-2. 基准测试（Phase 1 剩余 P0）
-3. 审视 MCP 2026-07-28 协议变更对 guard 的影响
-4. npm publish
 
 ## 上次更新
 

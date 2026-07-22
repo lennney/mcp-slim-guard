@@ -192,6 +192,38 @@ Whitelist → SSRF → Injection → Rate Limit → Audit
 - **无损压缩**：`--compressor light|tight` 按需获取 tool schema（工具 > 30 个推荐）
 - **多 Server**：一个 guard 代理多个上游 MCP Server，前缀路由自动分发
 
+## 热重载 (Hot Reload)
+
+`kill -HUP <pid>` 发送 SIGHUP 信号，micro-mcp 会**零停机**重新加载配置：
+
+```
+SIGHUP → 读取 micro-mcp.yml → 停止旧上游连接 → 重建策略管道
+        → 重建审计日志器 → 重建缓存 → proxy.reload() 原子替换
+```
+
+**可以热更新的配置项：**
+
+| 配置 | 行为 |
+|------|------|
+| `tools.allow/deny` | 新策略立即生效 |
+| `ssrf` | 重新加载 IP 黑名单/域名白名单 |
+| `rate_limit` | Token Bucket 重置 |
+| `injection_detection` | 灵敏度/模式热切换 |
+| `servers` | 断开旧上游，连接新上游 |
+| `audit` | 输出路径/轮转参数切换 |
+| `cache` | 重建缓存（清空旧条目） |
+| `compressor` | 压缩等级/模式切换 |
+
+**不可热更新：** 无。所有 `micro-mcp.yml` 配置项都支持热重载。
+
+**启动日志中会打印进程 PID：**
+```
+🛡️ micro-mcp started
+   Send SIGHUP to reload config (kill -HUP <pid>)
+```
+
+**失败处理：** reload 失败时保留旧配置继续运行，stderr 打印错误信息。
+
 ## 技术栈
 
 TypeScript · MCP SDK · 5 个依赖 · 397 个测试 · 4 模块基准
@@ -211,3 +243,10 @@ Agent → micro-mcp (内置压缩 + 安全) → MCP Server
 ## License
 
 MIT
+
+## Docker
+
+```bash
+docker build -t micro-mcp .
+docker run -i --rm -v $(pwd)/micro-mcp.yml:/app/micro-mcp.yml micro-mcp start
+```

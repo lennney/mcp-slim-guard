@@ -1,7 +1,7 @@
 ---
 type: Learnings
 title: mcp-guard LEARNINGS
-timestamp: '2026-07-20T23:30:00+08:00'
+timestamp: '2026-07-22T12:00:00+08:00'
 description: 项目开发中积累的技术教训和避坑指南
 tags:
 - learnings
@@ -96,3 +96,30 @@ tags:
 
 ### 正则编译要缓存
 - whitelist 的 param.pattern 每次工具调用都 new RegExp；高频调用下重复编译。按 pattern 字符串缓存 RegExp，行为不变。
+
+## 压缩器 Pipeline 与 Lazy Loading（2026-07-22）
+
+### slim 格式不能省略 inputSchema
+- MCP SDK 的 Zod 校验要求 Tool 的 inputSchema 必须是 object，省略（undefined）会被 `$ZodError: expected object, received undefined` 拒绝。
+- slim 格式（lazy loading 低优先级工具）必须用 `{ type: "object", properties: {} }` 代替省略，SDK 才接受。
+- 单元测试可以对 `inputSchema` 断言 `toEqual({ type: "object", properties: {} })` 来验证 slim 格式。
+
+### HIGH_PRIORITY 正则要适配 server 前缀
+- 路线图说"匹配 search/list/read/get/find/describe/info"，但工具名是 `server_toolname` 格式（如 `github_search`、`mock_get_time`）。
+- 纯 `^(search|...)` 匹配不到 `github_search`（以 `github` 开头），导致所有工具都被判为低优先级。
+- 修正：`^(?:[^_]+_)?(search|list|read|get|find|describe|info)/i` — 允许可选的单段 server 前缀。
+
+### 纯函数 pipeline 优于 switch/case
+- 压缩器从 `getCompressedTools` + `getTransformTools`（两个函数 + proxy 三层 if 分支）重构为 `generateTools()` + 4 阶段纯函数 pipeline。
+- 每个阶段 `(tools: Tool[]) => Tool[]`，用 `reduce` 组合，可独立测试、可任意重排。
+- 新加压缩策略只需加一个 stage 函数，不改现有函数。比类继承或 switch/case 更解耦。
+
+### 白名单逻辑不应重复
+- 旧代码 `handleWrapperTool` 内部有 `isToolVisible` 白名单检查，和 `whitelistFilter` pipeline 阶段重复。
+- 移到 pipeline 阶段 0 后，`handleWrapperTool` 不再需要 allow/deny 参数，proxy 调用时用 `whitelistFilter` 预过滤 `fullTools` 再传入。
+- 集成测试需要更新断言：被 deny 的工具从 `not available` 变为 `Unknown tool`（因为已从列表中移除，不存在了）。
+
+### lazy + wrapper 级别要退化
+- `lazy_loading=true` + `light`/`normal` 时，lazy 不走 wrapper 模式，`levelToStage` 直接返回 passthrough。
+- 否则 pipeline 会生成 wrapper 工具 + lazy 的 get_schema，两套发现机制冲突。
+- 配置验证不需要额外逻辑——`levelToStage` 的 lazyLoading 参数短路即可。

@@ -62,7 +62,7 @@ export interface SSRFConfig {
   /**
    * SSRF 防护模式。
    * - `"block"`: 阻止所有对内网地址的请求
-   * - `"log"`: 仅记录对内网地址的请求，不阻止
+   * - `"log"`: 放行但不阻止（注：当前实现等同 off，仅放行不产生独立日志记录）
    * - `"off"`: 完全禁用 SSRF 防护
    */
   mode: "block" | "log" | "off";
@@ -179,4 +179,6 @@ export interface AuditConfig {
   maxFiles?: number;
   /** 是否压缩历史日志文件（gzip），默认 false。 */
   compress?: boolean;
+  /** 内存中保留的审计条目上限（默认 10000），超出时丢弃最旧的 */
+  maxMemoryEntries?: number;
 }

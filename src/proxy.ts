@@ -226,7 +226,7 @@ export class GuardProxy {
     if (newAudit) {
       this.audit = newAudit;
     }
-   if (newServerManager) {
+    if (newServerManager) {
       this.serverManager = newServerManager;
       // Refresh the cached tool list served by tools/list + compressor discovery
       this.fullTools = newServerManager.getTools();

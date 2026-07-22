@@ -28,6 +28,8 @@ tags:
 
 - **Audit log rotation corrupted compressed backups (data integrity)**: in compress mode `rotate()` kicked off an async gzip of the current file while immediately reopening it for appending, so the gzip read stream and new writes hit the same file — new audit entries leaked into the compressed backup and old content could be truncated. The current file is now renamed to the backup name before the fd is rebuilt, and gzip reads the renamed file. Added the first rotation test that covers compression.
 
+- **Audit rotation/memory settings in config were silently ignored**: `cli.ts` built `AuditLogger` from only `output` and `filePath`, so `maxSize`, `maxFiles`, `compress` and `maxMemoryEntries` set in `mcp-guard.yml` never reached the logger (rotation always used defaults). A shared `buildAuditOptions` now forwards the full audit config for both `start` and SIGHUP reload; `maxMemoryEntries` was added to `AuditConfig` so it is configurable. Tests cover the option forwarding.
+
 ## [0.2.0] — 2026-07-20
 
 ### Fixed

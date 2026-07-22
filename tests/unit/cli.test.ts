@@ -77,7 +77,7 @@ vi.mock("node:fs", () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────
 
-import { main } from "../../src/cli.js";
+import { main, buildAuditOptions } from "../../src/cli.js";
 import * as ConfigLoaderModule from "../../src/config-loader.js";
 import { GuardProxy } from "../../src/proxy.js";
 
@@ -289,5 +289,33 @@ describe("CLI", () => {
       expect(allCalls).toContain("log");
       expect(allCalls).toContain("uninit");
     });
+  });
+});
+
+describe("buildAuditOptions", () => {
+  it("forwards rotation + memory options from audit config", () => {
+    const opts = buildAuditOptions(
+      { output: "file", filePath: "x.log", maxSize: "2MB", maxFiles: 3, compress: true, maxMemoryEntries: 500 },
+      "/tmp",
+    );
+    expect(opts.output).toBe("file");
+    expect(opts.filePath).toBe("x.log");
+    expect(opts.maxSize).toBe("2MB");
+    expect(opts.maxFiles).toBe(3);
+    expect(opts.compress).toBe(true);
+    expect(opts.maxMemoryEntries).toBe(500);
+  });
+
+  it("falls back to default filePath and omits unset options", () => {
+    const opts = buildAuditOptions({ output: "file" }, "/tmp");
+    expect(opts.output).toBe("file");
+    expect(opts.filePath).toBe("/tmp/mcp-guard-audit.log");
+    expect(opts.maxSize).toBeUndefined();
+  });
+
+  it("does not set filePath for stdout output", () => {
+    const opts = buildAuditOptions({ output: "stdout" }, "/tmp");
+    expect(opts.output).toBe("stdout");
+    expect(opts.filePath).toBeUndefined();
   });
 });

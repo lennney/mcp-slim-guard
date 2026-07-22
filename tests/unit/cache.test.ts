@@ -151,10 +151,10 @@ describe("ToolCache TTL expiry", () => {
   it("expires entry after TTL seconds", () => {
     vi.useFakeTimers();
     const cache = new ToolCache(makeConfig({ ttl: 1 }));
-    cache.set("test_read", { query: "x" }, echoResult);
-    expect(cache.get("test_read", { query: "x" })).toEqual(echoResult);
+    cache.set("test_write", { query: "x" }, echoResult);
+    expect(cache.get("test_write", { query: "x" })).toEqual(echoResult);
     vi.advanceTimersByTime(1500);
-    expect(cache.get("test_read", { query: "x" })).toBeNull();
+    expect(cache.get("test_write", { query: "x" })).toBeNull();
     vi.useRealTimers();
   });
 
@@ -200,7 +200,7 @@ describe("ToolCache.clear", () => {
     cache.set("a_read", { x: 1 }, echoResult);
     cache.get("a_read", { x: 1 });
     cache.clear();
-    expect(cache.get("a_read", { x: 1 })).toBeNull();
     expect(cache.stats()).toEqual({ size: 0, hits: 0, misses: 0 });
+    expect(cache.get("a_read", { x: 1 })).toBeNull();
   });
 });

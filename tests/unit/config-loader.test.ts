@@ -138,6 +138,7 @@ describe("ConfigLoader", () => {
   describe("findAndLoad", () => {
     it("finds and loads micro-mcp.yml", () => {
       const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      const guardYmlPath = path.join(tmpDir, "micro-mcp.yml");
       const ymlContent = fs.readFileSync(
         path.join(__dirname, "../fixtures/mcp-guard.test.yml"),
         "utf-8",

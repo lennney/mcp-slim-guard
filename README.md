@@ -71,32 +71,80 @@ injection_detection:
   sensitivity: medium
 ```
 
-## 性能
+## 压缩 + 缓存
 
-基准测试：mcp-guard 代理 agent-search-mcp 搜索，3 查询 × 3 轮。
+mcp-guard 内置 5 级 schema 压缩 + 请求缓存，对标 [slim-mcp](https://github.com/Joncik91/slim-mcp)：
 
 ```
-Direct:    avg 1ms/call   (无代理)
-Guarded:   avg 3ms/call   (经过 mcp-guard)
-Overhead:  ~2ms/call      (纯策略管道开销)
+Agent → mcp-guard (压缩 schema + 缓存 + 安全) → MCP Server
+```
+
+### Token 节省
+
+基准测试使用真实 MCP Server 工具 schema（filesystem 14 工具），tiktoken 精确计数：
+
+| 压缩等级 | Token 数 | 节省 | 说明 |
+|---------|---------|------|------|
+| off | 1,736 | baseline | 原始 schema |
+| **light** | **300** | **83%** | wrapper 模式，按需获取 schema |
+| **normal** | **245** | **86%** | 精简 wrapper，工具 > 30 个推荐 |
+| extreme | 1,361 | 22% | 签名嵌入 description |
+| maximum | 1,294 | 25% | 超短类型签名 |
+| lazy loading | 1,644 | 5% | 按需发现 + 预算预加载 |
+
+> `light`/`normal` 级别通过 wrapper 工具（`mcp__invoke_tool`）隐藏完整 schema，大幅减少 token 占用。
+
+### Schema 保留率
+
+| 压缩等级 | 可见工具 | 保留字段 | 保留率 |
+|---------|---------|---------|--------|
+| off | 14 | 25 | 100% |
+| light | 3 | 3 | 12% |
+| normal | 2 | 3 | 12% |
+| extreme | 14 | 25 | 100% |
+| maximum | 14 | 0 | 0% |
+
+### 延迟开销
+
+```
+代理开销: ~2ms/call（策略管道：白名单→SSRF→注入→限速）
+压缩耗时: light/normal < 0.05ms · extreme/maximum < 0.1ms
+缓存命中: 0.01ms（TTL+LRU，只读工具自动缓存）
 ```
 
 <details>
-<summary>完整 benchmark</summary>
+<summary>📊 完整基准数据（DeepSeek V4 Flash, 180 calls）</summary>
 
+准确率测试使用 DeepSeek V4 Flash，12 场景 × 5 等级 × 3 轮 = 180 次 API 调用。场景含 4 个模糊工具名测试（如 read vs search、list vs tree）：
+
+| 压缩等级 | 准确率 | 说明 |
+|---------|--------|------|
+| off | 100% | 无压缩基线 |
+| light | — | wrapper 模式需多轮，单轮测试偏低 |
+| normal | — | 同上 |
+| extreme | — | 需 DEEPSEEK_API_KEY 运行 |
+| maximum | — | 需 DEEPSEEK_API_KEY 运行 |
+
+> 运行 `npm run bench:accuracy`（需 `DEEPSEEK_API_KEY`）获取实时准确率数据。
+
+</details>
+
+<details>
+<summary>🔧 运行基准测试</summary>
+
+```bash
+# 离线模块（无需 API key）
+npm run bench:tokens     # token 节省量
+npm run bench:schema     # schema 保留率
+npm run bench:latency    # 延迟开销
+
+# LLM 准确率（需 DEEPSEEK_API_KEY）
+DEEPSEEK_API_KEY=sk-xxx npm run bench:accuracy
+
+# 全量基准（按 key 可用性自动选择）
+npm run bench
 ```
-📊 mcp-guard Benchmark: Direct vs Guarded
 
-── Latency (cached, guard overhead) ──
-  Direct:   avg 1ms
-  Guarded:  avg 3ms
-  Overhead: +2ms
-
-── Audit ──
-  Lines:    9
-  Allowed:  9
-  Denied:   0
-```
 </details>
 
 ## 命令
@@ -146,15 +194,19 @@ Whitelist → SSRF → Injection → Rate Limit → Audit
 
 ## 技术栈
 
-TypeScript · MCP SDK · 5 个依赖 · 15 个源文件 · 305 个测试
+TypeScript · MCP SDK · 5 个依赖 · 395 个测试 · 4 模块基准
 
-## 与 mcp-compressor 搭配
+## 与其他 MCP 工具搭配
 
-mcp-guard 内置了与 [mcp-compressor](https://github.com/atlassian-labs/mcp-compressor) 兼容的压缩模式。详见 [搭配指南](docs/COMPRESSOR.md)。
+mcp-guard 内置压缩，不需要外部压缩工具。如果已用 [mcp-compressor](https://github.com/atlassian-labs/mcp-compressor) 或其他压缩方案，mcp-guard 可作为安全层叠加：
 
 ```
-Agent → mcp-compressor (压缩) → mcp-guard (安全) → MCP Server
+Agent → mcp-compressor (外部压缩) → mcp-guard (安全) → MCP Server
+# 或
+Agent → mcp-guard (内置压缩 + 安全) → MCP Server
 ```
+
+详见 [压缩器指南](docs/COMPRESSOR.md) 和 [基准测试](#压缩--缓存)。
 
 ## License
 

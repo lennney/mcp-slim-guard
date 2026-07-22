@@ -1,59 +1,71 @@
-# mcp-guard + mcp-compressor 搭配指南
+# micro-mcp — Schema Compressor
 
-## 两种模式对比
+Lossless schema compression that reduces MCP tool context from thousands of tokens to hundreds. Two modes: wrapper tools (low levels) and schema transformation (high levels).
 
-| | mcp-guard 内置压缩 | mcp-compressor (Atlassian) |
-|---|---|---|
-| **安装** | 零依赖，`--compressor light` 即开 | 需要 Rust 工具链 |
-| **压缩率** | 40-70%（裁剪描述+冗余） | 70-97%（wrapper 工具） |
-| **无损** | ✅ get_tool_schema 按需获取 | ✅ get_tool_schema 按需获取 |
-| **安全** | ✅ 完整 pipeline（白名单+SSRF+限速+注入检测） | ❌ 纯压缩，无安全 |
-| **适用** | 快速上手，安全优先 | 极致 token 节省 |
-
-## 推荐组合
+## Quick Start
 
 ```bash
-# 只用安全（默认）
-mcp-guard init && mcp-guard start
+# Enable compression during init
+micro-mcp init --compressor light
 
-# 安全 + 无损压缩（推荐）
-mcp-guard init --compressor light && mcp-guard start
-
-# 安全 + 极致压缩（工具多 > 30 时推荐）
-mcp-guard init --compressor tight && mcp-guard start
+# Or edit micro-mcp.yml directly
+compressor:
+  enabled: true
+  level: light
 ```
 
-## 决策树
+## Compression Levels
+
+### Level Progression
+
+| Level | Mode | Wrapper Tools | Tools/list Output | Token Savings |
+|-------|------|---------------|-------------------|---------------|
+| **`off`** | passthrough | 0 | Full tools with complete schemas | 0% |
+| **`light`** | wrapper | 3 (`list_tools` + `get_tool_schema` + `invoke_tool`) | 3 wrapper tools | ~40-50% |
+| **`normal`** | wrapper | 2 (`get_tool_schema` + `invoke_tool`) | 2 wrapper tools | ~60-70% |
+| **`extreme`** | transform | 0 | Real tools, stripped descriptions | ~50-70% |
+| **`maximum`** | transform | 0 | Real tools, minimal schema + TS signatures | ~70-85% |
+
+### `off`
+Passthrough mode. All tools returned with complete `inputSchema`. Identical to `enabled: false`.
+
+### `light` (recommended for most use cases)
+3 wrapper tools. Agent discovers tools via `mcp__list_tools`, fetches schemas with `mcp__get_tool_schema`, and invokes via `mcp__invoke_tool`. Security pipeline runs on the inner tool call.
+
+### `normal` (formerly `tight`)
+2 wrapper tools. No discovery — agent must already know tool names. Use when you want to hide the full tool list from the agent. `tight` is accepted as an alias but logs a deprecation warning.
+
+### `extreme`
+Schema transformation mode. Tools keep their real identities — the agent calls `github_search_repositories` directly. Property descriptions are stripped from `inputSchema`; only `type`, `required`, `enum`, and `default` are preserved. Tool descriptions remain intact.
+
+### `maximum`
+Schema transformation mode. `inputSchema` is replaced with a minimal `{type: "object", properties: {}}`. Function signatures are embedded in tool descriptions as TypeScript-style annotations:
 
 ```
-需要安全？ ──No──→ 直接用 mcp-compressor
-  │
-  Yes
-  │
-  工具数 < 15？ ──Yes──→ mcp-guard 默认（不开压缩）
-  │
-  No
-  │
-  有 Rust？ ──Yes──→ mcp-compressor → mcp-guard 链式
-  │                    (Agent → compressor → guard → MCP Server)
-  No
-  │
-  └──→ mcp-guard --compressor tight
+"Search for repositories. search_repositories(query: string, page?: number, per_page?: number)"
 ```
 
-## 链式架构（mcp-compressor + mcp-guard）
+The agent calls tools directly by name. When arguments are wrong, the upstream server returns an error and the agent retries with corrected parameters.
 
+## Security Pipeline
+
+All 5 levels run the full security pipeline (SSRF protection, injection detection, whitelist, rate limiting). At extreme/maximum levels, the pipeline sees real tool names (e.g., `github_search_repositories`) instead of `mcp__invoke_tool`, which makes whitelist patterns like `allow: ["github_*"]` match naturally.
+
+## Configuration
+
+```yaml
+# micro-mcp.yml
+compressor:
+  enabled: true
+  level: light  # off | light | normal | extreme | maximum
 ```
-Agent → mcp-compressor (压缩) → mcp-guard (安全) → MCP Server
-         │                         │
-         工具压缩为 2-3 wrapper     白名单/SSRF/限速/注入检测照常运行
-```
 
-## 内置压缩 vs 外挂压缩
+## Comparison with Competitors
 
-| | 内置 (`--compressor light`) | 外挂 (mcp-compressor) |
-|---|---|---|
-| Agent 可见工具数 | 3 (wrapper) | 2-3 (wrapper) |
-| Policy 拦截 | ✅ 通过 invoke_tool 照样拦截 | ✅ 先压缩后安全，传输不变 |
-| 热重载 | ✅ SIGHUP | 需要重启 |
-| 注入检测 | ✅ 检测 invoke_tool 的参数 | ❌ 传不到 guard |
+| Feature | micro-mcp | slim-mcp | mcp-compressor |
+|---------|-----------|----------|----------------|
+| Levels | 5 (off/light/normal/extreme/maximum) | 5 (none/standard/aggressive/extreme/maximum) | 4 (low/medium/high/max) |
+| Approach | Hybrid (wrapper + transform) | Schema transformation | Tool surface reduction |
+| Security | ✅ SSRF + injection + whitelist + rate limit | ❌ | ❌ |
+| Max reduction | ~85% | ~77% | ~97% |
+| Accuracy | TBD | 100% (120 API calls) | N/A |

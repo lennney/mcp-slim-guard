@@ -144,21 +144,36 @@ export interface GuardConfig {
   servers: Record<string, UpstreamServer>;
 }
 
+/** Compression levels for schema compression */
+export type CompressionLevel = "off" | "light" | "normal" | "tight" | "extreme" | "maximum";
+
 /**
- * Schema 压缩配置 — 无损压缩，通过 wrapper tools 延迟加载完整 schema。
+ * Schema 压缩配置 — 无损压缩，通过 wrapper tools 或 schema transformation。
  *
- * 借鉴 mcp-compressor (Atlassian) 的思路：不一次下发所有 tool schema，
- * 而是暴露 `get_tool_schema` / `invoke_tool` 两个 wrapper，agent 按需获取。
+ * 低级别 (off/light/normal) 使用 wrapper tools 模式:
+ *   - off: 不回压缩，返回全部工具
+ *   - light: 3 个 wrapper (list_tools + get_tool_schema + invoke_tool)
+ *   - normal: 2 个 wrapper (get_tool_schema + invoke_tool)，原名 tight
+ *
+ * 高级别 (extreme/maximum) 使用 schema transformation 模式:
+ *   - extreme: 工具保留真名，inputSchema 只保留 type/required/enum
+ *   - maximum: 工具保留真名，inputSchema 替换为 {type:"object"}，描述嵌入 TS 签名
+ *
+ * 借鉴 slim-mcp (Joncik91) 的 schema transformation 思路。
  */
 export interface CompressorConfig {
   /** 是否启用压缩 */
   enabled: boolean;
   /**
-   * 压缩等级：
-   * - `"light"`: 暴露 list_tools(名字+描述) + get_tool_schema + invoke_tool
-   * - `"tight"`: 只暴露 get_tool_schema + invoke_tool（agent 需提前知道工具名）
+   * 压缩等级:
+   * - `"off"`: 透传，无压缩
+   * - `"light"`: 3 个 wrapper，含工具发现
+   * - `"normal"`: 2 个 wrapper，无工具发现（原 `"tight"`）
+   * - `"tight"`: `"normal"` 的别名（已弃用，建议改用 `"normal"`）
+   * - `"extreme"`: 工具保留真名，剥离参数描述，保留 type/required/enum
+   * - `"maximum"`: 工具保留真名，inputSchema 最小化，描述嵌入 TS 函数签名
    */
-  level: "light" | "tight";
+  level: CompressionLevel;
 }
 
 /**

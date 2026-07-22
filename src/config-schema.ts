@@ -67,6 +67,22 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
       additionalProperties: false,
       description: "Schema 压缩配置",
     },
+    cache: {
+      type: "object",
+      properties: {
+        enabled: { type: "boolean" },
+        ttl: { type: "number", minimum: 0 },
+        max_entries: { type: "number", minimum: 1 },
+        allow: { type: "array", items: { type: "string" } },
+        deny: { type: "array", items: { type: "string" } },
+        ttl_per_tool: {
+          type: "object",
+          additionalProperties: { type: "number" },
+        },
+      },
+      additionalProperties: false,
+      description: "请求缓存配置",
+    },
     injection_detection: {
       type: "object",
       required: ["enabled"],

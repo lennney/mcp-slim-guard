@@ -48,7 +48,8 @@ function buildPolicyList(config: GuardConfig): string[] {
     list.push(`injection:${config.injection_detection.sensitivity ?? "medium"}`);
   }
   if (config.compressor?.enabled) {
-    list.push(`compressor:${config.compressor.level}`);
+    const lazy = config.compressor.lazy_loading ? "+lazy" : "";
+    list.push(`compressor:${config.compressor.level}${lazy}`);
   }
   return list;
 }
@@ -113,8 +114,10 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .command("init")
     .description("Auto-discover MCP config and generate micro-mcp.yml")
-    .option("--compressor [level]", "Enable schema compression. Levels: light, normal, extreme, maximum", "off")
-    .action((options: { compressor?: string }) => {
+    .option("--compressor [level]", "Enable schema compression. Levels: light, normal, extreme, maximum. Use --lazy to enable lazy loading (schema on demand)", "off")
+    .option("--lazy", "Enable lazy loading: tools/list omits schemas, use mcp__get_schema on demand")
+    .option("--lazy-budget <n>", "Max tools with full schema in lazy mode (default 8)", "8")
+    .action((options: { compressor?: string; lazy?: boolean; lazyBudget?: string }) => {
       const cwd = process.cwd();
       const mcpConfigPath = ConfigLoader.discoverMCPConfig(cwd);
 
@@ -133,6 +136,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       if (options.compressor && options.compressor !== "off") {
         const level = options.compressor as "light" | "normal" | "extreme" | "maximum";
         guardConfig.compressor = { enabled: true, level };
+      }
+
+      // Apply lazy loading
+      if (options.lazy) {
+        guardConfig.compressor.lazy_loading = true;
+        const budget = parseInt(options.lazyBudget ?? "8", 10);
+        if (!isNaN(budget)) guardConfig.compressor.lazy_budget = budget;
       }
 
       const ymlPath = path.join(cwd, "micro-mcp.yml");
@@ -368,10 +378,14 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       // Compressor status
       if (config.compressor?.enabled && config.compressor.level !== "off") {
+        const lazyTag = config.compressor.lazy_loading ? " +lazy" : "";
         const mode = (config.compressor.level === "extreme" || config.compressor.level === "maximum")
           ? "schema transformation"
           : "wrapper tools";
-        console.log(`  📦 Schema compressor: ${config.compressor.level} (${mode})`);
+        console.log(`  📦 Schema compressor: ${config.compressor.level}${lazyTag} (${mode})`);
+        if (config.compressor.lazy_loading) {
+          console.log(`     Lazy loading: budget=${config.compressor.lazy_budget ?? 8}`);
+        }
       } else {
         console.log("  ℹ️  Schema compressor: off");
       }

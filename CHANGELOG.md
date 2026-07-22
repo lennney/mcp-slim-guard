@@ -10,9 +10,25 @@ tags:
 
 # Changelog
 
-## [0.4.0] — 2026-07-22
+> 内部开发版本：0.1.0 → 0.2.0 → 0.3.0 → 0.4.0。首次公开发布：0.0.1。
+
+## [0.0.1] — 2026-07-22
+
+首次公开发布，包含 Phase 1 + Phase 2 P0 全部功能。
+
+### 核心能力
+- **5 级 schema 压缩**（off/light/normal/extreme/maximum）+ lazy loading
+- **安全策略管道**：白名单 → SSRF 防护 → 注入检测 → 限速 → 审计
+- **请求缓存** TTL+LRU（内存 Map，per-tool stats）
+- **热重载** SIGHUP 零停机配置更新
+- **审计日志** pino JSON 输出 + 轮转 + gzip 压缩
+- **基准测试套件** 4 模块（tokens/schema/latency/accuracy）
+- **STDIO + Streamable HTTP** 双传输
+
+## [0.4.0] — 2026-07-22 (内部)
 
 ### Added
+- **MCP 2026-07-28 协议适配** — 4 项代码适配：`resultType: "complete"` 注入、`_meta` 每请求传递、`ttlMs` 可选缓存提示、`server/discover` 合成方法。SDK 1.29.0 polyfill 策略。
 - **Request cache TTL+LRU** — 只读工具调用结果内存缓存。配置项 `cache.enabled`（默认 false）启用。按工具名模式自动推断 TTL（search 类 15s, read 类 60s），支持 `allow/deny` 精确控制和 `ttl_per_tool` 逐工具覆盖。LRU 淘汰，默认 500 条上限。`isError: true` 不缓存。
 - **Per-tool cache stats** — `stats().byTool` 返回每个工具的 hits/misses 明细，方便调优缓存策略。
 - **基准测试套件** — 4 模块基准测试对标 slim-mcp。`bench:tokens`（离线 token 节省）、`bench:schema`（离线 schema 保留率）、`bench:latency`（离线延迟）、`bench:accuracy`（DeepSeek V4 Flash 准确率，12 场景含模糊测试）。`npm run bench` 按 API key 可用性自动运行。tiktoken 为 devDependency。

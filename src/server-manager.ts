@@ -186,13 +186,56 @@ export class ServerManager {
     }
 
     const result = await conn.client.callTool(
-      { name: toolName, arguments: args },
+      {
+        name: toolName,
+        arguments: args,
+        _meta: {
+          protocolVersion: "2025-11-25",
+          clientCapabilities: {},
+        },
+      },
       CallToolResultSchema,
     );
 
     return {
       content: result.content as Array<{ type: string; text?: string }>,
     };
+  }
+
+  /**
+   * Synthesize server discovery metadata for all connected upstream servers.
+   *
+   * Returns metadata for each connected server including its capabilities.
+   * This is a polyfill for the MCP 2026-07-28 server/discover method,
+   * which is not yet implemented in SDK 1.29.0.
+   *
+   * @returns Discovery result with server metadata
+   */
+  async discover(): Promise<{
+    servers: Array<{
+      name: string;
+      version?: string;
+      capabilities: Record<string, unknown>;
+    }>;
+  }> {
+    const servers: Array<{
+      name: string;
+      version?: string;
+      capabilities: Record<string, unknown>;
+    }> = [];
+
+    for (const [name] of this.connections) {
+      // Best-effort: return capabilities for each connected server.
+      // When SDK supports server/discover natively, this can forward to upstream.
+      servers.push({
+        name,
+        capabilities: {
+          tools: { listChanged: false },
+        },
+      });
+    }
+
+    return { servers };
   }
 
   /**

@@ -276,8 +276,8 @@ describe("GuardProxy", () => {
     };
     const result = await callHandler!(request);
 
-    // Should return the upstream result
-    expect(result).toEqual(upstreamResult);
+    // Should return the upstream result with resultType
+    expect(result).toEqual({ ...upstreamResult, resultType: "complete" });
 
     // Verify resolveTool was called
     expect(serverManager.resolveTool).toHaveBeenCalledWith("github_search");
@@ -345,6 +345,7 @@ describe("GuardProxy", () => {
     expect(result).toEqual({
       content: [{ type: "text", text: "Rate limit exceeded" }],
       isError: true,
+      resultType: "complete",
     });
 
     // callTool should NOT have been called
@@ -473,6 +474,7 @@ describe("GuardProxy", () => {
     expect(result).toEqual({
       content: [{ type: "text", text: "Unknown tool: nonexistent_tool" }],
       isError: true,
+      resultType: "complete",
     });
 
     // Pipeline should NOT be called for unknown tools
@@ -696,7 +698,7 @@ describe("GuardProxy", () => {
       method: "tools/call",
       params: { name: "github_search", arguments: { q: "mcp" } },
     });
-    expect(result1).toEqual(upstreamResult);
+    expect(result1).toEqual({ ...upstreamResult, resultType: "complete" });
     expect(serverManager.callTool).toHaveBeenCalledTimes(1);
 
     // Second call with same args: cache hit, no upstream call
@@ -704,7 +706,7 @@ describe("GuardProxy", () => {
       method: "tools/call",
       params: { name: "github_search", arguments: { q: "mcp" } },
     });
-    expect(result2).toEqual(upstreamResult);
+    expect(result2).toEqual({ ...upstreamResult, resultType: "complete" });
     // callTool should still be 1 (not called again)
     expect(serverManager.callTool).toHaveBeenCalledTimes(1);
   });

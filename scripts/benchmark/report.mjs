@@ -3,8 +3,9 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const RESULTS_DIR = path.join(import.meta.dirname, "results");
+const RESULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "results");
 
 /**
  * Write benchmark results to JSON + Markdown files.

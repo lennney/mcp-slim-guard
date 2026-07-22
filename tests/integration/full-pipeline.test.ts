@@ -316,4 +316,53 @@ describe("GuardProxy Full Pipeline", () => {
       await destroyProxy(ctx);
     }
   });
+
+  // -----------------------------------------------------------------------
+  // 6. Cache: cache hit avoids upstream call
+  // -----------------------------------------------------------------------
+  it("should cache tool call results and return cached on second call", async () => {
+    const config = makeConfig({
+      cache: {
+        enabled: true,
+        ttl: 30,
+        max_entries: 500,
+        allow: ["*"],
+        deny: [],
+      },
+    });
+    const ctx = await buildProxy(config);
+    try {
+      // First call: hits upstream
+      const result1 = await ctx.client.callTool({
+        name: "mock_echo",
+        arguments: { message: "test" },
+      });
+      const text1 = (result1.content as Array<{ type: string; text?: string }>)
+        .filter((c) => c.type === "text")
+        .map((c) => c.text ?? "")
+        .join("\n");
+      expect(text1).toContain("test");
+
+      // Second call with same args: should be cached, no upstream call
+      const result2 = await ctx.client.callTool({
+        name: "mock_echo",
+        arguments: { message: "test" },
+      });
+      const text2 = (result2.content as Array<{ type: string; text?: string }>)
+        .filter((c) => c.type === "text")
+        .map((c) => c.text ?? "")
+        .join("\n");
+      expect(text2).toContain("test");
+
+      // Verify audit log contains cache hit
+      const entries = ctx.audit.getEntries();
+      const cacheHits = entries.filter(
+        (e: { decisionTrail?: Array<{ policy: string }> }) =>
+          e.decisionTrail?.some((d) => d.policy === "cache"),
+      );
+      expect(cacheHits.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
 });

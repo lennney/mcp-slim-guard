@@ -158,7 +158,18 @@ export class GuardProxy {
       // Cache check — return cached result if hit
       if (this.cache && this.cache.isCacheable(prefixedName)) {
         const cached = this.cache.get(prefixedName, args);
-        if (cached) return cached;
+        if (cached) {
+          // Audit cache hit
+          this.audit.log(
+            ctx,
+            { allowed: true },
+            [{ policy: "cache", result: "pass" }],
+            this.sessionId,
+            ++this.requestCounter,
+            Date.now() - startTime,
+          );
+          return cached;
+        }
       }
 
       const callResult = await this.serverManager.callTool(

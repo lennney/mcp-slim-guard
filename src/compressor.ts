@@ -208,6 +208,58 @@ export const injectGetSchema: ToolStage = (tools: Tool[]) => {
 };
 
 /**
+ * Build the pipeline of stages from config.
+ * Order: whitelistFilter → levelToStage → applyLazyBudget → injectGetSchema
+ * @param originalTools - Original full tool map (for applyLazyBudget to restore schemas)
+ */
+export function buildPipeline(
+  config: CompressorConfig,
+  allow: string[],
+  deny: string[],
+  originalTools: Map<string, Tool>,
+): ToolStage[] {
+  const stages: ToolStage[] = [];
+
+  // Stage 0: whitelist filter
+  stages.push(whitelistFilter(allow, deny));
+
+  // Stage 1: compression level
+  stages.push(levelToStage(config.level, config.lazy_loading ?? false));
+
+  // Stage 2 + 3: lazy loading (orthogonal to level)
+  if (config.lazy_loading) {
+    stages.push(applyLazyBudget(config.lazy_budget ?? 8, originalTools));
+    stages.push(injectGetSchema);
+  }
+
+  return stages;
+}
+
+/**
+ * Generate the tools/list response — pipeline serial execution.
+ * Entry point for proxy.ts tools/list handler.
+ *
+ * When level=off and lazy_loading=false, passthrough (backward compat with
+ * existing behavior where tools/list returns all tools unfiltered).
+ * When level≠off or lazy_loading=true, pipeline runs (including whitelistFilter).
+ */
+export function generateTools(
+  fullTools: Tool[],
+  config: CompressorConfig,
+  allow: string[] = [],
+  deny: string[] = [],
+): Tool[] {
+  if (!config.enabled) return fullTools;
+  if (config.level === "off" && !config.lazy_loading) return fullTools;
+
+  const originalTools = new Map(fullTools.map(t => [t.name, t]));
+  return buildPipeline(config, allow, deny, originalTools).reduce(
+    (tools, stage) => stage(tools),
+    fullTools,
+  );
+}
+
+/**
  * Generate the compressed tool list that the agent sees.
  */
 export function getCompressedTools(

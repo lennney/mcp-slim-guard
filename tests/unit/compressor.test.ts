@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 // We'll import these after implementation
-import { getTransformTools, getCompressedTools, whitelistFilter, levelToStage } from "../../src/compressor.js";
+import { getTransformTools, getCompressedTools, whitelistFilter, levelToStage, applyLazyBudget, injectGetSchema } from "../../src/compressor.js";
 
 // Sample tools matching what mock-server exposes
 const sampleTools: Tool[] = [
@@ -246,5 +246,99 @@ describe("levelToStage", () => {
   it("lazy+normal degrades to passthrough", () => {
     const stage = levelToStage("normal", true);
     expect(stage(tools)).toEqual(tools);
+  });
+});
+
+describe("applyLazyBudget", () => {
+  const tools: Tool[] = [
+    { name: "github_search", description: "Search repos", inputSchema: { type: "object", properties: { q: { type: "string" } }, required: ["q"] } },
+    { name: "github_get_user", description: "Get user", inputSchema: { type: "object", properties: { id: { type: "string" } } } },
+    { name: "github_create_issue", description: "Create issue", inputSchema: { type: "object", properties: { title: { type: "string" } } } },
+    { name: "github_delete_repo", description: "Delete repo", inputSchema: { type: "object", properties: {} } },
+  ];
+  const originalMap = new Map(tools.map(t => [t.name, t]));
+
+  it("preloads high-priority tools (search/get) with full schema, strips others", () => {
+    const stage = applyLazyBudget(8, originalMap);
+    const result = stage(tools);
+    // github_search and github_get_user match HIGH_PRIORITY pattern
+    const search = result.find(t => t.name === "github_search")!;
+    expect(search.inputSchema.properties).toHaveProperty("q");
+
+    const create = result.find(t => t.name === "github_create_issue")!;
+    // Slim format: name + description only, no inputSchema field
+    expect(create.inputSchema).toBeUndefined();
+    expect(create.description).toBe("Create issue");
+  });
+
+  it("budget=0 strips all schemas (all slim)", () => {
+    const stage = applyLazyBudget(0, originalMap);
+    const result = stage(tools);
+    for (const t of result) {
+      expect(t.inputSchema).toBeUndefined();
+    }
+  });
+
+  it("budget >= tool count keeps all full (all preloaded if high-priority)", () => {
+    const stage = applyLazyBudget(100, originalMap);
+    const result = stage(tools);
+    // search and get_user are high priority → full schema
+    // create_issue and delete_repo are NOT high priority → slim even with budget=100
+    const search = result.find(t => t.name === "github_search")!;
+    expect(search.inputSchema.properties).toHaveProperty("q");
+    const del = result.find(t => t.name === "github_delete_repo")!;
+    expect(del.inputSchema).toBeUndefined();
+  });
+
+  it("mixed: some high-priority, some not", () => {
+    const stage = applyLazyBudget(1, originalMap);
+    const result = stage(tools);
+    // Only first high-priority tool gets full schema (budget=1)
+    const search = result.find(t => t.name === "github_search")!;
+    expect(search.inputSchema.properties).toHaveProperty("q");
+    const getUser = result.find(t => t.name === "github_get_user")!;
+    expect(getUser.inputSchema).toBeUndefined();
+  });
+
+  it("restores full schema from originalTools (not from level-compressed tools)", () => {
+    // Simulate: levelToStage(extreme) already stripped descriptions
+    const extremeTools: Tool[] = tools.map(t => ({
+      name: t.name,
+      description: t.description ?? "",
+      inputSchema: { type: "object", properties: {} }, // stripped by extreme
+    }));
+    const stage = applyLazyBudget(8, originalMap);
+    const result = stage(extremeTools);
+    const search = result.find(t => t.name === "github_search")!;
+    // Should have original full schema, not the extreme-stripped one
+    expect(search.inputSchema.properties).toHaveProperty("q");
+    expect(search.inputSchema.required).toEqual(["q"]);
+  });
+});
+
+describe("injectGetSchema", () => {
+  it("appends mcp__get_schema tool at end of list", () => {
+    const tools: Tool[] = [
+      { name: "mock_echo", description: "Echo", inputSchema: { type: "object", properties: {} } },
+    ];
+    const result = injectGetSchema(tools);
+    expect(result).toHaveLength(2);
+    expect(result[1].name).toBe("mcp__get_schema");
+  });
+
+  it("get_schema description contains available tool names", () => {
+    const tools: Tool[] = [
+      { name: "mock_echo", description: "Echo", inputSchema: { type: "object", properties: {} } },
+      { name: "mock_add", description: "Add", inputSchema: { type: "object", properties: {} } },
+    ];
+    const result = injectGetSchema(tools);
+    expect(result[2].description).toContain("mock_add");
+    expect(result[2].description).toContain("mock_echo");
+  });
+
+  it("get_schema has inputSchema with required tool_name param", () => {
+    const result = injectGetSchema([]);
+    const schema = result[0].inputSchema;
+    expect(schema.required).toEqual(["tool_name"]);
   });
 });

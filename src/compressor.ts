@@ -139,6 +139,75 @@ export const levelToStage = (level: CompressionLevel, lazyLoading: boolean): Too
 };
 
 /**
+ * High-priority tool name pattern for lazy budget preload.
+ * Matches read-operation verbs LLMs typically call first. The verb may appear
+ * at the start of the tool name or right after a single server-prefix segment
+ * (e.g. `github_search`, `slack_get_history`), matching the project's
+ * `server_toolname` routing convention.
+ */
+const HIGH_PRIORITY = /^(?:[^_]+_)?(search|list|read|get|find|describe|info)/i;
+
+/**
+ * Lazy budget stage — preloads high-priority tools with full original schema,
+ * strips schema from low-priority tools (slim format: name + description only).
+ * @param budget - Max number of high-priority tools to preload
+ * @param originalTools - Original full tool map (for restoring schema after level compression)
+ */
+export const applyLazyBudget = (
+  budget: number,
+  originalTools: Map<string, Tool>,
+): ToolStage => {
+  return (tools: Tool[]) => {
+    // Select high-priority tools (up to budget)
+    const fullSet = new Set<string>();
+    for (const t of tools) {
+      if (fullSet.size >= budget) break;
+      if (HIGH_PRIORITY.test(t.name)) fullSet.add(t.name);
+    }
+
+    return tools.map(t => {
+      if (fullSet.has(t.name)) {
+        // High-priority: restore full original schema
+        return originalTools.get(t.name) ?? t;
+      }
+      // Low-priority: slim format (name + description, no inputSchema).
+      // The Tool type from the SDK marks inputSchema as required, but the slim
+      // variant intentionally omits it so the client must call mcp__get_schema
+      // to fetch it. Assert through unknown (type-safe, no `any`).
+      return { name: t.name, description: t.description ?? "" } as unknown as Tool;
+    });
+  };
+};
+
+/**
+ * Inject mcp__get_schema discovery tool at end of list.
+ * LLM calls this to fetch full schema for a slim tool before invoking it.
+ * The available tool names are embedded in the tool's main description so the
+ * LLM can discover what it can ask about without an extra round-trip.
+ */
+export const injectGetSchema: ToolStage = (tools: Tool[]) => {
+  const toolNames = tools.map(t => t.name).sort().join(", ");
+  return [
+    ...tools,
+    {
+      name: GET_SCHEMA,
+      description:
+        `Get the full input schema (parameters, types, constraints) for a specific tool. Call this before invoking a tool whose schema is not included in the tools list. Returns the complete original schema. Available tools: ${toolNames}`,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          tool_name: {
+            type: "string",
+            description: "The tool name to get schema for.",
+          },
+        },
+        required: ["tool_name"],
+      },
+    },
+  ];
+};
+
+/**
  * Generate the compressed tool list that the agent sees.
  */
 export function getCompressedTools(

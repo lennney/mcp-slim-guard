@@ -260,17 +260,6 @@ export function generateTools(
 }
 
 /**
- * Generate the compressed tool list that the agent sees.
- */
-export function getCompressedTools(
-  fullTools: Tool[],
-  config: CompressorConfig,
-): Tool[] {
-  if (!config.enabled || config.level === "off") return fullTools;
-  return makeWrapperTools(fullTools, config.level === "light");
-}
-
-/**
  * Handle a wrapper tool call. Returns the response if it's a wrapper tool,
  * or null if it's a regular tool call that should be handled normally.
  *
@@ -375,42 +364,6 @@ function stripPropertyDescriptions(schema: Tool["inputSchema"]): Tool["inputSche
     properties: stripped,
     required: schema.required,
   };
-}
-
-/**
- * Generate the tool list for schema transformation levels (extreme/maximum).
- *
- * Unlike wrapper levels, tools keep their real identities. The agent calls
- * `github_search_repositories` directly instead of going through
- * `mcp__invoke_tool`. The security pipeline sees the real tool name.
- *
- * @param fullTools - Complete tool list from upstream servers
- * @param level - "extreme" or "maximum"
- * @returns Compressed tool list with real tool identities
- */
-export function getTransformTools(
-  fullTools: Tool[],
-  level: "extreme" | "maximum",
-): Tool[] {
-  return fullTools.map((tool) => {
-    if (level === "maximum") {
-      return {
-        name: tool.name,
-        description: `${tool.description ?? ""} ${buildSignature(tool)}`.trim(),
-        inputSchema: {
-          type: "object" as const,
-          properties: {},
-        },
-      };
-    }
-
-    // extreme level
-    return {
-      name: tool.name,
-      description: tool.description ?? "",
-      inputSchema: stripPropertyDescriptions(tool.inputSchema),
-    };
-  });
 }
 
 export { PREFIX, LIST_TOOLS, GET_TOOL_SCHEMA, GET_SCHEMA, INVOKE };

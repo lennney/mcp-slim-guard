@@ -22,7 +22,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PolicyPipeline, type DecisionStep } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
-import { getCompressedTools, getTransformTools, handleWrapperTool, whitelistFilter, PREFIX } from "./compressor.js";
+import { generateTools, handleWrapperTool, whitelistFilter, PREFIX } from "./compressor.js";
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -91,17 +91,14 @@ export class GuardProxy {
       const allNames = this.fullTools.map(t => t.name);
       this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", this.fullTools.length, allNames);
 
-      if (!this.config.compressor?.enabled || this.config.compressor.level === "off") {
-        return { tools: this.fullTools };
-      }
-
-      const level = this.config.compressor.level;
-      // Transform levels (extreme/maximum): return real tools with compressed schemas
-      if (level === "extreme" || level === "maximum") {
-        return { tools: getTransformTools(this.fullTools, level) };
-      }
-      // Wrapper levels (light/normal): return wrapper tools
-      return { tools: getCompressedTools(this.fullTools, this.config.compressor) };
+      return {
+        tools: generateTools(
+          this.fullTools,
+          this.config.compressor,
+          this.config.tools.allow,
+          this.config.tools.deny,
+        ),
+      };
     });
 
     // Core tool call logic: resolve → policy → audit → forward

@@ -22,7 +22,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PolicyPipeline, type DecisionStep } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
-import { getCompressedTools, handleWrapperTool, PREFIX } from "./compressor.js";
+import { getCompressedTools, getTransformTools, handleWrapperTool, PREFIX } from "./compressor.js";
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -91,10 +91,17 @@ export class GuardProxy {
       const allNames = this.fullTools.map(t => t.name);
       this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", this.fullTools.length, allNames);
 
-      if (this.config.compressor?.enabled) {
-        return { tools: getCompressedTools(this.fullTools, this.config.compressor) };
+      if (!this.config.compressor?.enabled || this.config.compressor.level === "off") {
+        return { tools: this.fullTools };
       }
-      return { tools: this.fullTools };
+
+      const level = this.config.compressor.level;
+      // Transform levels (extreme/maximum): return real tools with compressed schemas
+      if (level === "extreme" || level === "maximum") {
+        return { tools: getTransformTools(this.fullTools, level) };
+      }
+      // Wrapper levels (light/normal): return wrapper tools
+      return { tools: getCompressedTools(this.fullTools, this.config.compressor) };
     });
 
     // Core tool call logic: resolve → policy → audit → forward
@@ -162,7 +169,14 @@ export class GuardProxy {
         // mcp__list_tools / mcp__get_tool_schema → handled by compressor (discovery).
         // mcp__invoke_tool → handleWrapperTool delegates to forwardToolCall internally.
         // In all cases we audit the wrapper call and return wrapperResult directly.
-        if (this.config.compressor?.enabled && prefixedName.startsWith(PREFIX)) {
+        // Wrapper levels: intercept mcp__* calls. Transform levels: tools use real names,
+        // so we skip wrapper interception entirely — calls go straight to forwardToolCall.
+        const isWrapperLevel = this.config.compressor?.enabled &&
+          this.config.compressor.level !== "off" &&
+          this.config.compressor.level !== "extreme" &&
+          this.config.compressor.level !== "maximum";
+
+        if (isWrapperLevel && prefixedName.startsWith(PREFIX)) {
           const wrapperResult = await handleWrapperTool(
             prefixedName,
             args,

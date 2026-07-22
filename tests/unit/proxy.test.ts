@@ -651,4 +651,161 @@ describe("GuardProxy", () => {
     // The new manager's getTools should have been consulted after reload
     expect(newServerManager.getTools).toHaveBeenCalled();
   });
+
+  // -----------------------------------------------------------------------
+  // Cache: hit returns cached result without calling upstream
+  // -----------------------------------------------------------------------
+  it("should return cached result on cache hit, skipping upstream call", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      cache: {
+        enabled: true,
+        ttl: 30,
+        max_entries: 500,
+        allow: [],
+        deny: [],
+      },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "github",
+      originalToolName: "search",
+    });
+    pipeline.executeWithTrail.mockResolvedValue({ result: { allowed: true }, trail: [] });
+
+    const upstreamResult = {
+      content: [{ type: "text" as const, text: "fresh from upstream" }],
+    };
+    serverManager.callTool.mockResolvedValue(upstreamResult);
+
+    const proxy = new GuardProxy(
+      config,
+      pipeline as never,
+      audit as never,
+      serverManager as never,
+    );
+    await proxy.start({} as never);
+
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    // First call: cache miss, calls upstream
+    const result1 = await callHandler!({
+      method: "tools/call",
+      params: { name: "github_search", arguments: { q: "mcp" } },
+    });
+    expect(result1).toEqual(upstreamResult);
+    expect(serverManager.callTool).toHaveBeenCalledTimes(1);
+
+    // Second call with same args: cache hit, no upstream call
+    const result2 = await callHandler!({
+      method: "tools/call",
+      params: { name: "github_search", arguments: { q: "mcp" } },
+    });
+    expect(result2).toEqual(upstreamResult);
+    // callTool should still be 1 (not called again)
+    expect(serverManager.callTool).toHaveBeenCalledTimes(1);
+  });
+
+  // -----------------------------------------------------------------------
+  // Cache: non-cacheable tools bypass cache
+  // -----------------------------------------------------------------------
+  it("should not cache results for non-cacheable tools", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      cache: {
+        enabled: true,
+        ttl: 30,
+        max_entries: 500,
+        allow: [],
+        deny: [],
+      },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+
+    // "create_repo" is not cacheable (match pattern excludes it)
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "github",
+      originalToolName: "create_repo",
+    });
+    pipeline.executeWithTrail.mockResolvedValue({ result: { allowed: true }, trail: [] });
+    serverManager.callTool.mockResolvedValue({
+      content: [{ type: "text" as const, text: "created" }],
+    });
+
+    const proxy = new GuardProxy(
+      config,
+      pipeline as never,
+      audit as never,
+      serverManager as never,
+    );
+    await proxy.start({} as never);
+
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    await callHandler!({
+      method: "tools/call",
+      params: { name: "github_create_repo", arguments: { name: "x" } },
+    });
+    await callHandler!({
+      method: "tools/call",
+      params: { name: "github_create_repo", arguments: { name: "x" } },
+    });
+
+    // Both calls should go to upstream (not cached)
+    expect(serverManager.callTool).toHaveBeenCalledTimes(2);
+  });
+
+  // -----------------------------------------------------------------------
+  // Cache: disabled config bypasses cache entirely
+  // -----------------------------------------------------------------------
+  it("should skip cache when disabled", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      cache: {
+        enabled: false,
+        ttl: 30,
+        max_entries: 500,
+        allow: [],
+        deny: [],
+      },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "github",
+      originalToolName: "search",
+    });
+    pipeline.executeWithTrail.mockResolvedValue({ result: { allowed: true }, trail: [] });
+    serverManager.callTool.mockResolvedValue({
+      content: [{ type: "text" as const, text: "result" }],
+    });
+
+    const proxy = new GuardProxy(
+      config,
+      pipeline as never,
+      audit as never,
+      serverManager as never,
+    );
+    await proxy.start({} as never);
+
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    await callHandler!({
+      method: "tools/call",
+      params: { name: "github_search", arguments: { q: "a" } },
+    });
+    await callHandler!({
+      method: "tools/call",
+      params: { name: "github_search", arguments: { q: "a" } },
+    });
+
+    expect(serverManager.callTool).toHaveBeenCalledTimes(2);
+  });
 });

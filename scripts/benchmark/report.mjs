@@ -17,13 +17,20 @@ export function writeReport(results) {
   const date = new Date().toISOString().slice(0, 10);
   const baseName = `bench-${date}`;
 
-  // JSON output
+  // JSON output — read-merge-write so multiple modules accumulate in one daily file
   const jsonPath = path.join(RESULTS_DIR, `${baseName}.json`);
-  fs.writeFileSync(jsonPath, JSON.stringify(results, null, 2));
+  let merged = {};
+  if (fs.existsSync(jsonPath)) {
+    try {
+      merged = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
+    } catch { /* corrupt — start fresh */ }
+  }
+  Object.assign(merged, results);
+  fs.writeFileSync(jsonPath, JSON.stringify(merged, null, 2));
 
-  // Markdown output
+  // Markdown output — regenerate from merged data
   const mdPath = path.join(RESULTS_DIR, `${baseName}.md`);
-  fs.writeFileSync(mdPath, generateMarkdown(results));
+  fs.writeFileSync(mdPath, generateMarkdown(merged));
 
   console.log(`\n📄 Report: ${jsonPath}`);
   console.log(`📄 Report: ${mdPath}`);

@@ -22,7 +22,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PolicyPipeline, type DecisionStep } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
-import { getCompressedTools, getTransformTools, handleWrapperTool, PREFIX } from "./compressor.js";
+import { getCompressedTools, getTransformTools, handleWrapperTool, whitelistFilter, PREFIX } from "./compressor.js";
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -165,25 +165,19 @@ export class GuardProxy {
         const prefixedName = params.name;
         const args: Record<string, unknown> = params.arguments ?? {};
 
-        // Compressor wrapper tools: handle directly but with whitelist filtering + audit.
-        // mcp__list_tools / mcp__get_tool_schema → handled by compressor (discovery).
-        // mcp__invoke_tool → handleWrapperTool delegates to forwardToolCall internally.
-        // In all cases we audit the wrapper call and return wrapperResult directly.
-        // Wrapper levels: intercept mcp__* calls. Transform levels: tools use real names,
-        // so we skip wrapper interception entirely — calls go straight to forwardToolCall.
-        const isWrapperLevel = this.config.compressor?.enabled &&
-          this.config.compressor.level !== "off" &&
-          this.config.compressor.level !== "extreme" &&
-          this.config.compressor.level !== "maximum";
-
-        if (isWrapperLevel && prefixedName.startsWith(PREFIX)) {
+        // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
+        if (prefixedName.startsWith(PREFIX)) {
+          // Whitelist-filter fullTools before passing to handleWrapperTool
+          // (pipeline stage 0 logic, applied here for the call path)
+          const filteredTools = whitelistFilter(
+            this.config.tools.allow,
+            this.config.tools.deny,
+          )(this.fullTools);
           const wrapperResult = await handleWrapperTool(
             prefixedName,
             args,
-            this.fullTools,
+            filteredTools,
             (targetName, targetArgs) => forwardToolCall(targetName, targetArgs),
-            this.config.tools.allow,
-            this.config.tools.deny,
           );
           if (wrapperResult) {
             // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
@@ -200,7 +194,7 @@ export class GuardProxy {
           }
         }
 
-        // Normal tool call
+        // Real tool → security pipeline
         return forwardToolCall(prefixedName, args);
       },
     );

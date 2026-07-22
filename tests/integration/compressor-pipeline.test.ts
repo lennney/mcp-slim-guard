@@ -289,7 +289,9 @@ describe("Compressor Pipeline", () => {
       });
       expect((result as { isError?: boolean }).isError).toBe(true);
       const content = result.content[0] as { type: string; text?: string };
-      expect(content.text).toContain("not available");
+      // After whitelist filtering, mock_add is not in the filtered list,
+      // so the error is "Unknown tool" (not "not available" as before)
+      expect(content.text).toContain("Unknown tool");
     } finally {
       await destroyProxy(ctx);
     }

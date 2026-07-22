@@ -46,7 +46,7 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
       required: ["enabled", "level"],
       properties: {
         enabled: { type: "boolean" },
-        level: { type: "string", enum: ["light", "tight"] },
+        level: { type: "string", enum: ["off", "light", "normal", "tight", "extreme", "maximum"] },
       },
       additionalProperties: false,
       description: "Schema 压缩配置",

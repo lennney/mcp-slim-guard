@@ -10,6 +10,11 @@ tags:
 
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Request cache TTL+LRU** — 只读工具调用结果内存缓存。配置项 `cache.enabled`（默认 false）启用。按工具名模式自动推断 TTL（search 类 15s, read 类 60s），支持 `allow/deny` 精确控制和 `ttl_per_tool` 逐工具覆盖。LRU 淘汰，默认 500 条上限。`isError: true` 不缓存。
+
 ## [0.3.0] — 2026-07-22
 
 ### Added

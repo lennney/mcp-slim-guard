@@ -113,7 +113,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .command("init")
     .description("Auto-discover MCP config and generate micro-mcp.yml")
-    .option("--compressor [level]", "Enable schema compression (lossless). Levels: light (recommended), tight", "off")
+    .option("--compressor [level]", "Enable schema compression. Levels: light, normal, extreme, maximum", "off")
     .action((options: { compressor?: string }) => {
       const cwd = process.cwd();
       const mcpConfigPath = ConfigLoader.discoverMCPConfig(cwd);
@@ -131,7 +131,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       
       // Apply compressor setting
       if (options.compressor && options.compressor !== "off") {
-        const level = options.compressor as "light" | "tight";
+        const level = options.compressor as "light" | "normal" | "extreme" | "maximum";
         guardConfig.compressor = { enabled: true, level };
       }
 
@@ -367,8 +367,11 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       // Compressor status
-      if (config.compressor?.enabled) {
-        console.log(`  📦 Schema compressor: ${config.compressor.level} (lossless — tool schemas on demand)`);
+      if (config.compressor?.enabled && config.compressor.level !== "off") {
+        const mode = (config.compressor.level === "extreme" || config.compressor.level === "maximum")
+          ? "schema transformation"
+          : "wrapper tools";
+        console.log(`  📦 Schema compressor: ${config.compressor.level} (${mode})`);
       } else {
         console.log("  ℹ️  Schema compressor: off");
       }

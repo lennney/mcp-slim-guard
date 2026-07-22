@@ -66,6 +66,8 @@ export class ToolCache {
   private config: CacheConfig;
   private hits = 0;
   private misses = 0;
+  private toolHits = new Map<string, number>();
+  private toolMisses = new Map<string, number>();
 
   constructor(config: CacheConfig) {
     this.config = config;
@@ -95,16 +97,22 @@ export class ToolCache {
     if (!this.config.enabled) return null;
     const key = makeKey(toolName, args);
     const entry = this.map.get(key);
-    if (!entry) { this.misses++; return null; }
+    if (!entry) {
+      this.misses++;
+      this.toolMisses.set(toolName, (this.toolMisses.get(toolName) ?? 0) + 1);
+      return null;
+    }
     if (Date.now() > entry.expiresAt) {
       this.map.delete(key);
       this.order = this.order.filter((k) => k !== key);
       this.misses++;
+      this.toolMisses.set(toolName, (this.toolMisses.get(toolName) ?? 0) + 1);
       return null;
     }
     this.order = this.order.filter((k) => k !== key);
     this.order.push(key);
     this.hits++;
+    this.toolHits.set(toolName, (this.toolHits.get(toolName) ?? 0) + 1);
     return entry.result;
   }
 
@@ -126,9 +134,19 @@ export class ToolCache {
     this.order = [];
     this.hits = 0;
     this.misses = 0;
+    this.toolHits.clear();
+    this.toolMisses.clear();
   }
 
-  stats(): { size: number; hits: number; misses: number } {
-    return { size: this.map.size, hits: this.hits, misses: this.misses };
+  stats(): { size: number; hits: number; misses: number; byTool: Record<string, { hits: number; misses: number }> } {
+    const byTool: Record<string, { hits: number; misses: number }> = {};
+    const allTools = new Set([...this.toolHits.keys(), ...this.toolMisses.keys()]);
+    for (const tool of allTools) {
+      byTool[tool] = {
+        hits: this.toolHits.get(tool) ?? 0,
+        misses: this.toolMisses.get(tool) ?? 0,
+      };
+    }
+    return { size: this.map.size, hits: this.hits, misses: this.misses, byTool };
   }
 }

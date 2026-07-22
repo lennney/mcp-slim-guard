@@ -190,7 +190,37 @@ describe("ToolCache.stats", () => {
     cache.get("a_read", { x: 1 });  // hit
     cache.get("a_read", { x: 2 });  // miss
     cache.get("b_read", { x: 1 });  // miss
-    expect(cache.stats()).toEqual({ size: 1, hits: 1, misses: 2 });
+    expect(cache.stats()).toEqual({
+      size: 1,
+      hits: 1,
+      misses: 2,
+      byTool: {
+        a_read: { hits: 1, misses: 1 },
+        b_read: { hits: 0, misses: 1 },
+      },
+    });
+  });
+
+  it("tracks per-tool stats across multiple tools", () => {
+    const cache = new ToolCache(makeConfig());
+    cache.set("github_search", { q: "mcp" }, echoResult);
+    cache.set("slack_read", { channel: "C01" }, echoResult);
+
+    cache.get("github_search", { q: "mcp" }); // hit
+    cache.get("github_search", { q: "mcp" }); // hit
+    cache.get("github_search", { q: "other" }); // miss
+    cache.get("slack_read", { channel: "C01" }); // hit
+    cache.get("slack_read", { channel: "C02" }); // miss
+
+    const stats = cache.stats();
+    expect(stats.byTool["github_search"]).toEqual({ hits: 2, misses: 1 });
+    expect(stats.byTool["slack_read"]).toEqual({ hits: 1, misses: 1 });
+  });
+
+  it("byTool excludes tools that were never accessed via get()", () => {
+    const cache = new ToolCache(makeConfig());
+    cache.set("a_read", { x: 1 }, echoResult); // set() doesn't increment stats
+    expect(cache.stats().byTool).toEqual({});
   });
 });
 
@@ -200,7 +230,7 @@ describe("ToolCache.clear", () => {
     cache.set("a_read", { x: 1 }, echoResult);
     cache.get("a_read", { x: 1 });
     cache.clear();
-    expect(cache.stats()).toEqual({ size: 0, hits: 0, misses: 0 });
+    expect(cache.stats()).toEqual({ size: 0, hits: 0, misses: 0, byTool: {} });
     expect(cache.get("a_read", { x: 1 })).toBeNull();
   });
 });

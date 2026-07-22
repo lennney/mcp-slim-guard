@@ -1,10 +1,10 @@
 ---
 type: Changelog
-title: mcp-guard CHANGELOG
+title: micro-mcp CHANGELOG
 timestamp: '2026-07-20T23:30:00+08:00'
 description: 版本变更记录
 tags:
-- mcp-guard
+- micro-mcp
 - changelog
 ---
 

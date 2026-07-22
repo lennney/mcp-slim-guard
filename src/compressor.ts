@@ -170,11 +170,11 @@ export const applyLazyBudget = (
         // High-priority: restore full original schema
         return originalTools.get(t.name) ?? t;
       }
-      // Low-priority: slim format (name + description, no inputSchema).
-      // The Tool type from the SDK marks inputSchema as required, but the slim
-      // variant intentionally omits it so the client must call mcp__get_schema
-      // to fetch it. Assert through unknown (type-safe, no `any`).
-      return { name: t.name, description: t.description ?? "" } as unknown as Tool;
+      // Low-priority: slim format (name + description + minimal empty schema).
+      // The MCP SDK's Zod validation requires inputSchema to be an object,
+      // so we use { type: "object", properties: {} } instead of omitting it.
+      // The LLM must call mcp__get_schema to get the full parameter list.
+      return { name: t.name, description: t.description ?? "", inputSchema: { type: "object" as const, properties: {} } };
     });
   };
 };

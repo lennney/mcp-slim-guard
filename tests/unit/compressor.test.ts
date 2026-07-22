@@ -264,7 +264,7 @@ describe("applyLazyBudget", () => {
 
     const create = result.find(t => t.name === "github_create_issue")!;
     // Slim format: name + description only, no inputSchema field
-    expect(create.inputSchema).toBeUndefined();
+    expect(create.inputSchema).toEqual({ type: "object", properties: {} });
     expect(create.description).toBe("Create issue");
   });
 
@@ -272,7 +272,7 @@ describe("applyLazyBudget", () => {
     const stage = applyLazyBudget(0, originalMap);
     const result = stage(tools);
     for (const t of result) {
-      expect(t.inputSchema).toBeUndefined();
+      expect(t.inputSchema).toEqual({ type: "object", properties: {} });
     }
   });
 
@@ -284,7 +284,7 @@ describe("applyLazyBudget", () => {
     const search = result.find(t => t.name === "github_search")!;
     expect(search.inputSchema.properties).toHaveProperty("q");
     const del = result.find(t => t.name === "github_delete_repo")!;
-    expect(del.inputSchema).toBeUndefined();
+    expect(del.inputSchema).toEqual({ type: "object", properties: {} });
   });
 
   it("mixed: some high-priority, some not", () => {
@@ -294,7 +294,7 @@ describe("applyLazyBudget", () => {
     const search = result.find(t => t.name === "github_search")!;
     expect(search.inputSchema.properties).toHaveProperty("q");
     const getUser = result.find(t => t.name === "github_get_user")!;
-    expect(getUser.inputSchema).toBeUndefined();
+    expect(getUser.inputSchema).toEqual({ type: "object", properties: {} });
   });
 
   it("restores full schema from originalTools (not from level-compressed tools)", () => {
@@ -356,7 +356,7 @@ describe("generateTools / buildPipeline", () => {
     const search = result.find(t => t.name === "github_search")!;
     expect(search.inputSchema.properties).toHaveProperty("q");
     const create = result.find(t => t.name === "github_create")!;
-    expect(create.inputSchema).toBeUndefined();
+    expect(create.inputSchema).toEqual({ type: "object", properties: {} });
     expect(result[2].name).toBe("mcp__get_schema");
   });
 
@@ -367,7 +367,7 @@ describe("generateTools / buildPipeline", () => {
     // Should have original full schema (restored from originalTools), not extreme-stripped
     expect(search.inputSchema.properties).toHaveProperty("q");
     const create = result.find(t => t.name === "github_create")!;
-    expect(create.inputSchema).toBeUndefined();
+    expect(create.inputSchema).toEqual({ type: "object", properties: {} });
   });
 
   it("lazy+maximum: level embeds signature, then lazy restores high-priority", () => {

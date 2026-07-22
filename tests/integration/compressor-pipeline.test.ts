@@ -458,4 +458,131 @@ describe("Compressor Pipeline", () => {
       await destroyProxy(ctx);
     }
   });
+
+  // -----------------------------------------------------------------------
+  // 19. lazy+off: tools/list returns preloaded high-priority + slim + mcp__get_schema
+  // -----------------------------------------------------------------------
+  it("lazy+off: tools/list returns preloaded high-priority + slim + mcp__get_schema", async () => {
+    const config = makeConfig({
+      compressor: { enabled: true, level: "off", lazy_loading: true, lazy_budget: 8 } as never,
+    });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+      const names = tools.map(t => t.name);
+
+      // mock_get_time matches HIGH_PRIORITY (mock_ prefix + get verb)
+      // mock_echo and mock_add do not → slim
+      expect(names).toContain("mock_get_time");
+      expect(names).toContain("mock_echo");
+      expect(names).toContain("mock_add");
+      expect(names).toContain("mcp__get_schema");
+
+      // High-priority tool has full schema
+      const getTime = tools.find(t => t.name === "mock_get_time")!;
+      expect(getTime.inputSchema?.properties).toBeDefined();
+
+      // Low-priority tool has empty schema (slim)
+      const echo = tools.find(t => t.name === "mock_echo")!;
+      expect(echo.inputSchema).toEqual({ type: "object", properties: {} });
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 20. lazy+off: mcp__get_schema returns full schema for slim tool
+  // -----------------------------------------------------------------------
+  it("lazy+off: mcp__get_schema returns full original schema", async () => {
+    const config = makeConfig({
+      compressor: { enabled: true, level: "off", lazy_loading: true, lazy_budget: 0 } as never,
+    });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.callTool({
+        name: "mcp__get_schema",
+        arguments: { tool_name: "mock_echo" },
+      });
+      const content = result.content[0] as { type: string; text?: string };
+      const parsed = JSON.parse(content.text ?? "{}");
+      expect(parsed.name).toBe("mock_echo");
+      expect(parsed.inputSchema).toBeDefined();
+      expect(parsed.inputSchema.properties).toHaveProperty("message");
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 21. lazy+extreme: level strips, lazy restores high-priority
+  // -----------------------------------------------------------------------
+  it("lazy+extreme: high-priority tools restored to full schema", async () => {
+    const config = makeConfig({
+      compressor: { enabled: true, level: "extreme", lazy_loading: true, lazy_budget: 8 } as never,
+    });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+
+      // mock_get_time (high-priority) → full original schema (restored from original)
+      const getTime = tools.find(t => t.name === "mock_get_time")!;
+      expect(getTime.inputSchema?.properties).toBeDefined();
+
+      // mock_echo (not high-priority) → slim (empty schema)
+      const echo = tools.find(t => t.name === "mock_echo")!;
+      expect(echo.inputSchema).toEqual({ type: "object", properties: {} });
+
+      // mcp__get_schema present
+      expect(tools.find(t => t.name === "mcp__get_schema")).toBeDefined();
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 22. lazy+maximum: level embeds signatures, lazy restores high-priority
+  // -----------------------------------------------------------------------
+  it("lazy+maximum: high-priority tools restored to full schema", async () => {
+    const config = makeConfig({
+      compressor: { enabled: true, level: "maximum", lazy_loading: true, lazy_budget: 8 } as never,
+    });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+
+      const getTime = tools.find(t => t.name === "mock_get_time")!;
+      expect(getTime.inputSchema?.properties).toBeDefined();
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 23. lazy budget=0: all tools slim, only mcp__get_schema has schema
+  // -----------------------------------------------------------------------
+  it("lazy budget=0: all tools slim, only mcp__get_schema has schema", async () => {
+    const config = makeConfig({
+      compressor: { enabled: true, level: "off", lazy_loading: true, lazy_budget: 0 } as never,
+    });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+
+      // All real tools should be slim (no inputSchema)
+      for (const t of tools) {
+        if (t.name !== "mcp__get_schema") {
+          expect(t.inputSchema).toEqual({ type: "object", properties: {} });
+        }
+      }
+      // mcp__get_schema has inputSchema
+      const getSchema = tools.find(t => t.name === "mcp__get_schema")!;
+      expect(getSchema.inputSchema).toBeDefined();
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
 });

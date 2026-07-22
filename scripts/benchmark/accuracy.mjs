@@ -18,7 +18,7 @@ const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
  * "filesystem_read_file" matches "read_file".
  */
 function matchesTool(actual, expected) {
-  return actual === expected || actual.endsWith("__" + expected) || actual.endsWith("_" + expected);
+  return actual === expected || actual.endsWith("_" + expected);
 }
 
 /**
@@ -30,15 +30,21 @@ function validateResponse(toolCall, scenario) {
     return { passed: false, reason: "no tool call returned" };
   }
 
-  // Tool name check (namespace tolerant)
-  if (!matchesTool(toolCall.function?.name ?? toolCall.name ?? "", scenario.expectedTool)) {
-    return { passed: false, reason: `wrong tool (got ${toolCall.function?.name ?? toolCall.name}, expected ${scenario.expectedTool})` };
-  }
-
-  // Parse args
-  const actualArgs = typeof toolCall.function?.arguments === "string"
+  let actualToolName = toolCall.function?.name ?? toolCall.name ?? "";
+  let actualArgs = typeof toolCall.function?.arguments === "string"
     ? JSON.parse(toolCall.function.arguments)
     : (toolCall.input ?? toolCall.function?.arguments ?? {});
+
+  // Unwrap mcp__invoke_tool wrapper calls (light/normal compression mode)
+  if (actualToolName === "mcp__invoke_tool" || actualToolName.endsWith("__invoke_tool")) {
+    actualToolName = actualArgs.tool_name ?? "";
+    actualArgs = actualArgs.args ?? {};
+  }
+
+  // Tool name check (namespace tolerant)
+  if (!matchesTool(actualToolName, scenario.expectedTool)) {
+    return { passed: false, reason: `wrong tool (got ${actualToolName}, expected ${scenario.expectedTool})` };
+  }
 
   // Required args present
   for (const req of scenario.requiredArgs) {
@@ -54,11 +60,10 @@ function validateResponse(toolCall, scenario) {
     }
   }
 
-  // Value check (new vs slim-mcp: verify arg values contain expected fragments)
+  // Value check
   for (const [name, expectedValue] of Object.entries(scenario.expectedValues)) {
     if (name in actualArgs) {
       const actual = String(actualArgs[name]);
-      // For path-type args, check the expected value is contained
       if (!actual.includes(String(expectedValue))) {
         return { passed: false, reason: `arg ${name} value mismatch: expected to contain "${expectedValue}", got "${actual}"` };
       }

@@ -93,12 +93,13 @@ export class ToolCache {
     if (!this.config.enabled) return;
     if (result.isError) return;
     const key = makeKey(toolName, args);
-    while (this.order.length >= this.config.max_entries) {
+    this.map.set(key, { result, expiresAt: Date.now() + this.getTTL(toolName) * 1000 });
+    this.order = this.order.filter((k) => k !== key);
+    this.order.push(key);
+    while (this.order.length > this.config.max_entries) {
       const oldest = this.order.shift();
       if (oldest) this.map.delete(oldest);
     }
-    this.map.set(key, { result, expiresAt: Date.now() + this.getTTL(toolName) * 1000 });
-    this.order.push(key);
   }
 
   clear(): void {

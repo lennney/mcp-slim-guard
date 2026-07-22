@@ -33,7 +33,7 @@ Phase 1 ─── Phase 2 ─── Phase 3 ─── Phase 4
 | 压缩等级扩展 2→5 | P0 | ✅ 已完成（off/light/normal/extreme/maximum + tight 别名） |
 | Lazy loading | P0 | ✅ 已完成（纯函数 pipeline + 预算预加载 + mcp__get_schema 按需发现） |
 | 请求缓存 TTL+LRU | P0 | ✅ 已完成 |
-| 基准测试 | P0 | 无 → 对标 slim-mcp 的 120 API 准确率测试 |
+| 基准测试 | P0 | ✅ 已完成（4 模块 + tiktoken + DeepSeek V4 Flash） |
 | 远程 HTTP 传输 | P1 | ✅ 已完成（stdio + streamable HTTP） |
 
 **可交付：** `micro-mcp proxy` 支持 5 级压缩 + lazy loading + 缓存，对标竞品核心能力。

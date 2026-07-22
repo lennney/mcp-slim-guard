@@ -14,6 +14,7 @@ tags:
 
 ### Added
 - **Request cache TTL+LRU** — 只读工具调用结果内存缓存。配置项 `cache.enabled`（默认 false）启用。按工具名模式自动推断 TTL（search 类 15s, read 类 60s），支持 `allow/deny` 精确控制和 `ttl_per_tool` 逐工具覆盖。LRU 淘汰，默认 500 条上限。`isError: true` 不缓存。
+- **基准测试套件** — 4 模块基准测试对标 slim-mcp。`bench:tokens`（离线 token 节省）、`bench:schema`（离线 schema 保留率）、`bench:latency`（离线延迟）、`bench:accuracy`（DeepSeek V4 Flash 准确率，12 场景含模糊测试）。`npm run bench` 按 API key 可用性自动运行。tiktoken 为 devDependency。
 
 ## [0.3.0] — 2026-07-22
 

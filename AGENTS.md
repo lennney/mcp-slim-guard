@@ -22,6 +22,11 @@ npm run build               # 编译到 dist/
 npm test                    # 全量测试（395 tests, 20 files）
 npx vitest run              # 同上
 npx tsc --noEmit            # 类型检查
+npm run bench               # 基准测试（无 API key 跑 3/4 模块）
+npm run bench:tokens        # 离线 token 节省量
+npm run bench:schema        # 离线 schema 保留率
+npm run bench:latency       # 离线延迟
+npm run bench:accuracy      # LLM 准确率（需 DEEPSEEK_API_KEY）
 ```
 
 ## 技术栈
@@ -75,7 +80,7 @@ mcp-guard ──(MCP SDK)──→ 上游 MCP Server（GitHub / Playwright / ...
 | Phase 1 核心策略管道 | ✅ 完成 | 13/13 任务，155 tests |
 | Phase 2 高级功能 | ✅ 完成 | 热重载/HTTP/注入检测/压缩器/审计轮转 |
 | Phase 3 安全增强 | ✅ 完成 | 6 项安全风险全部修复（SECURITY_AUDIT.md）|
-| Phase 1 压缩对标 | ✅ 完成 | 5 级压缩 + lazy loading + 请求缓存 TTL+LRU，395 tests |
+| Phase 1 压缩对标 | ✅ 完成 | 5 级压缩 + lazy loading + 请求缓存 TTL+LRU + 基准测试套件，395 tests |
 | 发布 | ⏳ | MCP 2026-07-28 后 1-2 周 |
 
 ## 约束
@@ -121,4 +126,4 @@ mcp-guard ──(MCP SDK)──→ 上游 MCP Server（GitHub / Playwright / ...
 
 ## 最近活动
 
-- 2026-07-22 15:00: **请求缓存 TTL+LRU** — 内存缓存只读 MCP 工具调用结果。新增 `ToolCache` 类（cache.ts），22 个单元测试 + 3 个 proxy 集成测试 + 1 个 full-pipeline 测试。AGENTS/LEARNINGS/HANDOVER/CHANGELOG/ROADMAP 同步更新。
+- 2026-07-22 16:00: **基准测试套件** — 4 模块基准测试对标 slim-mcp（tokens/schema/latency/accuracy）。tiktoken devDep，DeepSeek V4 Flash 准确率测试。`npm run bench` 按 API key 可用性自动运行。

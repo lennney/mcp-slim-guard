@@ -274,9 +274,7 @@ export function getCompressedTools(
  * Handle a wrapper tool call. Returns the response if it's a wrapper tool,
  * or null if it's a regular tool call that should be handled normally.
  *
- * Whitelist filtering: LIST_TOOLS and GET_TOOL_SCHEMA only return tools that are
- * allowed by the allow/deny patterns, preventing information disclosure
- * through compressor discovery tools.
+ * fullTools must already be whitelist-filtered (pipeline stage 0 handles this).
  */
 export async function handleWrapperTool(
   toolName: string,
@@ -285,8 +283,6 @@ export async function handleWrapperTool(
   serverCall: (resolvedToolName: string, resolvedArgs: Record<string, unknown>) => Promise<{
     content: Array<{ type: string; text?: string }>;
   }>,
-  allowPatterns: string[] = [],
-  denyPatterns: string[] = [],
 ): Promise<{
   content: Array<{ type: string; text?: string }>;
   isError?: boolean;
@@ -298,39 +294,20 @@ export async function handleWrapperTool(
   const nameToSchema: Record<string, Tool> = {};
   for (const t of fullTools) nameToSchema[t.name] = t;
 
-  // Helper: check if a tool is allowed by the whitelist (allow/deny patterns).
-  // Follows the same logic as WhitelistPolicy:
-  //   deny matches → NOT allowed
-  //   allow patterns non-empty AND no allow match → NOT allowed
-  //   otherwise → allowed
-  const isToolVisible = (toolName: string): boolean => {
-    // Deny match always blocks
-    if (denyPatterns.length > 0 && denyPatterns.some(p => isMatch(toolName, p))) {
-      return false;
-    }
-    // Allow list non-empty → must match at least one pattern
-    if (allowPatterns.length > 0) {
-      return allowPatterns.some(p => isMatch(toolName, p));
-    }
-    // No allow patterns = everything allowed
-    return true;
-  };
-
   switch (toolName) {
     case LIST_TOOLS: {
-      // Return tool names + descriptions only (no inputSchema), filtered by whitelist
-      const entries = fullTools
-        .filter(t => isToolVisible(t.name))
-        .map(t => ({
-          name: t.name,
-          description: t.description || "(no description)",
-        }));
+      // Return tool names + descriptions only (no inputSchema)
+      const entries = fullTools.map(t => ({
+        name: t.name,
+        description: t.description || "(no description)",
+      }));
       return {
         content: [{ type: "text", text: JSON.stringify(entries, null, 2) }],
       };
     }
 
-    case GET_TOOL_SCHEMA: {
+    case GET_TOOL_SCHEMA:
+    case GET_SCHEMA: {
       const targetName = args.tool_name as string;
       if (!targetName || !nameToSchema[targetName]) {
         return {
@@ -338,13 +315,6 @@ export async function handleWrapperTool(
             type: "text",
             text: `Unknown tool: "${targetName}". Available: ${Object.keys(nameToSchema).sort().join(", ")}`,
           }],
-          isError: true,
-        };
-      }
-      // Whitelist check: deny tool schema enumeration for blocked tools
-      if (!isToolVisible(targetName)) {
-        return {
-          content: [{ type: "text", text: `Tool "${targetName}" is not available` }],
           isError: true,
         };
       }
@@ -359,7 +329,6 @@ export async function handleWrapperTool(
       if (!targetName) {
         return { content: [{ type: "text", text: "Missing required parameter: tool_name" }], isError: true };
       }
-      // Delegate to normal call handling (will go through policy pipeline)
       return serverCall(targetName, input);
     }
 

@@ -32,11 +32,11 @@ export function getCompressedTools(
   fullTools: Tool[],
   config: CompressorConfig,
 ): Tool[] {
-  if (!config.enabled) return fullTools;
+  if (!config.enabled || config.level === "off") return fullTools;
 
   const tools: Tool[] = [];
 
-  // 1. list_tools (only at light level — tight level omits discovery)
+  // 1. list_tools (only at light level — normal/tight omit discovery)
   if (config.level === "light") {
     tools.push({
       name: LIST_TOOLS,
@@ -187,6 +187,81 @@ export async function handleWrapperTool(
       // Wrapper prefix but unknown — ignore
       return null;
   }
+}
+
+/**
+ * Build a function signature string for a tool.
+ * Example: "search_repositories(query: string, page?: number, per_page?: number)"
+ */
+function buildSignature(tool: Tool): string {
+  const props = (tool.inputSchema?.properties ?? {}) as Record<string, { type?: string; description?: string }>;
+  const required = (tool.inputSchema?.required as string[] | undefined) ?? [];
+  const requiredSet = new Set(required);
+
+  const params = Object.entries(props).map(([name, schema]) => {
+    const type = schema.type ?? "unknown";
+    const isRequired = requiredSet.has(name);
+    return `${name}${isRequired ? "" : "?"}: ${type}`;
+  });
+
+  return `${tool.name}(${params.join(", ")})`;
+}
+
+/**
+ * Strip property descriptions from inputSchema, keeping type, required, enum, default.
+ * Used by the "extreme" compression level.
+ */
+function stripPropertyDescriptions(schema: Tool["inputSchema"]): Tool["inputSchema"] {
+  if (!schema || !schema.properties) return schema;
+  const stripped: Record<string, Record<string, unknown>> = {};
+  for (const [key, prop] of Object.entries(schema.properties as Record<string, Record<string, unknown>>)) {
+    const cleaned: Record<string, unknown> = {};
+    if (prop.type !== undefined) cleaned.type = prop.type;
+    if (prop.enum !== undefined) cleaned.enum = prop.enum;
+    if (prop.default !== undefined) cleaned.default = prop.default;
+    stripped[key] = cleaned;
+  }
+  return {
+    type: schema.type,
+    properties: stripped,
+    required: schema.required,
+  };
+}
+
+/**
+ * Generate the tool list for schema transformation levels (extreme/maximum).
+ *
+ * Unlike wrapper levels, tools keep their real identities. The agent calls
+ * `github_search_repositories` directly instead of going through
+ * `mcp__invoke_tool`. The security pipeline sees the real tool name.
+ *
+ * @param fullTools - Complete tool list from upstream servers
+ * @param level - "extreme" or "maximum"
+ * @returns Compressed tool list with real tool identities
+ */
+export function getTransformTools(
+  fullTools: Tool[],
+  level: "extreme" | "maximum",
+): Tool[] {
+  return fullTools.map((tool) => {
+    if (level === "maximum") {
+      return {
+        name: tool.name,
+        description: `${tool.description ?? ""} ${buildSignature(tool)}`.trim(),
+        inputSchema: {
+          type: "object" as const,
+          properties: {},
+        },
+      };
+    }
+
+    // extreme level
+    return {
+      name: tool.name,
+      description: tool.description ?? "",
+      inputSchema: stripPropertyDescriptions(tool.inputSchema),
+    };
+  });
 }
 
 export { PREFIX, LIST_TOOLS, GET_SCHEMA, INVOKE };

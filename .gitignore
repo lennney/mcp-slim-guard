@@ -4,3 +4,4 @@ dist/
 coverage/
 .DS_Store
 test-workspace/
+scripts/benchmark/results/

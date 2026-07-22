@@ -1,18 +1,18 @@
 ---
 type: HandoverDoc
-title: mcp-guard HANDOVER
-timestamp: '2026-07-22T12:00:00+08:00'
+title: micro-mcp HANDOVER
+timestamp: '2026-07-22T18:00:00+08:00'
 description: 当前状态、已完成工作、待办事项
 tags:
 - handover
-- mcp-guard
+- micro-mcp
 ---
 
 # HANDOVER.md
 
 ## 当前目标
 
-打磨 mcp-guard 至发布就绪状态 — 安全加固 + 文档完善 + 测试覆盖
+打磨 micro-mcp 至发布就绪状态 — 安全加固 + 文档完善 + 测试覆盖
 
 > 2026-07-22 更新：完成 5 级压缩 + lazy loading（纯函数 pipeline + 预算预加载），见 CHANGELOG 0.3.0
 
@@ -35,7 +35,7 @@ tags:
 
 | 指标 | 数值 |
 |------|------|
-| 测试 | 394 tests, 20 files, 全绿 |
+| 测试 | 397 tests, 20 files, 全绿 |
 | 生产依赖 | 5 个（未新增）|
 | 源文件 | 15 个 |
 | Build | tsc --noEmit 通过 |
@@ -43,8 +43,8 @@ tags:
 
 ## 待办
 
-- [x] 请求缓存 TTL+LRU（Phase 1 P0，无缓存 → 只读结果缓存，LRU 淘汰）
-- [ ] 基准测试（Phase 1 P0，对标 slim-mcp 的 120 API 准确率测试）
+- [x] 请求缓存 TTL+LRU + per-tool stats（Phase 1 P0，无缓存 → 只读结果缓存，LRU 淘汰，含 hits/misses/byTool 统计）
+- [x] 基准测试（Phase 1 P0，对标 slim-mcp 的 120 API 准确率测试）
 - [ ] MCP 2026-07-28 协议更新后审视兼容性
 - [ ] npm publish 准备（版本号 bump、README 最终审核）
 - [ ] 考虑 Dockerfile
@@ -77,4 +77,4 @@ tags:
 
 ## 上次更新
 
-2026-07-22 15:00
+2026-07-22 18:00

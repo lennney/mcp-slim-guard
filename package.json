@@ -22,17 +22,17 @@
     "security",
     "proxy",
     "ssrf",
-    "guard",
+    "micro-mcp",
     "ai-security",
     "llm"
   ],
-  "homepage": "https://github.com/lennney/mcp-guard",
+  "homepage": "https://github.com/lennney/micro-mcp",
   "bugs": {
-    "url": "https://github.com/lennney/mcp-guard/issues"
+    "url": "https://github.com/lennney/micro-mcp/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lennney/mcp-guard.git"
+    "url": "git+https://github.com/lennney/micro-mcp.git"
   },
   "license": "MIT",
   "engines": {

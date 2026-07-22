@@ -1,11 +1,11 @@
 ---
 type: Learnings
-title: mcp-guard LEARNINGS
+title: micro-mcp LEARNINGS
 timestamp: '2026-07-22T12:00:00+08:00'
 description: 项目开发中积累的技术教训和避坑指南
 tags:
 - learnings
-- mcp-guard
+- micro-mcp
 ---
 
 # LEARNINGS.md

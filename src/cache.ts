@@ -25,12 +25,31 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+/** Verbs for search-like tools — shorter TTL (15s), results change frequently */
+const SEARCH_VERBS: ReadonlySet<string> = new Set(["search", "list", "find", "query"]);
+
+/** Verbs for read-like tools — longer TTL (60s), results are stable */
+const READ_VERBS: ReadonlySet<string> = new Set(["read", "get", "describe", "info", "check"]);
+
+/** All cacheable verbs (union of SEARCH_VERBS + READ_VERBS) */
+const CACHEABLE_VERBS = [...SEARCH_VERBS, ...READ_VERBS];
+
+/** Build regex from a set of verb names: "search|list|find|query" */
+function buildVerbRegex(verbs: ReadonlySet<string> | string[]): RegExp {
+  return new RegExp([...verbs].join("|"), "i");
+}
+
 /** Pattern for search-like tools → shorter TTL */
-const SEARCH_LIKE = /search|list|find|query/i;
+const SEARCH_LIKE = buildVerbRegex(SEARCH_VERBS);
 /** Pattern for read-like tools → longer TTL */
-const READ_LIKE = /read|get|describe|info|check/i;
+const READ_LIKE = buildVerbRegex(READ_VERBS);
 /** Pattern for cacheable tools (canonical read verbs with optional server prefix) */
-const CACHEABLE = /^(?:[^_]+_)?(search|list|find|query|read|get|describe|info|check)/i;
+const CACHEABLE = new RegExp(`^(?:[^_]+_)?(${buildVerbRegex(CACHEABLE_VERBS).source})`, "i");
+
+/** Default TTL for search-like tools (seconds) */
+const SEARCH_TTL = 15;
+/** Default TTL for read-like tools (seconds) */
+const READ_TTL = 60;
 
 /** Generate deterministic cache key from toolName + sorted args */
 function makeKey(toolName: string, args: Record<string, unknown>): string {
@@ -67,8 +86,8 @@ export class ToolCache {
     if (this.config.ttl_per_tool?.[toolName] !== undefined) {
       return this.config.ttl_per_tool[toolName];
     }
-    if (SEARCH_LIKE.test(toolName)) return 15;
-    if (READ_LIKE.test(toolName)) return 60;
+    if (SEARCH_LIKE.test(toolName)) return SEARCH_TTL;
+    if (READ_LIKE.test(toolName)) return READ_TTL;
     return this.config.ttl;
   }
 

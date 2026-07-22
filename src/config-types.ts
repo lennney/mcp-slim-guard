@@ -135,6 +135,8 @@ export interface GuardConfig {
   injection_detection: InjectionConfig;
   /** Schema 压缩配置 */
   compressor: CompressorConfig;
+  /** 请求缓存配置（可选，默认 disabled） */
+  cache?: CacheConfig;
   /** 审计日志配置 */
   audit: AuditConfig;
   /**
@@ -187,6 +189,24 @@ export interface CompressorConfig {
    * 优先预加载。默认 8。
    */
   lazy_budget?: number;
+}
+
+/**
+ * 请求缓存配置 — 只读工具调用结果内存缓存，TTL + LRU。
+ */
+export interface CacheConfig {
+  /** 是否启用缓存。默认 false。 */
+  enabled: boolean;
+  /** 全局默认 TTL（秒）。默认 30。 */
+  ttl: number;
+  /** LRU 容量上限。默认 500。 */
+  max_entries: number;
+  /** 强制可缓存的工具名 glob（空 = 模式推断）。 */
+  allow: string[];
+  /** 强制不可缓存的工具名 glob。 */
+  deny: string[];
+  /** 按工具名精确覆盖 TTL（秒）。key 为带前缀的工具名。 */
+  ttl_per_tool?: Record<string, number>;
 }
 
 /**

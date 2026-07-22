@@ -169,7 +169,7 @@ describe("CLI", () => {
       expect(MockConfigLoader.ConfigLoader.generateGuardConfig).toHaveBeenCalledWith(
         "/fake/path/.mcp.json",
       );
-      expect(consoleLogSpy).toHaveBeenCalledWith("✅ Generated mcp-guard.yml");
+      expect(consoleLogSpy).toHaveBeenCalledWith("✅ Generated micro-mcp.yml");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
     });
@@ -194,7 +194,7 @@ describe("CLI", () => {
       await main(["node", "cli.js", "start"]);
 
       expect(MockConfigLoader.ConfigLoader.findAndLoad).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-guard started");
+      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ micro-mcp started");
       expect(consoleLogSpy).toHaveBeenCalledWith("   Listening on STDIO transport");
       // GuardProxy constructor was called
       expect(vi.mocked(GuardProxy)).toHaveBeenCalled();
@@ -214,7 +214,7 @@ describe("CLI", () => {
 
       await main(["node", "cli.js", "status"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-guard status");
+      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ micro-mcp status");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("github"));
@@ -249,7 +249,7 @@ describe("CLI", () => {
     it("shows removal instructions", async () => {
       await main(["node", "cli.js", "uninit"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("To remove mcp-guard:");
+      expect(consoleLogSpy).toHaveBeenCalledWith("To remove micro-mcp:");
       expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining("uninit --force"),
       );
@@ -309,7 +309,7 @@ describe("buildAuditOptions", () => {
   it("falls back to default filePath and omits unset options", () => {
     const opts = buildAuditOptions({ output: "file" }, "/tmp");
     expect(opts.output).toBe("file");
-    expect(opts.filePath).toBe("/tmp/mcp-guard-audit.log");
+    expect(opts.filePath).toBe("/tmp/micro-mcp-audit.log");
     expect(opts.maxSize).toBeUndefined();
   });
 

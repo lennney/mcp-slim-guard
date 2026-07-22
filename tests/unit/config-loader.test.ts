@@ -7,7 +7,7 @@ import { ConfigLoader } from "../../src/config-loader.js";
 describe("ConfigLoader", () => {
   const tmpDir = "/tmp/mcp-guard-test";
   const mcpJsonPath = path.join(tmpDir, ".mcp.json");
-  const guardYmlPath = path.join(tmpDir, "mcp-guard.yml");
+  const guardYmlPath = path.join(tmpDir, "micro-mcp.yml");
 
   beforeEach(() => {
     fs.mkdirSync(tmpDir, { recursive: true });
@@ -134,7 +134,7 @@ describe("ConfigLoader", () => {
   });
 
   describe("findAndLoad", () => {
-    it("finds and loads mcp-guard.yml", () => {
+    it("finds and loads micro-mcp.yml", () => {
       const __dirname = path.dirname(fileURLToPath(import.meta.url));
       const ymlContent = fs.readFileSync(
         path.join(__dirname, "../fixtures/mcp-guard.test.yml"),
@@ -146,8 +146,8 @@ describe("ConfigLoader", () => {
       expect(config!.version).toBe(1);
     });
 
-    it("finds and loads mcp-guard.yaml", () => {
-      const altPath = path.join(tmpDir, "mcp-guard.yaml");
+    it("finds and loads micro-mcp.yaml", () => {
+      const altPath = path.join(tmpDir, "micro-mcp.yaml");
       fs.writeFileSync(altPath, "version: 1\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}");
       const config = ConfigLoader.findAndLoad(tmpDir);
       expect(config).not.toBeNull();

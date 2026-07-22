@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 // We'll import these after implementation
-import { getTransformTools, getCompressedTools, whitelistFilter } from "../../src/compressor.js";
+import { getTransformTools, getCompressedTools, whitelistFilter, levelToStage } from "../../src/compressor.js";
 
 // Sample tools matching what mock-server exposes
 const sampleTools: Tool[] = [
@@ -182,5 +182,69 @@ describe("getCompressedTools", () => {
   it("disabled returns full tools regardless of level", () => {
     const result = getCompressedTools(sampleTools, { enabled: false, level: "light" });
     expect(result).toEqual(sampleTools);
+  });
+});
+
+describe("levelToStage", () => {
+  const tools: Tool[] = [
+    {
+      name: "mock_echo",
+      description: "Echo back the input message",
+      inputSchema: {
+        type: "object",
+        properties: { message: { type: "string", description: "The message to echo" } },
+        required: ["message"],
+      },
+    },
+    {
+      name: "mock_get_time",
+      description: "Get the current server time",
+      inputSchema: { type: "object", properties: {} },
+    },
+  ];
+
+  it("off level passes tools through unchanged", () => {
+    const stage = levelToStage("off", false);
+    expect(stage(tools)).toEqual(tools);
+  });
+
+  it("light level produces 3 wrapper tools (list + get_tool_schema + invoke)", () => {
+    const stage = levelToStage("light", false);
+    const result = stage(tools);
+    expect(result.map(t => t.name)).toEqual(["mcp__list_tools", "mcp__get_tool_schema", "mcp__invoke_tool"]);
+  });
+
+  it("normal level produces 2 wrapper tools (get_tool_schema + invoke)", () => {
+    const stage = levelToStage("normal", false);
+    const result = stage(tools);
+    expect(result.map(t => t.name)).toEqual(["mcp__get_tool_schema", "mcp__invoke_tool"]);
+  });
+
+  it("extreme level strips property descriptions but keeps type/required", () => {
+    const stage = levelToStage("extreme", false);
+    const result = stage(tools);
+    const echo = result.find(t => t.name === "mock_echo")!;
+    const props = echo.inputSchema.properties as Record<string, Record<string, unknown>>;
+    expect(props.message.type).toBe("string");
+    expect(props.message.description).toBeUndefined();
+    expect(echo.inputSchema.required).toEqual(["message"]);
+  });
+
+  it("maximum level embeds signature in description and empties schema", () => {
+    const stage = levelToStage("maximum", false);
+    const result = stage(tools);
+    const echo = result.find(t => t.name === "mock_echo")!;
+    expect(echo.description).toContain("mock_echo(message: string)");
+    expect(echo.inputSchema).toEqual({ type: "object", properties: {} });
+  });
+
+  it("lazy+light degrades to passthrough (no wrapper)", () => {
+    const stage = levelToStage("light", true);
+    expect(stage(tools)).toEqual(tools);
+  });
+
+  it("lazy+normal degrades to passthrough", () => {
+    const stage = levelToStage("normal", true);
+    expect(stage(tools)).toEqual(tools);
   });
 });

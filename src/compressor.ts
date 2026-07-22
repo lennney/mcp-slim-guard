@@ -13,7 +13,7 @@
  * @module compressor
  */
 
-import type { CompressorConfig } from "./config-types.js";
+import type { CompressorConfig, CompressionLevel } from "./config-types.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import micromatch from "micromatch";
 
@@ -46,31 +46,23 @@ export const whitelistFilter = (allow: string[], deny: string[]): ToolStage => {
 };
 
 /**
- * Generate the compressed tool list that the agent sees.
+ * Build wrapper tools for light/normal compression levels.
+ * @param tools - Original full tool list
+ * @param includeList - Whether to include mcp__list_tools (light only)
  */
-export function getCompressedTools(
-  fullTools: Tool[],
-  config: CompressorConfig,
-): Tool[] {
-  if (!config.enabled || config.level === "off") return fullTools;
+function makeWrapperTools(tools: Tool[], includeList: boolean): Tool[] {
+  const result: Tool[] = [];
 
-  const tools: Tool[] = [];
-
-  // 1. list_tools (only at light level — normal/tight omit discovery)
-  if (config.level === "light") {
-    tools.push({
+  if (includeList) {
+    result.push({
       name: LIST_TOOLS,
       description:
         "List all available tools (names and descriptions only, no schemas). Call get_tool_schema to get full input schema for a specific tool.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-      },
+      inputSchema: { type: "object", properties: {} },
     });
   }
 
-  // 2. get_tool_schema — always available
-  tools.push({
+  result.push({
     name: GET_TOOL_SCHEMA,
     description:
       "Get the full input schema (parameters, types, constraints) for one tool. Use this before calling invoke_tool to construct correct arguments.",
@@ -79,25 +71,21 @@ export function getCompressedTools(
       properties: {
         tool_name: {
           type: "string",
-          description: `The full tool name (e.g. "mock_echo"). Available tools: ${fullTools.map(t => t.name).sort().join(", ")}`,
+          description: `The full tool name (e.g. "mock_echo"). Available tools: ${tools.map(t => t.name).sort().join(", ")}`,
         },
       },
       required: ["tool_name"],
     },
   });
 
-  // 3. invoke_tool — always available
-  tools.push({
+  result.push({
     name: INVOKE,
     description:
       "Invoke a tool with the given arguments. Call get_tool_schema first to see required parameters.",
     inputSchema: {
       type: "object",
       properties: {
-        tool_name: {
-          type: "string",
-          description: "The full tool name to invoke",
-        },
+        tool_name: { type: "string", description: "The full tool name to invoke" },
         input: {
           type: "object",
           description: "Arguments to pass to the tool (use get_tool_schema to see expected fields)",
@@ -107,7 +95,58 @@ export function getCompressedTools(
     },
   });
 
-  return tools;
+  return result;
+}
+
+/**
+ * Compression level → stage function.
+ * When lazyLoading=true, light/normal/tight degrade to passthrough (no wrapper).
+ * Note: config-loader's normalizeCompressionLevel already maps "tight" → "normal",
+ * so the "tight" case is for type completeness only.
+ */
+export const levelToStage = (level: CompressionLevel, lazyLoading: boolean): ToolStage => {
+  return (tools: Tool[]) => {
+    if (lazyLoading && (level === "light" || level === "normal" || level === "tight")) {
+      return tools; // passthrough — lazy mode doesn't use wrappers
+    }
+
+    switch (level) {
+      case "off":
+        return tools;
+
+      case "light":
+        return makeWrapperTools(tools, true);
+
+      case "normal":
+      case "tight":
+        return makeWrapperTools(tools, false);
+
+      case "extreme":
+        return tools.map(t => ({
+          name: t.name,
+          description: t.description ?? "",
+          inputSchema: stripPropertyDescriptions(t.inputSchema),
+        }));
+
+      case "maximum":
+        return tools.map(t => ({
+          name: t.name,
+          description: `${t.description ?? ""} ${buildSignature(t)}`.trim(),
+          inputSchema: { type: "object" as const, properties: {} },
+        }));
+    }
+  };
+};
+
+/**
+ * Generate the compressed tool list that the agent sees.
+ */
+export function getCompressedTools(
+  fullTools: Tool[],
+  config: CompressorConfig,
+): Tool[] {
+  if (!config.enabled || config.level === "off") return fullTools;
+  return makeWrapperTools(fullTools, config.level === "light");
 }
 
 /**

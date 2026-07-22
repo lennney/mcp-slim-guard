@@ -333,4 +333,127 @@ describe("Compressor Pipeline", () => {
       await destroyProxy(ctx);
     }
   });
+
+  // -----------------------------------------------------------------------
+  // 13. extreme level: tools/list returns real tools (not wrappers)
+  // -----------------------------------------------------------------------
+  it("tools/list returns real tools when compressor=extreme", async () => {
+    const config = makeConfig({ compressor: { enabled: true, level: "extreme" } });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+      const names = tools.map((t) => t.name);
+
+      expect(names).toContain("mock_echo");
+      expect(names).toContain("mock_add");
+      expect(names).toContain("mock_get_time");
+      // Wrapper tools should NOT appear
+      expect(names).not.toContain("mcp__list_tools");
+      expect(names).not.toContain("mcp__get_tool_schema");
+      expect(names).not.toContain("mcp__invoke_tool");
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 14. extreme level: tool calls go directly to real tool names
+  // -----------------------------------------------------------------------
+  it("calls real tool directly when compressor=extreme", async () => {
+    const config = makeConfig({ compressor: { enabled: true, level: "extreme" } });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.callTool({
+        name: "mock_echo",
+        arguments: { message: "direct call" },
+      });
+      expect((result as { isError?: boolean }).isError).toBeFalsy();
+      const content = result.content[0] as { type: string; text?: string };
+      const parsed = JSON.parse(content.text ?? "{}");
+      expect(parsed).toEqual({ echoed: "direct call" });
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 15. extreme level: tools still have inputSchema with type info
+  // -----------------------------------------------------------------------
+  it("extreme level preserves type info but strips descriptions", async () => {
+    const config = makeConfig({ compressor: { enabled: true, level: "extreme" } });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+      const echoTool = tools.find(t => t.name === "mock_echo")!;
+      expect(echoTool.inputSchema).toBeDefined();
+      expect(echoTool.inputSchema.type).toBe("object");
+      expect(echoTool.inputSchema.properties).toBeDefined();
+
+      const messageProp = (echoTool.inputSchema.properties as Record<string, Record<string, unknown>>).message;
+      expect(messageProp).toBeDefined();
+      expect(messageProp.type).toBe("string");
+      // Description should be stripped at extreme level
+      expect(messageProp.description).toBeUndefined();
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 16. maximum level: tools/list returns real tools with minimal schemas
+  // -----------------------------------------------------------------------
+  it("tools/list returns real tools when compressor=maximum", async () => {
+    const config = makeConfig({ compressor: { enabled: true, level: "maximum" } });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+      const names = tools.map((t) => t.name);
+
+      expect(names).toContain("mock_echo");
+      expect(names).toContain("mock_add");
+      expect(names).toContain("mock_get_time");
+      // Wrapper tools should NOT appear
+      expect(names).not.toContain("mcp__list_tools");
+      expect(names).not.toContain("mcp__get_tool_schema");
+      expect(names).not.toContain("mcp__invoke_tool");
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 17. maximum level: inputSchema is minimal {type:object}
+  // -----------------------------------------------------------------------
+  it("maximum level replaces inputSchema with minimal {type:object}", async () => {
+    const config = makeConfig({ compressor: { enabled: true, level: "maximum" } });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+      const echoTool = tools.find(t => t.name === "mock_echo")!;
+      expect(echoTool.inputSchema).toEqual({ type: "object", properties: {} });
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // 18. maximum level: description contains function signature
+  // -----------------------------------------------------------------------
+  it("maximum level embeds function signature in description", async () => {
+    const config = makeConfig({ compressor: { enabled: true, level: "maximum" } });
+    const ctx = await buildProxy(config);
+    try {
+      const result = await ctx.client.listTools();
+      const tools = result.tools as Tool[];
+      const echoTool = tools.find(t => t.name === "mock_echo")!;
+      // Description should contain the function signature
+      expect(echoTool.description).toContain("mock_echo(message: string)");
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
 });

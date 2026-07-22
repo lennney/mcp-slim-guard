@@ -157,14 +157,14 @@ describe("CLI", () => {
   // ── init ─────────────────────────────────────────────────────────
 
   describe("init", () => {
-    it("discovers MCP config and generates mcp-guard.yml → prints success", async () => {
+    it("discovers MCP config and generates micro-mcp.yml → prints success", async () => {
       MockConfigLoader.ConfigLoader.discoverMCPConfig.mockReturnValue("/fake/path/.mcp.json");
       MockConfigLoader.ConfigLoader.generateGuardConfig.mockReturnValue(MOCK_GUARD_CONFIG);
 
       await main(["node", "cli.js", "init"]);
 
       expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalledWith(
-        expect.stringContaining("mcp-guard"),
+        expect.stringContaining("micro-mcp"),
       );
       expect(MockConfigLoader.ConfigLoader.generateGuardConfig).toHaveBeenCalledWith(
         "/fake/path/.mcp.json",

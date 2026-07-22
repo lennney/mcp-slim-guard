@@ -1,7 +1,7 @@
 ---
 type: AgentInstruction
 title: mcp-guard — 轻量 MCP 安全代理
-timestamp: '2026-07-20T23:30:00+08:00'
+timestamp: '2026-07-22T15:00:00+08:00'
 description: 一行命令给 MCP 加上 SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测
 tags:
 - mcp-guard
@@ -19,7 +19,7 @@ tags:
 ```bash
 cd ~/micro-mcp
 npm run build               # 编译到 dist/
-npm test                    # 全量测试（305 tests, 18 files）
+npm test                    # 全量测试（395 tests, 20 files）
 npx vitest run              # 同上
 npx tsc --noEmit            # 类型检查
 ```
@@ -40,6 +40,7 @@ npx tsc --noEmit            # 类型检查
 ```
 AI Agent → mcp-guard (STDIO 或 HTTP 代理)
              ├─ PolicyPipeline（串行：白名单→SSRF→注入检测→限速）
+             ├─ ToolCache（内存 TTL+LRU，只读工具调用结果缓存）
              ├─ AuditLogger（pino JSON，支持按大小轮转）
              └─ ServerManager → 上游 MCP Server × N
 ```
@@ -74,7 +75,7 @@ mcp-guard ──(MCP SDK)──→ 上游 MCP Server（GitHub / Playwright / ...
 | Phase 1 核心策略管道 | ✅ 完成 | 13/13 任务，155 tests |
 | Phase 2 高级功能 | ✅ 完成 | 热重载/HTTP/注入检测/压缩器/审计轮转 |
 | Phase 3 安全增强 | ✅ 完成 | 6 项安全风险全部修复（SECURITY_AUDIT.md）|
-| Phase 1 压缩对标 | ✅ 完成 | 5 级压缩 + lazy loading + 预算预加载，369 tests |
+| Phase 1 压缩对标 | ✅ 完成 | 5 级压缩 + lazy loading + 请求缓存 TTL+LRU，395 tests |
 | 发布 | ⏳ | MCP 2026-07-28 后 1-2 周 |
 
 ## 约束
@@ -101,6 +102,10 @@ mcp-guard ──(MCP SDK)──→ 上游 MCP Server（GitHub / Playwright / ...
 | `deny: ["delete_*"]` 不拦截 `mock_delete` | resolveTool 先校验 tool 存在 | resolveTool 只检查 server，policy pipeline 负责 deny |
 | 集成测试不通过 | 忘记先 build | `npm run build && npx vitest run` |
 | slim 工具省略 inputSchema 导致 SDK 报错 | MCP SDK Zod 校验要求 inputSchema 必须是 object | slim 格式用 `{ type: "object", properties: {} }` 代替省略 |
+| cache.ts 缓存命中不写审计日志 | proxy.ts 的 forwardToolCall 缓存命中直接 return，跳过了 audit.log | 缓存命中前显式调用 `this.audit.log(ctx, { allowed: true }, [{ policy: "cache", result: "pass" }], ...)` |
+| ToolCache.set() 重复 key 导致 LRU 顺序污染 | set() 调用两次时，order 数组里 key 出现两次，map 里只有一次 | set() 前 `this.order = this.order.filter(k => k !== key)` 去重 |
+| cache.ts 动词列表三处重复 | CACHEABLE / SEARCH_LIKE / READ_LIKE 三个 regex 里动词列表各自独立 | 提取 `SEARCH_VERBS` / `READ_VERBS` 为常量，`buildVerbRegex()` 生成 regex，一处修改生效 |
+| 新加可缓存的动词需要改三处 | 缓存动词列表在 regex 和 TTL 判断里硬编码 | 修改 `SEARCH_VERBS` / `READ_VERBS` 常量即可，regex 和 TTL 自动跟随 |
 
 ## 按需检索的文档
 
@@ -116,4 +121,4 @@ mcp-guard ──(MCP SDK)──→ 上游 MCP Server（GitHub / Playwright / ...
 
 ## 最近活动
 
-- 2026-07-20 23:20: **文档完善** — AGENTS/HANDOVER/LEARNINGS/CHANGELOG/SECURITY_AUDIT 同步更新。
+- 2026-07-22 15:00: **请求缓存 TTL+LRU** — 内存缓存只读 MCP 工具调用结果。新增 `ToolCache` 类（cache.ts），22 个单元测试 + 3 个 proxy 集成测试 + 1 个 full-pipeline 测试。AGENTS/LEARNINGS/HANDOVER/CHANGELOG/ROADMAP 同步更新。

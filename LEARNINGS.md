@@ -123,3 +123,29 @@ tags:
 - `lazy_loading=true` + `light`/`normal` 时，lazy 不走 wrapper 模式，`levelToStage` 直接返回 passthrough。
 - 否则 pipeline 会生成 wrapper 工具 + lazy 的 get_schema，两套发现机制冲突。
 - 配置验证不需要额外逻辑——`levelToStage` 的 lazyLoading 参数短路即可。
+
+## 缓存 TTL+LRU（2026-07-22）
+
+### 动词列表单一来源
+- `CACHEABLE`、`SEARCH_LIKE`、`READ_LIKE` 三个 regex 的动词列表完全相同但分散在三处。修改一个动词需要同步三处，容易遗漏。
+- 解决：提取 `SEARCH_VERBS` / `READ_VERBS` 为 `ReadonlySet<string>`，通过 `buildVerbRegex()` 工厂函数生成 regex。`CACHEABLE` 用 union source + 前缀模式组合。新增或修改动词只需改 Set。
+
+### set() 重复 key 导致 LRU 顺序污染
+- `set()` 在 push 前未先过滤已有 key，导致同一 key 在 order 数组出现两次但 map 只有一次。LRU 淘汰 shift 出旧 key 时，map.delete 找不到，实际淘汰错误条目。
+- 解决：在 push 前 `this.order = this.order.filter(k => k !== key)` 去重（同 `get()` 做法）。
+
+### zero max_entries 死循环
+- `while (this.order.length >= this.config.max_entries)` 在 max_entries=0 时恒为真。插入前无 item 可 shift，shift() 返回 undefined，if 跳过 delete，死循环。
+- 解决：改为 `> this.config.max_entries`，且把淘汰循环移到插入之后（先插新条目，再淘汰溢出条目）。
+
+### 缓存命中需要审计日志
+- 设计文档要求缓存命中时审计 trail 追加 `{ policy: "cache", result: "pass" }`，但初版 forwardToolCall 在缓存命中时直接 return 跳过了 audit.log。
+- 解决：缓存命中时显式调用 `this.audit.log(ctx, { allowed: true }, [{ policy: "cache", result: "pass" }], ...)`。
+
+### 缓存可缓存判断默认只匹配 read 动词
+- `isCacheable` 默认模式推断只匹配 `search|list|find|query|read|get|describe|info|check` 前缀的工具。其他工具（如 `echo`、`create`、`delete`）不会缓存。
+- 测试用 `allow: ["*"]` 覆盖让非匹配工具可缓存；生产环境用 `cache.allow` 配置精确控制。
+
+### TTL 与工具名模式关联
+- 模式推断 TTL：search-like 动词 → 15s，read-like → 60s。通过 `SEARCH_LIKE` / `READ_LIKE` regex 匹配，先 search 后 read 的顺序保证 search 优先。
+- `ttl_per_tool` 精确覆盖比模式推断优先；全局 `cache.ttl` 兜底。

@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 // We'll import these after implementation
-import { getTransformTools, getCompressedTools, whitelistFilter, levelToStage, applyLazyBudget, injectGetSchema } from "../../src/compressor.js";
+import { getTransformTools, getCompressedTools, whitelistFilter, levelToStage, applyLazyBudget, injectGetSchema, generateTools, buildPipeline } from "../../src/compressor.js";
 
 // Sample tools matching what mock-server exposes
 const sampleTools: Tool[] = [
@@ -340,5 +340,84 @@ describe("injectGetSchema", () => {
     const result = injectGetSchema([]);
     const schema = result[0].inputSchema;
     expect(schema.required).toEqual(["tool_name"]);
+  });
+});
+
+describe("generateTools / buildPipeline", () => {
+  const tools: Tool[] = [
+    { name: "github_search", description: "Search", inputSchema: { type: "object", properties: { q: { type: "string", description: "query" } }, required: ["q"] } },
+    { name: "github_create", description: "Create", inputSchema: { type: "object", properties: { title: { type: "string" } } } },
+  ];
+
+  it("lazy+off: returns preloaded + slim + get_schema", () => {
+    const config = { enabled: true, level: "off" as const, lazy_loading: true, lazy_budget: 8 };
+    const result = generateTools(tools, config, [], []);
+    // github_search is high-priority → full schema
+    // github_create is not → slim
+    // + mcp__get_schema
+    expect(result).toHaveLength(3);
+    const search = result.find(t => t.name === "github_search")!;
+    expect(search.inputSchema.properties).toHaveProperty("q");
+    const create = result.find(t => t.name === "github_create")!;
+    expect(create.inputSchema).toBeUndefined();
+    expect(result[2].name).toBe("mcp__get_schema");
+  });
+
+  it("lazy+extreme: level strips first, then lazy restores high-priority from original", () => {
+    const config = { enabled: true, level: "extreme" as const, lazy_loading: true, lazy_budget: 8 };
+    const result = generateTools(tools, config, [], []);
+    const search = result.find(t => t.name === "github_search")!;
+    // Should have original full schema (restored from originalTools), not extreme-stripped
+    expect(search.inputSchema.properties).toHaveProperty("q");
+    const create = result.find(t => t.name === "github_create")!;
+    expect(create.inputSchema).toBeUndefined();
+  });
+
+  it("lazy+maximum: level embeds signature, then lazy restores high-priority", () => {
+    const config = { enabled: true, level: "maximum" as const, lazy_loading: true, lazy_budget: 8 };
+    const result = generateTools(tools, config, [], []);
+    const search = result.find(t => t.name === "github_search")!;
+    expect(search.inputSchema.properties).toHaveProperty("q");
+  });
+
+  it("lazy+light: degrades to off behavior (no wrapper)", () => {
+    const config = { enabled: true, level: "light" as const, lazy_loading: true, lazy_budget: 8 };
+    const result = generateTools(tools, config, [], []);
+    // No mcp__list_tools / mcp__get_tool_schema / mcp__invoke_tool
+    expect(result.find(t => t.name === "mcp__list_tools")).toBeUndefined();
+    expect(result.find(t => t.name === "mcp__invoke_tool")).toBeUndefined();
+    // But mcp__get_schema IS present (lazy mode)
+    expect(result.find(t => t.name === "mcp__get_schema")).toBeDefined();
+  });
+
+  it("non-lazy+extreme: works without lazy (existing behavior)", () => {
+    const config = { enabled: true, level: "extreme" as const };
+    const result = generateTools(tools, config, [], []);
+    expect(result).toHaveLength(2);
+    const search = result.find(t => t.name === "github_search")!;
+    expect(search.inputSchema.properties).toBeDefined();
+    // No mcp__get_schema
+    expect(result.find(t => t.name === "mcp__get_schema")).toBeUndefined();
+  });
+
+  it("non-lazy+off: passes through unchanged", () => {
+    const config = { enabled: true, level: "off" as const };
+    const result = generateTools(tools, config, [], []);
+    expect(result).toEqual(tools);
+  });
+
+  it("disabled compressor returns full tools", () => {
+    const config = { enabled: false, level: "off" as const, lazy_loading: true };
+    const result = generateTools(tools, config, [], []);
+    expect(result).toEqual(tools);
+  });
+
+  it("whitelist filters before lazy budget selection", () => {
+    const config = { enabled: true, level: "off" as const, lazy_loading: true, lazy_budget: 8 };
+    const result = generateTools(tools, config, ["github_*"], ["github_create"]);
+    // Only github_search survives whitelist
+    const names = result.map(t => t.name);
+    expect(names).toContain("github_search");
+    expect(names).not.toContain("github_create");
   });
 });

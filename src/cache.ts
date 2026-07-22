@@ -116,11 +116,21 @@ export class ToolCache {
     return entry.result;
   }
 
-  set(toolName: string, args: Record<string, unknown>, result: ToolResult): void {
+  set(
+    toolName: string,
+    args: Record<string, unknown>,
+    result: ToolResult,
+    ttlMs?: number,
+  ): void {
     if (!this.config.enabled) return;
     if (result.isError) return;
     const key = makeKey(toolName, args);
-    this.map.set(key, { result, expiresAt: Date.now() + this.getTTL(toolName) * 1000 });
+    // Use upstream ttlMs hint if provided (already in milliseconds),
+    // otherwise fall back to pattern-inferred TTL (getTTL returns seconds, convert to ms)
+    const ttl = ttlMs !== undefined
+      ? ttlMs
+      : this.getTTL(toolName) * 1000;
+    this.map.set(key, { result, expiresAt: Date.now() + ttl });
     this.order = this.order.filter((k) => k !== key);
     this.order.push(key);
     while (this.order.length > this.config.max_entries) {

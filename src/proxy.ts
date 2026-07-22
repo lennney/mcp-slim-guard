@@ -121,6 +121,7 @@ export class GuardProxy {
             { type: "text" as const, text: `Unknown tool: ${prefixedName}` },
           ],
           isError: true,
+          resultType: "complete" as const,
         };
       }
 
@@ -152,6 +153,7 @@ export class GuardProxy {
             },
           ],
           isError: true,
+          resultType: "complete" as const,
         };
       }
 
@@ -168,7 +170,7 @@ export class GuardProxy {
             ++this.requestCounter,
             Date.now() - startTime,
           );
-          return cached;
+          return { ...cached, resultType: "complete" as const };
         }
       }
 
@@ -180,10 +182,12 @@ export class GuardProxy {
 
       // Cache write — store result for future calls
       if (this.cache && this.cache.isCacheable(prefixedName)) {
-        this.cache.set(prefixedName, args, callResult);
+        // Upstream ttlMs hint (not yet returned by SDK 1.29.0, but pipeline ready)
+        const upstreamTtlMs = (callResult as Record<string, unknown>).ttlMs as number | undefined;
+        this.cache.set(prefixedName, args, callResult, upstreamTtlMs);
       }
 
-      return callResult;
+      return { ...callResult, resultType: "complete" as const };
     };
 
     // Register tools/call handler — compressor aware, all calls go through policy pipeline

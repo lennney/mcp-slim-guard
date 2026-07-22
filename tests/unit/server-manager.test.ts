@@ -222,11 +222,19 @@ describe("ServerManager", () => {
     expect(resultB.content[0].text).toBe("result from B");
 
     expect(mockClientInstances[0].callTool).toHaveBeenCalledWith(
-      { name: "alpha", arguments: { x: 1 } },
+      {
+        name: "alpha",
+        arguments: { x: 1 },
+        _meta: { protocolVersion: "2025-11-25", clientCapabilities: {} },
+      },
       expect.anything(),
     );
     expect(mockClientInstances[1].callTool).toHaveBeenCalledWith(
-      { name: "beta", arguments: { y: 2 } },
+      {
+        name: "beta",
+        arguments: { y: 2 },
+        _meta: { protocolVersion: "2025-11-25", clientCapabilities: {} },
+      },
       expect.anything(),
     );
   });
@@ -345,6 +353,57 @@ describe("ServerManager", () => {
     await expect(
       manager.callTool("srv", "fail_tool", { data: "test" }),
     ).rejects.toThrow("Upstream server error");
+  });
+
+  // 10c. discover() returns all connected servers with capabilities
+  describe("discover", () => {
+    it("returns all connected servers with capabilities", async () => {
+      const manager = await makeServerManager(
+        { "test-server": serverCfg() },
+        { "test-server": [{ name: "test_tool" }] },
+      );
+
+      const result = await manager.discover();
+
+      expect(result.servers).toHaveLength(1);
+      expect(result.servers[0]).toEqual({
+        name: "test-server",
+        capabilities: { tools: { listChanged: false } },
+      });
+    });
+
+    it("returns empty when no servers connected", async () => {
+      mockClientInstances = [];
+      mockServerOrder = [];
+      mockToolsForServer = {};
+      const manager = new ServerManager({});
+      await manager.start();
+
+      const result = await manager.discover();
+
+      expect(result.servers).toEqual([]);
+    });
+
+    it("handles multiple servers", async () => {
+      const manager = await makeServerManager(
+        {
+          "server-a": serverCfg(),
+          "server-b": serverCfg(),
+        },
+        {
+          "server-a": [{ name: "toolA" }],
+          "server-b": [{ name: "toolB" }],
+        },
+      );
+
+      const result = await manager.discover();
+
+      expect(result.servers).toHaveLength(2);
+      expect(result.servers.map((s) => s.name).sort()).toEqual([
+        "server-a",
+        "server-b",
+      ]);
+    });
   });
 
   // Edge: empty server config

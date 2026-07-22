@@ -1,7 +1,7 @@
 ---
 type: HandoverDoc
 title: micro-mcp HANDOVER
-timestamp: '2026-07-22T18:00:00+08:00'
+timestamp: '2026-07-22T18:30:00+08:00'
 description: 当前状态、已完成工作、待办事项
 tags:
 - handover
@@ -30,12 +30,13 @@ tags:
 - [x] 2026-07-21 HTTP 测试固定 sleep 改轮询端口就绪
 - [x] 2026-07-22 压缩等级扩展 2→5（off/light/normal/extreme/maximum + tight 别名）
 - [x] 2026-07-22 Lazy loading（纯函数 pipeline + 预算预加载 + mcp__get_schema 按需发现）
+- [x] 2026-07-22 MCP 2026-07-28 协议适配（resultType + _meta + ttlMs + server/discover，+4 tests）
 
 ## 当前状态
 
 | 指标 | 数值 |
 |------|------|
-| 测试 | 397 tests, 20 files, 全绿 |
+| 测试 | 401 tests, 20 files, 全绿 (1 预存 CLI 失败) |
 | 生产依赖 | 5 个（未新增）|
 | 源文件 | 15 个 |
 | Build | tsc --noEmit 通过 |
@@ -49,13 +50,12 @@ tags:
 - [x] 项目重命名：mcp-guard → micro-mcp（全部文档 + package.json repo URL）
 - [x] npm publish 准备（版本号 0.4.0 + CHANGELOG 更新）
 - [x] Dockerfile
-- [ ] MCP 2026-07-28 协议兼容适配（见下方关键决策）
+- [x] MCP 2026-07-28 协议兼容适配（resultType + _meta + ttlMs + server/discover，计划：`docs/plans/2026-07-22-mcp-2026-07-28-protocol-adaptation.md`）
 
 ## 下一步
 
-1. **MCP 2026-07-28 协议适配** — 关键变更：`initialize` 握手移除，需每请求注入 `_meta`；`resultType` 必填；`InputRequiredResult` 替代 server-initiated 请求
-2. npm publish（`npm publish --access public`）
-3. Phase 2 P1：Istio-style 策略模板 / 安全报告 CLI
+1. npm publish（`npm publish --access public`）
+2. Phase 2 P1：Istio-style 策略模板 / 安全报告 CLI
 
 ## 关键决策
 
@@ -97,4 +97,4 @@ tags:
 
 ## 上次更新
 
-2026-07-22 18:00
+2026-07-22 18:30

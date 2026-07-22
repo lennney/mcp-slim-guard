@@ -147,6 +147,40 @@ describe("ToolCache.get/set", () => {
   });
 });
 
+  it("uses upstream ttlMs when provided (overrides pattern TTL)", () => {
+    vi.useFakeTimers();
+    const cache = new ToolCache(makeConfig({ ttl: 30, enabled: true }));
+    // ttlMs=5000 means 5 seconds, shorter than default 30s
+    cache.set("read_foo", { id: 1 }, { content: [{ type: "text", text: "ok" }] }, 5000);
+
+    // Should hit within 5 seconds
+    vi.advanceTimersByTime(4000);
+    expect(cache.get("read_foo", { id: 1 })).not.toBeNull();
+
+    // Should miss after 5 seconds
+    vi.advanceTimersByTime(2000);
+    expect(cache.get("read_foo", { id: 1 })).toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  it("falls back to pattern TTL when ttlMs is not provided", () => {
+    vi.useFakeTimers();
+    const cache = new ToolCache(makeConfig({ ttl: 30, enabled: true }));
+    // No ttlMs arg — should use search-like TTL (15s) for "search_foo"
+    cache.set("search_foo", { q: "test" }, { content: [{ type: "text", text: "ok" }] });
+
+    // Should hit within 15 seconds
+    vi.advanceTimersByTime(14000);
+    expect(cache.get("search_foo", { q: "test" })).not.toBeNull();
+
+    // Should miss after 15 seconds
+    vi.advanceTimersByTime(2000);
+    expect(cache.get("search_foo", { q: "test" })).toBeNull();
+
+    vi.useRealTimers();
+  });
+
 describe("ToolCache TTL expiry", () => {
   it("expires entry after TTL seconds", () => {
     vi.useFakeTimers();

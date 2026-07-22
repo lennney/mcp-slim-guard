@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 // We'll import these after implementation
-import { getTransformTools, getCompressedTools } from "../../src/compressor.js";
+import { getTransformTools, getCompressedTools, whitelistFilter } from "../../src/compressor.js";
 
 // Sample tools matching what mock-server exposes
 const sampleTools: Tool[] = [
@@ -54,6 +54,37 @@ const sampleTools: Tool[] = [
     },
   },
 ];
+
+describe("whitelistFilter", () => {
+  const tools: Tool[] = [
+    { name: "github_search", description: "search", inputSchema: { type: "object", properties: {} } },
+    { name: "github_create", description: "create", inputSchema: { type: "object", properties: {} } },
+    { name: "slack_send", description: "send", inputSchema: { type: "object", properties: {} } },
+  ];
+
+  it("passes all tools when allow is empty and deny is empty", () => {
+    const stage = whitelistFilter([], []);
+    expect(stage(tools)).toHaveLength(3);
+  });
+
+  it("filters by allow pattern", () => {
+    const stage = whitelistFilter(["github_*"], []);
+    const result = stage(tools);
+    expect(result.map(t => t.name)).toEqual(["github_search", "github_create"]);
+  });
+
+  it("filters by deny pattern (deny takes priority)", () => {
+    const stage = whitelistFilter(["*"], ["github_create"]);
+    const result = stage(tools);
+    expect(result.map(t => t.name)).toEqual(["github_search", "slack_send"]);
+  });
+
+  it("combines allow + deny patterns", () => {
+    const stage = whitelistFilter(["github_*"], ["github_create"]);
+    const result = stage(tools);
+    expect(result.map(t => t.name)).toEqual(["github_search"]);
+  });
+});
 
 describe("getTransformTools", () => {
   describe("extreme level", () => {

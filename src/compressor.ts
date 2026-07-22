@@ -22,8 +22,28 @@ const { isMatch } = micromatch;
 /** Prefix for wrapper tools to avoid colliding with real tool names */
 const PREFIX = "mcp__";
 const LIST_TOOLS = `${PREFIX}list_tools`;
-const GET_SCHEMA = `${PREFIX}get_tool_schema`;
+const GET_TOOL_SCHEMA = `${PREFIX}get_tool_schema`;  // renamed from GET_SCHEMA (wrapper mode)
+const GET_SCHEMA = `${PREFIX}get_schema`;              // new: lazy mode discovery tool
 const INVOKE = `${PREFIX}invoke_tool`;
+
+/** A compression/lazy stage: input tools → output tools */
+export type ToolStage = (tools: Tool[]) => Tool[];
+
+/**
+ * Whitelist filter stage — filters tools by allow/deny patterns.
+ * deny match → blocked; allow non-empty → must match; otherwise allowed.
+ * This replaces the isToolVisible logic previously embedded in handleWrapperTool.
+ */
+export const whitelistFilter = (allow: string[], deny: string[]): ToolStage => {
+  return (tools: Tool[]) => {
+    const isAllowed = (name: string): boolean => {
+      if (deny.length > 0 && deny.some(p => isMatch(name, p))) return false;
+      if (allow.length > 0) return allow.some(p => isMatch(name, p));
+      return true;
+    };
+    return tools.filter(t => isAllowed(t.name));
+  };
+};
 
 /**
  * Generate the compressed tool list that the agent sees.
@@ -51,7 +71,7 @@ export function getCompressedTools(
 
   // 2. get_tool_schema — always available
   tools.push({
-    name: GET_SCHEMA,
+    name: GET_TOOL_SCHEMA,
     description:
       "Get the full input schema (parameters, types, constraints) for one tool. Use this before calling invoke_tool to construct correct arguments.",
     inputSchema: {
@@ -94,7 +114,7 @@ export function getCompressedTools(
  * Handle a wrapper tool call. Returns the response if it's a wrapper tool,
  * or null if it's a regular tool call that should be handled normally.
  *
- * Whitelist filtering: LIST_TOOLS and GET_SCHEMA only return tools that are
+ * Whitelist filtering: LIST_TOOLS and GET_TOOL_SCHEMA only return tools that are
  * allowed by the allow/deny patterns, preventing information disclosure
  * through compressor discovery tools.
  */
@@ -150,7 +170,7 @@ export async function handleWrapperTool(
       };
     }
 
-    case GET_SCHEMA: {
+    case GET_TOOL_SCHEMA: {
       const targetName = args.tool_name as string;
       if (!targetName || !nameToSchema[targetName]) {
         return {
@@ -264,4 +284,4 @@ export function getTransformTools(
   });
 }
 
-export { PREFIX, LIST_TOOLS, GET_SCHEMA, INVOKE };
+export { PREFIX, LIST_TOOLS, GET_TOOL_SCHEMA, GET_SCHEMA, INVOKE };

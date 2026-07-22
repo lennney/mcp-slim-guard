@@ -38,7 +38,7 @@ function validateResponse(toolCall, scenario) {
   // Unwrap mcp__invoke_tool wrapper calls (light/normal compression mode)
   if (actualToolName === "mcp__invoke_tool" || actualToolName.endsWith("__invoke_tool")) {
     actualToolName = actualArgs.tool_name ?? "";
-    actualArgs = actualArgs.args ?? {};
+    actualArgs = actualArgs.input ?? {};
   }
 
   // Tool name check (namespace tolerant)

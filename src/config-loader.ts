@@ -93,6 +93,13 @@ export class ConfigLoader {
         lazy_loading: false,
         lazy_budget: 8,
       },
+      cache: {
+        enabled: false,
+        ttl: 30,
+        max_entries: 500,
+        allow: [],
+        deny: [],
+      },
       audit: {
         output: "file",
         filePath: "micro-mcp-audit.log",
@@ -155,6 +162,17 @@ export class ConfigLoader {
       if (config.compressor.lazy_budget === undefined) {
         config.compressor.lazy_budget = 8;
       }
+    }
+
+    // Fill cache defaults
+    if (!config.cache) {
+      config.cache = {
+        enabled: false,
+        ttl: 30,
+        max_entries: 500,
+        allow: [],
+        deny: [],
+      };
     }
 
     return config;

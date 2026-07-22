@@ -174,6 +174,19 @@ export interface CompressorConfig {
    * - `"maximum"`: 工具保留真名，inputSchema 最小化，描述嵌入 TS 函数签名
    */
   level: CompressionLevel;
+  /**
+   * 按需展开 schema：tools/list 不返回完整 schema，
+   * 通过 mcp__get_schema 按需获取。
+   * light/normal/tight 级别下退化为 off 行为。
+   * 默认 false。
+   */
+  lazy_loading?: boolean;
+  /**
+   * lazy loading 模式下预暴露完整 schema 的工具数上限。
+   * 高优先级工具（匹配 search/list/read/get/find/describe/info 模式）
+   * 优先预加载。默认 8。
+   */
+  lazy_budget?: number;
 }
 
 /**

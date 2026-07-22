@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as yaml from "js-yaml";
 import { ConfigLoader } from "../../src/config-loader.js";
+import { validateConfigSchema } from "../../src/config-schema.js";
 
 describe("ConfigLoader", () => {
   const tmpDir = "/tmp/mcp-guard-test";
@@ -157,6 +159,64 @@ describe("ConfigLoader", () => {
     it("returns null when no YAML found", () => {
       const config = ConfigLoader.findAndLoad(tmpDir);
       expect(config).toBeNull();
+    });
+  });
+
+  describe("compressor lazy_loading config", () => {
+    it("applies defaults lazy_loading=false, lazy_budget=8 when omitted", () => {
+      const config = ConfigLoader.loadGuardConfig(
+        "tests/fixtures/config-minimal.yaml",
+      );
+      expect(config.compressor.lazy_loading).toBe(false);
+      expect(config.compressor.lazy_budget).toBe(8);
+    });
+
+    it("loads lazy_loading=true and lazy_budget=4 from YAML", () => {
+      const yamlContent = `
+version: 1
+tools: { allow: ["*"], deny: [] }
+ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }
+rate_limit: { default: "" }
+injection_detection: { enabled: false }
+compressor: { enabled: true, level: "off", lazy_loading: true, lazy_budget: 4 }
+servers: {}
+`;
+      const tmpPath = path.join(tmpDir, `test-lazy-config-${Date.now()}.yaml`);
+      fs.writeFileSync(tmpPath, yamlContent);
+      try {
+        const config = ConfigLoader.loadGuardConfig(tmpPath);
+        expect(config.compressor.lazy_loading).toBe(true);
+        expect(config.compressor.lazy_budget).toBe(4);
+      } finally {
+        fs.unlinkSync(tmpPath);
+      }
+    });
+
+    it("schema validates lazy_budget range (0-100)", () => {
+      const yamlContent = `
+version: 1
+tools: { allow: ["*"], deny: [] }
+ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }
+rate_limit: { default: "" }
+injection_detection: { enabled: false }
+compressor: { enabled: true, level: "off", lazy_budget: 200 }
+servers: {}
+`;
+      const tmpPath = path.join(tmpDir, `test-lazy-budget-${Date.now()}.yaml`);
+      fs.writeFileSync(tmpPath, yamlContent);
+      try {
+        const errors = validateConfigSchema(
+          yaml.load(fs.readFileSync(tmpPath, "utf-8")) as Record<string, unknown>,
+        );
+        expect(errors.length).toBeGreaterThan(0);
+        expect(
+          errors.some(
+            (e) => e.path.includes("lazy_budget") || e.message.includes("lazy_budget"),
+          ),
+        ).toBe(true);
+      } finally {
+        fs.unlinkSync(tmpPath);
+      }
     });
   });
 });

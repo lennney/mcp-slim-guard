@@ -26,6 +26,10 @@ export interface SchemaNode {
   default?: unknown;
   /** 自定义：允许的额外属性名模式（用于 servers 等） */
   patternProperties?: Record<string, SchemaNode>;
+  /** 数值下限（inclusive） */
+  minimum?: number;
+  /** 数值上限（inclusive） */
+  maximum?: number;
 }
 
 /**
@@ -47,6 +51,18 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
       properties: {
         enabled: { type: "boolean" },
         level: { type: "string", enum: ["off", "light", "normal", "tight", "extreme", "maximum"] },
+        lazy_loading: {
+          type: "boolean",
+          default: false,
+          description: "按需展开 schema，通过 mcp__get_schema 按需获取",
+        },
+        lazy_budget: {
+          type: "number",
+          minimum: 0,
+          maximum: 100,
+          default: 8,
+          description: "lazy loading 预暴露完整 schema 的工具数上限",
+        },
       },
       additionalProperties: false,
       description: "Schema 压缩配置",
@@ -272,6 +288,22 @@ function validateNode(
   // --- type check ---
   if (schema.type) {
     checkType(value, schema.type, path, errors);
+  }
+
+  // --- minimum/maximum check (for numbers) ---
+  if (typeof value === "number") {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      errors.push({
+        path,
+        message: `expected >= ${schema.minimum}, got ${value}`,
+      });
+    }
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      errors.push({
+        path,
+        message: `expected <= ${schema.maximum}, got ${value}`,
+      });
+    }
   }
 
   // --- enum check ---

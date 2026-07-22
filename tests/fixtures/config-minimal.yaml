@@ -1,0 +1,7 @@
+version: 1
+tools: { allow: ["*"], deny: [] }
+ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }
+rate_limit: { default: "" }
+injection_detection: { enabled: false }
+compressor: { enabled: false, level: "off" }
+servers: {}

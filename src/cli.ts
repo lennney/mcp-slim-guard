@@ -77,6 +77,27 @@ function createPolicies(config: GuardConfig): Policy[] {
 }
 
 /**
+ * Build AuditLogger options from the audit config, forwarding ALL options
+ * (maxSize/maxFiles/compress/maxMemoryEntries) — previously only output and
+ * filePath were passed, so rotation settings in the config were silently dead.
+ */
+export function buildAuditOptions(auditCfg: NonNullable<GuardConfig["audit"]>, cwd: string): { output: "stdout" | "file"; filePath?: string; maxSize?: string; maxFiles?: number; compress?: boolean; maxMemoryEntries?: number } {
+  const opts: { output: "stdout" | "file"; filePath?: string; maxSize?: string; maxFiles?: number; compress?: boolean; maxMemoryEntries?: number } = {
+    output: auditCfg.output,
+  };
+  if (auditCfg.output === "file") {
+    opts.filePath = auditCfg.filePath ?? path.join(cwd, "micro-mcp-audit.log");
+    if (auditCfg.maxSize) opts.maxSize = auditCfg.maxSize;
+    if (auditCfg.maxFiles !== undefined) opts.maxFiles = auditCfg.maxFiles;
+    if (auditCfg.compress !== undefined) opts.compress = auditCfg.compress;
+  }
+  if ((auditCfg as { maxMemoryEntries?: number }).maxMemoryEntries !== undefined) {
+    opts.maxMemoryEntries = (auditCfg as { maxMemoryEntries?: number }).maxMemoryEntries;
+  }
+  return opts;
+}
+
+/**
  * CLI entry point. Parses argv and executes the appropriate command.
  *
  * @param argv - Command-line arguments (defaults to process.argv)
@@ -148,15 +169,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         return;
       }
 
-      // Use config.audit with defaults
+// Use config.audit with defaults; forward ALL rotation/memory options
       const auditCfg = config.audit ?? { output: "file" as const, filePath: "micro-mcp-audit.log" };
-      const auditOpts: { output: "stdout" | "file"; filePath?: string } = {
-        output: auditCfg.output,
-      };
-      if (auditCfg.output === "file") {
-        auditOpts.filePath = auditCfg.filePath ?? path.join(cwd, "micro-mcp-audit.log");
-      }
-      const audit = new AuditLogger(auditOpts);
+      const audit = new AuditLogger(buildAuditOptions(auditCfg, cwd));
       let serverManager = new ServerManager(config.servers);
       const policies = createPolicies(config);
       const pipeline = new PolicyPipeline(policies);
@@ -204,7 +219,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       } else {
         console.log("   Listening on STDIO transport");
       }
-      console.log(`   Audit log: ${auditOpts.output === "file" ? auditOpts.filePath : "stdout"}`);
+      console.log(`   Audit log: ${auditCfg.output === "file" ? (auditCfg.filePath ?? path.join(cwd, "mcp-guard-audit.log")) : "stdout"}`);
       console.log("   Send SIGHUP to reload config (kill -HUP <pid>)");
 
       // SIGHUP → hot reload micro-mcp.yml (rebuilds pipeline + audit + serverManager)
@@ -222,15 +237,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           await serverManager.start();
           const newPolicies = createPolicies(newConfig);
           const newPipeline = new PolicyPipeline(newPolicies);
-          // Rebuild audit logger
+// Rebuild audit logger — forward ALL rotation/memory options
           const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "micro-mcp-audit.log" };
-          const newAuditOpts: { output: "stdout" | "file"; filePath?: string } = {
-            output: newAuditCfg.output,
-          };
-          if (newAuditCfg.output === "file") {
-            newAuditOpts.filePath = newAuditCfg.filePath ?? path.join(cwd, "micro-mcp-audit.log");
-          }
-         const newAudit = new AuditLogger(newAuditOpts);
+          const newAudit = new AuditLogger(buildAuditOptions(newAuditCfg, cwd));
           proxy.reload(newConfig, newPipeline, newAudit, serverManager);
          console.log("✅ [reload] Config reloaded — new policies + servers + audit active");
         } catch (err) {

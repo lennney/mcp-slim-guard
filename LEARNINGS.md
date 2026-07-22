@@ -69,3 +69,17 @@ tags:
 ### ServerManager.stop 要先关 client 再关 transport
 - 只关 transport 会留下 Client 持有回调/句柄；先 `client.close()`（协议层关闭）再 `transport.close()` 更干净。
 - 验证 stop 时要用真正的 MCP server 子进程（如 dist/mock-server.js），不要用 `node -e setInterval`——后者不是 MCP server，`client.connect` 会卡在协议握手，stop 永远等不到，诊断会误判。
+
+## 已知缺陷（2026-07-21 续审，未修）
+
+### SSRF mode="log" 不产生记录
+- `SSRFConfig.mode` 定义了 "log"（放行但记录），但 `ssrf.ts` 实现是 `if (mode !== "block") return allowed`，log 和 off 都只放行，log 模式无任何记录输出。
+- 测试（adversarial.test.ts:582）已锁定"log 放行"行为，但未覆盖"log 记录"。
+- 真正实现需要给 Policy 接口加日志通道或在 PolicyResult 的 allowed:true 上携带 reason，让 proxy 层 audit trail 标记 SSRF log-only 命中——改动面较大，暂以文档修正 + 已知缺陷记录处理。
+
+## CLI 配置透传（2026-07-21 续审）
+
+### audit 配置项必须完整透传给 AuditLogger
+- `cli.ts` 在 start 和 SIGHUP 重建 audit 时只传了 output/filePath，maxSize/maxFiles/compress/maxMemoryEntries 全被静默忽略——配置文件里设的轮转/内存上限在生产中无效。
+- 抽 `buildAuditOptions(auditCfg, cwd)` 共享给 start 和 reload，确保两处一致且透传所有选项；新增 `maxMemoryEntries` 到 AuditConfig 让它可配置。
+- 类似陷阱：新增配置项时记得同时更新 (1) config-types (2) config-schema 校验 (3) cli 构建逻辑 (4) 测试——漏掉任一处就会变成死配置。

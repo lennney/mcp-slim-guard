@@ -23,6 +23,7 @@ import { PolicyPipeline, type DecisionStep } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
 import { generateTools, handleWrapperTool, whitelistFilter, PREFIX } from "./compressor.js";
+import { ToolCache } from "./cache.js";
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -39,6 +40,8 @@ export class GuardProxy {
   private requestCounter = 0;
   /** Cached full tool list (prefixed); refreshed on start() + reload(). */
   private fullTools: Tool[] = [];
+  /** Optional request cache (null when cache.enabled=false) */
+  private cache: ToolCache | null = null;
 
   /**
    * @param config - Guard configuration
@@ -76,6 +79,11 @@ export class GuardProxy {
     // Generate new session ID
     this.sessionId = this.audit.newSession();
     this.requestCounter = 0;
+
+    // Initialize cache if configured
+    this.cache = this.config.cache?.enabled
+      ? new ToolCache(this.config.cache)
+      : null;
 
     this.server = new Server(
       { name: "micro-mcp", version: "0.1.0" },
@@ -147,11 +155,24 @@ export class GuardProxy {
         };
       }
 
-      return await this.serverManager.callTool(
+      // Cache check — return cached result if hit
+      if (this.cache && this.cache.isCacheable(prefixedName)) {
+        const cached = this.cache.get(prefixedName, args);
+        if (cached) return cached;
+      }
+
+      const callResult = await this.serverManager.callTool(
         serverName,
         originalToolName,
         args,
       );
+
+      // Cache write — store result for future calls
+      if (this.cache && this.cache.isCacheable(prefixedName)) {
+        this.cache.set(prefixedName, args, callResult);
+      }
+
+      return callResult;
     };
 
     // Register tools/call handler — compressor aware, all calls go through policy pipeline
@@ -228,6 +249,12 @@ export class GuardProxy {
   ): void {
     this.config = newConfig;
     this.pipeline = newPipeline;
+    // Rebuild cache with new config (clears old entries)
+    if (newConfig.cache?.enabled) {
+      this.cache = new ToolCache(newConfig.cache);
+    } else {
+      this.cache = null;
+    }
     if (newAudit) {
       this.audit = newAudit;
     }

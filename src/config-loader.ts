@@ -14,6 +14,18 @@ import type { MCPConfig } from "./types.js";
 import { validateConfigSchema, formatSchemaErrors } from "./config-schema.js";
 
 /**
+ * Normalize compression level. Maps deprecated `"tight"` to `"normal"` and
+ * logs a deprecation warning.
+ */
+function normalizeCompressionLevel(level: string): "off" | "light" | "normal" | "extreme" | "maximum" {
+  if (level === "tight") {
+    console.warn("[micro-mcp] Compression level 'tight' is deprecated. Use 'normal' instead.");
+    return "normal";
+  }
+  return level as "off" | "light" | "normal" | "extreme" | "maximum";
+}
+
+/**
  * 配置加载器 — 扫描和解析 MCP Guard 及上游 MCP 配置。
  */
 export class ConfigLoader {
@@ -129,6 +141,11 @@ export class ConfigLoader {
         maxFiles: 5,
         compress: false,
       };
+    }
+
+    // Normalize deprecated compression level aliases
+    if (config.compressor) {
+      config.compressor.level = normalizeCompressionLevel(config.compressor.level);
     }
 
     return config;

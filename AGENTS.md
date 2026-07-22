@@ -74,6 +74,7 @@ mcp-guard ──(MCP SDK)──→ 上游 MCP Server（GitHub / Playwright / ...
 | Phase 1 核心策略管道 | ✅ 完成 | 13/13 任务，155 tests |
 | Phase 2 高级功能 | ✅ 完成 | 热重载/HTTP/注入检测/压缩器/审计轮转 |
 | Phase 3 安全增强 | ✅ 完成 | 6 项安全风险全部修复（SECURITY_AUDIT.md）|
+| Phase 1 压缩对标 | ✅ 完成 | 5 级压缩 + lazy loading + 预算预加载，369 tests |
 | 发布 | ⏳ | MCP 2026-07-28 后 1-2 周 |
 
 ## 约束
@@ -99,6 +100,7 @@ mcp-guard ──(MCP SDK)──→ 上游 MCP Server（GitHub / Playwright / ...
 | Subagent 超时 | 43 次 API 调用 10 分钟不够 | 拆成 2-3 个 task/run |
 | `deny: ["delete_*"]` 不拦截 `mock_delete` | resolveTool 先校验 tool 存在 | resolveTool 只检查 server，policy pipeline 负责 deny |
 | 集成测试不通过 | 忘记先 build | `npm run build && npx vitest run` |
+| slim 工具省略 inputSchema 导致 SDK 报错 | MCP SDK Zod 校验要求 inputSchema 必须是 object | slim 格式用 `{ type: "object", properties: {} }` 代替省略 |
 
 ## 按需检索的文档
 

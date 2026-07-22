@@ -10,6 +10,21 @@ tags:
 
 # Changelog
 
+## [0.3.0] — 2026-07-22
+
+### Added
+- **Lazy loading** — tools/list 返回 slim 工具 stub（name + description + 空 schema），LLM 通过 `mcp__get_schema` 按需获取完整 schema，然后直接调用真实工具名。安全管道基于真实工具名生效。新增 `lazy_loading`（boolean，默认 false）和 `lazy_budget`（number，默认 8）配置项。CLI 新增 `--lazy` 和 `--lazy-budget` 选项。借鉴 slim-mcp 预算预加载机制（高优先级工具 search/list/read/get/find/describe/info 预暴露完整 schema）。
+- **纯函数 Pipeline** — 压缩器重构为 4 阶段纯函数 pipeline：`whitelistFilter` → `levelToStage` → `applyLazyBudget` → `injectGetSchema`。每个阶段是 `(tools: Tool[]) => Tool[]` 纯函数，用 `reduce` 组合，可独立测试。
+
+### Changed
+- 删除 `getCompressedTools` / `getTransformTools`，统一由 `generateTools()` 入口处理。
+- `handleWrapperTool` 简化：移除内部 `isToolVisible` 白名单逻辑（已移到 pipeline 阶段 0），新增 `GET_SCHEMA` case（lazy 模式发现工具）。
+- proxy.ts tools/list handler 简化：从三层 if 分支改为统一调 `generateTools()`。
+- proxy.ts tools/call handler 简化：按 `mcp__*` 前缀拦截，删除 `isWrapperLevel` 判断。
+
+### Fixed
+- slim 格式从省略 `inputSchema` 改为 `{ type: "object", properties: {} }` — MCP SDK Zod 校验要求 inputSchema 必须是 object。
+
 ## [0.2.1] — 2026-07-21
 
 ### Fixed

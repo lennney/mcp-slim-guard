@@ -45,7 +45,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "bench": "node scripts/benchmark/bench.mjs",
+    "bench:tokens": "node scripts/benchmark/tokens.mjs",
+    "bench:schema": "node scripts/benchmark/schema.mjs",
+    "bench:accuracy": "node scripts/benchmark/accuracy.mjs",
+    "bench:latency": "node scripts/benchmark/latency.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",
@@ -58,6 +63,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/micromatch": "^4.0.10",
     "@types/node": "^22.0.0",
+    "tiktoken": "^1.0.22",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

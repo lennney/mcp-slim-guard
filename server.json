@@ -1,0 +1,11 @@
+{
+  "name": "mcp-slim-guard",
+  "version": "0.1.0",
+  "description": "MCP proxy for schema compression, tool access control, SSRF protection, injection detection, rate limiting and audit logging",
+  "vendor": "lennney",
+  "source": "https://github.com/lennney/mcp-slim-guard",
+  "homepage": "https://github.com/lennney/mcp-slim-guard",
+  "license": "MIT",
+  "runtime": "node",
+  "protocol": "stdio"
+}

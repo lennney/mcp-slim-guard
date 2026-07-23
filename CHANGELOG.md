@@ -1,13 +1,3 @@
----
-type: Changelog
-title: micro-mcp CHANGELOG
-timestamp: "2026-07-22T18:00:00+08:00"
-description: 版本变更记录
-tags:
-  - micro-mcp
-  - changelog
----
-
 # Changelog
 
 > 内部开发版本：0.1.0 → 0.2.0 → 0.3.0 → 0.4.0。首次公开发布：0.0.1。
@@ -38,7 +28,7 @@ tags:
 
 ### Changed
 
-- **项目重命名** — mcp-guard → micro-mcp，仓库 URL 更新为 `github.com/lennney/micro-mcp`。
+- **项目重命名** — mcp-guard → micro-mcp → mcp-slim-guard，仓库 URL 更新为 `github.com/lennney/mcp-slim-guard`。
 
 ## [0.3.0] — 2026-07-22
 

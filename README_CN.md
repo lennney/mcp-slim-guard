@@ -1,10 +1,10 @@
 ---
 type: Readme
-title: micro-mcp 中文文档
+title: mcp-slim-guard 中文文档
 timestamp: "2026-07-23T18:00:00+08:00"
 description: 轻量级 MCP 安全代理 — 压缩（最高 86%）+ SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测
 tags:
-  - micro-mcp
+  - mcp-slim-guard
   - readme
   - mcp
   - security
@@ -16,28 +16,28 @@ tags:
   <strong>中文文档</strong> · <a href="./README.md">English</a>
 </p>
 
-<h1 align="center">🛡️ micro-mcp</h1>
+<h1 align="center">🛡️ mcp-slim-guard</h1>
 
 <p align="center">
   <b>一个代理，两大超能力：压缩 + 安全。</b>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/micro-mcp"><img src="https://img.shields.io/npm/v/micro-mcp" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard" alt="npm version"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node >=18">
   <img src="https://img.shields.io/badge/tests-402%20passed-green" alt="402 tests">
   <img src="https://img.shields.io/badge/compression-up%20to%2086%25-blue" alt="86% compression">
   <img src="https://img.shields.io/badge/dependencies-5%20prod-lightgrey" alt="5 deps">
-  <img src="https://img.shields.io/npm/l/micro-mcp" alt="MIT">
+  <img src="https://img.shields.io/npm/l/mcp-slim-guard" alt="MIT">
 </p>
 
 <br>
 
-micro-mcp 是放在 AI Agent 和 MCP Server 之间的轻量代理，透明地加上 **Schema 压缩**（5 级，最高减少 86% Token）和**安全策略管道**（SSRF 防护、工具白名单、注入检测、限速、审计日志）。
+mcp-slim-guard 是放在 AI Agent 和 MCP Server 之间的轻量代理，透明地加上 **Schema 压缩**（5 级，最高减少 86% Token）和**安全策略管道**（SSRF 防护、工具白名单、注入检测、限速、审计日志）。
 
 ```mermaid
 graph LR
-    A[AI Agent] --> B[micro-mcp]
+    A[AI Agent] --> B[mcp-slim-guard]
     B --> C[压缩管道]
     B --> D[安全管道]
     C --> E[MCP Server 1]
@@ -54,9 +54,9 @@ graph LR
 
 ---
 
-## 为什么需要 micro-mcp？
+## 为什么需要 mcp-slim-guard？
 
-| 问题            | 影响                                 | micro-mcp 方案                  |
+| 问题            | 影响                                 | mcp-slim-guard 方案             |
 | --------------- | ------------------------------------ | ------------------------------- |
 | **上下文浪费**  | 工具 Schema 吃掉 60-86% 的上下文窗口 | 5 级压缩 + 按需加载 + 缓存      |
 | **无访问控制**  | 任何 Agent 可调用任意工具            | Glob 白名单/黑名单，默认拒绝    |
@@ -71,22 +71,22 @@ graph LR
 
 ```bash
 # 安装
-npm install -g micro-mcp
+npm install -g mcp-slim-guard
 
 # 自动发现 .mcp.json 中的 MCP Server
 cd your-project/
-micro-mcp init
+mcp-slim-guard init
 
 # 干跑策略，检查是否误杀
-micro-mcp validate
+mcp-slim-guard validate
 
 # 启动代理
-micro-mcp start
+mcp-slim-guard start
 ```
 
 > 自动发现 `.mcp.json`、`mcp.json`、`claude_desktop_config.json`。
 
-### 生成的 `micro-mcp.yml`
+### 生成的 `mcp-slim-guard.yml`
 
 ```yaml
 tools:
@@ -184,7 +184,7 @@ Agent 请求
 | **多 Server 路由** | 一个代理代理多个上游。工具名自动加 `{server}_` 前缀，按前缀路由 |
 | **热重载**         | `kill -HUP <pid>` — 零停机重载配置。所有字段都支持热更新        |
 | **请求缓存**       | TTL+LRU 内存缓存只读工具结果，逐工具统计命中率                  |
-| **HTTP 模式**      | `micro-mcp start --http --port 3000` — 作为远程 MCP 端点        |
+| **HTTP 模式**      | `mcp-slim-guard start --http --port 3000` — 作为远程 MCP 端点   |
 | **STDIO 模式**     | 默认模式，即插即用                                              |
 
 ---
@@ -194,7 +194,7 @@ Agent 请求
 ```mermaid
 sequenceDiagram
     participant LLM as AI Agent
-    participant MM as micro-mcp
+    participant MM as mcp-slim-guard
     participant US as 上游 MCP Server
 
     LLM->>MM: tools/list
@@ -214,16 +214,16 @@ sequenceDiagram
 
 ### 命令参考
 
-| 命令                                 | 说明                                    |
-| ------------------------------------ | --------------------------------------- |
-| `micro-mcp init`                     | 自动发现 MCP 配置，生成 `micro-mcp.yml` |
-| `micro-mcp validate`                 | 干跑策略，显示每个工具的 allow/deny     |
-| `micro-mcp start`                    | 启动代理（STDIO 模式）                  |
-| `micro-mcp start --http --port 3000` | 启动代理（HTTP 模式）                   |
-| `micro-mcp status`                   | 查看配置摘要 + 策略概览                 |
-| `micro-mcp doctor`                   | 诊断上游 MCP Server 连通性              |
-| `micro-mcp audit`                    | 查看审计日志                            |
-| `micro-mcp uninit`                   | 删除 micro-mcp.yml 回滚                 |
+| 命令                                      | 说明                                         |
+| ----------------------------------------- | -------------------------------------------- |
+| `mcp-slim-guard init`                     | 自动发现 MCP 配置，生成 `mcp-slim-guard.yml` |
+| `mcp-slim-guard validate`                 | 干跑策略，显示每个工具的 allow/deny          |
+| `mcp-slim-guard start`                    | 启动代理（STDIO 模式）                       |
+| `mcp-slim-guard start --http --port 3000` | 启动代理（HTTP 模式）                        |
+| `mcp-slim-guard status`                   | 查看配置摘要 + 策略概览                      |
+| `mcp-slim-guard doctor`                   | 诊断上游 MCP Server 连通性                   |
+| `mcp-slim-guard audit`                    | 查看审计日志                                 |
+| `mcp-slim-guard uninit`                   | 删除 mcp-slim-guard.yml 回滚                 |
 
 ---
 
@@ -265,7 +265,7 @@ sequenceDiagram
 
 ## 竞品对比
 
-| 特性            | micro-mcp          | slim-mcp         | mcp-compressor | mcp-guardian |
+| 特性            | mcp-slim-guard     | slim-mcp         | mcp-compressor | mcp-guardian |
 | --------------- | ------------------ | ---------------- | -------------- | ------------ |
 | Schema 压缩     | ✅ 5 级，-86%      | ✅ 5 级，-77%    | ✅             | ❌           |
 | 准确率验证      | ✅ 180 API calls   | ✅ 120 API calls | ❌             | —            |
@@ -292,8 +292,8 @@ sequenceDiagram
 ## Docker
 
 ```bash
-docker build -t micro-mcp .
-docker run -i --rm -v $(pwd)/micro-mcp.yml:/app/micro-mcp.yml micro-mcp start
+docker build -t mcp-slim-guard .
+docker run -i --rm -v $(pwd)/mcp-slim-guard.yml:/app/mcp-slim-guard.yml mcp-slim-guard start
 ```
 
 ---

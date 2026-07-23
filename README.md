@@ -1,10 +1,10 @@
 ---
 type: Readme
-title: micro-mcp
+title: mcp-slim-guard
 timestamp: "2026-07-23T18:00:00+08:00"
 description: Lightweight MCP security proxy — compression (up to 86%) + SSRF protection + allow/deny + audit + rate limiting + injection detection
 tags:
-  - micro-mcp
+  - mcp-slim-guard
   - readme
   - mcp
   - security
@@ -15,28 +15,28 @@ tags:
   <a href="./README_CN.md">中文文档</a> · <strong>English</strong>
 </p>
 
-<h1 align="center">🛡️ micro-mcp</h1>
+<h1 align="center">🛡️ mcp-slim-guard</h1>
 
 <p align="center">
   <b>One proxy. Two superpowers: compression + security.</b>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/micro-mcp"><img src="https://img.shields.io/npm/v/micro-mcp" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard" alt="npm version"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node >=18">
   <img src="https://img.shields.io/badge/tests-402%20passed-green" alt="402 tests">
   <img src="https://img.shields.io/badge/compression-up%20to%2086%25-blue" alt="86% compression">
   <img src="https://img.shields.io/badge/dependencies-5%20prod-lightgrey" alt="5 deps">
-  <img src="https://img.shields.io/npm/l/micro-mcp" alt="MIT">
+  <img src="https://img.shields.io/npm/l/mcp-slim-guard" alt="MIT">
 </p>
 
 <br>
 
-micro-mcp sits between your AI agent and MCP servers, transparently adding **schema compression** (5 levels, up to 86% token reduction) and **security policies** (SSRF protection, tool allow/deny, injection detection, rate limiting, audit logging).
+mcp-slim-guard sits between your AI agent and MCP servers, transparently adding **schema compression** (5 levels, up to 86% token reduction) and **security policies** (SSRF protection, tool allow/deny, injection detection, rate limiting, audit logging).
 
 ```mermaid
 graph LR
-    A[AI Agent] --> B[micro-mcp]
+    A[AI Agent] --> B[mcp-slim-guard]
     B --> C[Compression Pipeline]
     B --> D[Security Pipeline]
     C --> E[MCP Server 1]
@@ -50,9 +50,9 @@ graph LR
 
 ---
 
-## Why micro-mcp?
+## Why mcp-slim-guard?
 
-| Problem               | Impact                                         | How micro-mcp solves it                           |
+| Problem               | Impact                                         | How mcp-slim-guard solves it                      |
 | --------------------- | ---------------------------------------------- | ------------------------------------------------- |
 | **Context wasted**    | Tool schemas eat 60-86% of your context window | 5 compression levels, lazy loading, request cache |
 | **No access control** | Any agent calls any tool with any args         | Glob-based allow/deny, fail-closed by default     |
@@ -61,7 +61,7 @@ graph LR
 | **Abuse**             | Unthrottled tool calls flood upstream          | Token bucket rate limiter (per-tool configurable) |
 | **No audit trail**    | No record of who called what                   | Structured JSON audit log with rotation + gzip    |
 
-**Only micro-mcp combines compression AND security in a single proxy.**  
+**Only mcp-slim-guard combines compression AND security in a single proxy.**  
 Other tools compress schemas but don't protect you. Security proxies don't save you tokens.
 
 ---
@@ -70,24 +70,24 @@ Other tools compress schemas but don't protect you. Security proxies don't save 
 
 ```bash
 # Install
-npm install -g micro-mcp
+npm install -g mcp-slim-guard
 
 # Auto-discover MCP servers from your .mcp.json
 cd your-project/
-micro-mcp init
+mcp-slim-guard init
 
 # Dry-run policies to check for false positives
-micro-mcp validate
+mcp-slim-guard validate
 
 # Start the proxy
-micro-mcp start
+mcp-slim-guard start
 ```
 
-Your agent now connects to micro-mcp instead of the original servers. That's it.
+Your agent now connects to mcp-slim-guard instead of the original servers. That's it.
 
 > MCP servers are auto-discovered from `.mcp.json`, `mcp.json`, or `claude_desktop_config.json`.
 
-### Generated `micro-mcp.yml`
+### Generated `mcp-slim-guard.yml`
 
 ```yaml
 tools:
@@ -186,7 +186,7 @@ Agent Request
 | **Multi-server routing** | One proxy, multiple upstream MCP servers. Tool names are prefixed (`{server}_{tool}`) for automatic routing. |
 | **Hot reload**           | `kill -HUP <pid>` — zero-downtime config reload. All fields hot-swappable.                                   |
 | **Request cache**        | TTL+LRU in-memory cache for read-only tool results. Per-tool stats.                                          |
-| **Streamable HTTP**      | `micro-mcp start --http --port 3000` — works as a remote MCP endpoint.                                       |
+| **Streamable HTTP**      | `mcp-slim-guard start --http --port 3000` — works as a remote MCP endpoint.                                  |
 | **STDIO mode**           | Default. Transparent drop-in for local agents.                                                               |
 
 ---
@@ -196,7 +196,7 @@ Agent Request
 ```mermaid
 sequenceDiagram
     participant LLM as AI Agent
-    participant MM as micro-mcp
+    participant MM as mcp-slim-guard
     participant US as Upstream MCP Server
 
     LLM->>MM: tools/list
@@ -216,16 +216,16 @@ sequenceDiagram
 
 ### CLI Reference
 
-| Command                              | Description                                         |
-| ------------------------------------ | --------------------------------------------------- |
-| `micro-mcp init`                     | Auto-discover `.mcp.json`, generate `micro-mcp.yml` |
-| `micro-mcp validate`                 | Dry-run policies, show allow/deny for each tool     |
-| `micro-mcp start`                    | Start proxy (STDIO mode)                            |
-| `micro-mcp start --http --port 3000` | Start proxy (HTTP mode)                             |
-| `micro-mcp status`                   | Show config summary + policy overview               |
-| `micro-mcp doctor`                   | Diagnose upstream server connectivity               |
-| `micro-mcp audit`                    | View audit log                                      |
-| `micro-mcp uninit`                   | Remove micro-mcp.yml and roll back                  |
+| Command                                   | Description                                              |
+| ----------------------------------------- | -------------------------------------------------------- |
+| `mcp-slim-guard init`                     | Auto-discover `.mcp.json`, generate `mcp-slim-guard.yml` |
+| `mcp-slim-guard validate`                 | Dry-run policies, show allow/deny for each tool          |
+| `mcp-slim-guard start`                    | Start proxy (STDIO mode)                                 |
+| `mcp-slim-guard start --http --port 3000` | Start proxy (HTTP mode)                                  |
+| `mcp-slim-guard status`                   | Show config summary + policy overview                    |
+| `mcp-slim-guard doctor`                   | Diagnose upstream server connectivity                    |
+| `mcp-slim-guard audit`                    | View audit log                                           |
+| `mcp-slim-guard uninit`                   | Remove mcp-slim-guard.yml and roll back                  |
 
 ---
 
@@ -267,7 +267,7 @@ Cache hit:            0.01ms
 
 ## Comparison
 
-| Feature                    | micro-mcp            | slim-mcp            | mcp-compressor      | mcp-guardian     |
+| Feature                    | mcp-slim-guard       | slim-mcp            | mcp-compressor      | mcp-guardian     |
 | -------------------------- | -------------------- | ------------------- | ------------------- | ---------------- |
 | Schema compression         | ✅ 5 levels, -86%    | ✅ 5 levels, -77%   | ✅                  | ❌               |
 | Accuracy validation        | ✅ 180 API calls     | ✅ 120 API calls    | ❌                  | —                |
@@ -294,8 +294,8 @@ Cache hit:            0.01ms
 ## Docker
 
 ```bash
-docker build -t micro-mcp .
-docker run -i --rm -v $(pwd)/micro-mcp.yml:/app/micro-mcp.yml micro-mcp start
+docker build -t mcp-slim-guard .
+docker run -i --rm -v $(pwd)/mcp-slim-guard.yml:/app/mcp-slim-guard.yml mcp-slim-guard start
 ```
 
 ---

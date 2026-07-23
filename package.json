@@ -1,11 +1,12 @@
 {
-  "name": "micro-mcp",
+  "name": "mcp-slim-guard",
   "version": "0.1.0",
-  "description": "轻量 MCP 代理 — 工具压缩瘦身 (-86%) + SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测",
+  "mcpName": "io.github.lennney/mcp-slim-guard",
+  "description": "MCP proxy for schema compression, tool access control, SSRF protection, injection detection, rate limiting and audit logging",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "micro-mcp": "./dist/cli.js"
+    "mcp-slim-guard": "./dist/cli.js"
   },
   "exports": {
     ".": "./dist/index.js",
@@ -22,21 +23,29 @@
     "security",
     "proxy",
     "ssrf",
-    "micro-mcp",
+    "mcp-compression",
+    "schema-compression",
+    "token-optimization",
+    "context-window",
+    "mcp-proxy",
+    "tool-filtering",
+    "claude-code",
+    "cursor",
+    "codex",
     "ai-security",
     "llm"
   ],
-  "homepage": "https://github.com/lennney/micro-mcp",
+  "homepage": "https://github.com/lennney/mcp-slim-guard",
   "bugs": {
-    "url": "https://github.com/lennney/micro-mcp/issues"
+    "url": "https://github.com/lennney/mcp-slim-guard/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lennney/micro-mcp.git"
+    "url": "git+https://github.com/lennney/mcp-slim-guard.git"
   },
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   },
   "scripts": {
     "build": "tsc",

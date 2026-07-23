@@ -3,7 +3,7 @@
 /**
  * MCP Guard — CLI entry point
  *
- * Commander-based CLI for micro-mcp.
+ * Commander-based CLI for mcp-slim-guard.
  * Supports: init, start, status, log, uninit
  *
  * @module cli
@@ -30,6 +30,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import * as http from "node:http";
 import micromatch from "micromatch";
+import { generateTools } from "./compressor.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Build a human-readable list of enabled policy names from config.
@@ -51,6 +53,60 @@ function buildPolicyList(config: GuardConfig): string[] {
     list.push(`compressor:${config.compressor.level}${lazy}`);
   }
   return list;
+}
+
+// ---------------------------------------------------------------------------
+// Schema stats — real MCP data + transparent token estimation
+// ---------------------------------------------------------------------------
+
+interface SchemaStats {
+  totalTools: number;
+  fullSchemaTools: number;
+  slimSchemaTools: number;
+  wrapperTools: number;
+  rawChars: number;
+  compressedChars: number;
+  reductionPct: number;
+}
+
+function computeSchemaStats(rawTools: Tool[], compressedTools: Tool[]): SchemaStats {
+  const wrapperTools = compressedTools.filter((t) => t.name.startsWith("mcp__")).length;
+  const slimTools = compressedTools.filter(
+    (t) =>
+      !t.name.startsWith("mcp__") && (!t.inputSchema?.properties || Object.keys(t.inputSchema.properties).length === 0),
+  ).length;
+  const fullTools = compressedTools.length - wrapperTools - slimTools;
+
+  const rawChars = rawTools.reduce((sum, t) => sum + JSON.stringify(t).length, 0);
+  const compressedChars = compressedTools.reduce((sum, t) => sum + JSON.stringify(t).length, 0);
+  const reductionPct = rawChars > 0 ? Math.round((1 - compressedChars / rawChars) * 100) : 0;
+
+  return {
+    totalTools: compressedTools.length,
+    fullSchemaTools: fullTools,
+    slimSchemaTools: slimTools,
+    wrapperTools,
+    rawChars,
+    compressedChars,
+    reductionPct,
+  };
+}
+
+function displaySchemaStats(stats: SchemaStats): void {
+  console.log(`\n📊 MCP tool schema:`);
+  console.log(`  Tools: ${stats.totalTools} total`);
+  if (stats.fullSchemaTools > 0) console.log(`    ├─ Full schema:  ${stats.fullSchemaTools} (complete inputSchema)`);
+  if (stats.slimSchemaTools > 0)
+    console.log(`    ├─ Slim schema:  ${stats.slimSchemaTools} (name + desc, schema on demand)`);
+  if (stats.wrapperTools > 0)
+    console.log(`    └─ Wrapper:      ${stats.wrapperTools} (mcp__get_schema, mcp__invoke_tool)`);
+  const estTokens = (chars: number) => Math.ceil(chars / 4);
+  console.log(
+    `\n  Characters: ${stats.rawChars.toLocaleString()} → ${stats.compressedChars.toLocaleString()} (${stats.reductionPct}% reduction)`,
+  );
+  console.log(
+    `  Est. tokens: ~${estTokens(stats.rawChars).toLocaleString()} → ~${estTokens(stats.compressedChars).toLocaleString()} (${stats.reductionPct}% reduction)`,
+  );
 }
 
 /**
@@ -103,7 +159,7 @@ export function buildAuditOptions(
     output: auditCfg.output,
   };
   if (auditCfg.output === "file") {
-    opts.filePath = auditCfg.filePath ?? path.join(cwd, "micro-mcp-audit.log");
+    opts.filePath = auditCfg.filePath ?? path.join(cwd, "mcp-slim-guard-audit.log");
     if (auditCfg.maxSize) opts.maxSize = auditCfg.maxSize;
     if (auditCfg.maxFiles !== undefined) opts.maxFiles = auditCfg.maxFiles;
     if (auditCfg.compress !== undefined) opts.compress = auditCfg.compress;
@@ -122,11 +178,14 @@ export function buildAuditOptions(
 export async function main(argv: string[] = process.argv): Promise<void> {
   const program = new Command();
 
-  program.name("micro-mcp").version(VERSION).description("轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速");
+  program
+    .name("mcp-slim-guard")
+    .version(VERSION)
+    .description("轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速");
 
   program
     .command("init")
-    .description("Auto-discover MCP config and generate micro-mcp.yml")
+    .description("Auto-discover MCP config and generate mcp-slim-guard.yml")
     .option(
       "--compressor [level]",
       "Enable schema compression. Levels: light, normal, extreme, maximum. Use --lazy to enable lazy loading (schema on demand)",
@@ -160,26 +219,32 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         if (!isNaN(budget)) guardConfig.compressor.lazy_budget = budget;
       }
 
-      const ymlPath = path.join(cwd, "micro-mcp.yml");
+      const ymlPath = path.join(cwd, "mcp-slim-guard.yml");
       const ymlContent = yaml.dump(guardConfig as unknown as Record<string, unknown>);
       fs.writeFileSync(ymlPath, ymlContent, "utf-8");
 
       const serverCount = Object.keys(guardConfig.servers).length;
       const policyList = buildPolicyList(guardConfig);
 
-      console.log("✅ Generated micro-mcp.yml");
+      console.log("✅ Generated mcp-slim-guard.yml");
       console.log(`   Servers: ${serverCount}`);
       console.log(`   Policies: ${policyList.join(", ")}`);
       console.log(`   SSRF: ${guardConfig.ssrf.mode}`);
       console.log(`   Rate limit: ${guardConfig.rate_limit.default}`);
       const auditOut = guardConfig.audit?.output ?? "file";
-      const auditPath = guardConfig.audit?.filePath ?? "micro-mcp-audit.log";
+      const auditPath = guardConfig.audit?.filePath ?? "mcp-slim-guard-audit.log";
       const auditMax = guardConfig.audit?.maxSize ?? "10MB";
       const auditFiles = guardConfig.audit?.maxFiles ?? 5;
       const auditGzip = guardConfig.audit?.compress ? ", gzip" : "";
       console.log(
         `   Audit: ${auditOut}${auditOut === "file" ? ` (${auditPath}, maxSize: ${auditMax}, maxFiles: ${auditFiles}${auditGzip})` : ""}`,
       );
+
+      if (options.compressor && options.compressor !== "off") {
+        const levelNames: Record<string, string> = { light: "~83%", normal: "~86%", extreme: "~72%", maximum: "~77%" };
+        const savingsNote = levelNames[options.compressor] ?? "~83%";
+        console.log(`   Schema compression: ${options.compressor} (estimated ${savingsNote} reduction)`);
+      }
     });
 
   program
@@ -191,13 +256,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: micro-mcp.yml not found. Run 'micro-mcp init' first.");
+        console.error("Error: mcp-slim-guard.yml not found. Run 'mcp-slim-guard init' first.");
         process.exit(1);
         return;
       }
 
       // Use config.audit with defaults; forward ALL rotation/memory options
-      const auditCfg = config.audit ?? { output: "file" as const, filePath: "micro-mcp-audit.log" };
+      const auditCfg = config.audit ?? { output: "file" as const, filePath: "mcp-slim-guard-audit.log" };
       const audit = new AuditLogger(buildAuditOptions(auditCfg, cwd));
       let serverManager = new ServerManager(config.servers);
       const policies = createPolicies(config);
@@ -213,7 +278,24 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       await proxy.start(transport);
 
-      console.log("🛡️ micro-mcp started");
+      console.log("🛡️ mcp-slim-guard started");
+
+      const serverCount = Object.keys(config.servers).length;
+      // Get tools for schema stats (serverManager already started by proxy.start)
+      try {
+        const startTools = serverManager.getTools();
+        if (startTools && startTools.length > 0 && config.compressor?.enabled && config.compressor.level !== "off") {
+          const compressed = generateTools(startTools, config.compressor, config.tools.allow, config.tools.deny);
+          const stats = computeSchemaStats(startTools, compressed);
+          const estTokens = (chars: number) => Math.ceil(chars / 4);
+          console.log(
+            `   ${serverCount} servers, ${stats.totalTools} tools (${estTokens(stats.compressedChars)} est. tokens, ${stats.reductionPct}% saved)`,
+          );
+        }
+      } catch {
+        // Schema stats unavailable — skip (e.g., mock or server not connected)
+      }
+
       if (options.http) {
         const port = parseInt(options.port, 10);
         const httpTransport = transport as StreamableHTTPServerTransport;
@@ -253,13 +335,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       );
       console.log("   Send SIGHUP to reload config (kill -HUP <pid>)");
 
-      // SIGHUP → hot reload micro-mcp.yml (rebuilds pipeline + audit + serverManager)
+      // SIGHUP → hot reload mcp-slim-guard.yml (rebuilds pipeline + audit + serverManager)
       process.on("SIGHUP", () => {
         void (async () => {
           try {
             const newConfig = ConfigLoader.findAndLoad(cwd);
             if (!newConfig) {
-              console.error("⚠️ [reload] micro-mcp.yml not found — keeping old config");
+              console.error("⚠️ [reload] mcp-slim-guard.yml not found — keeping old config");
               return;
             }
             // Stop old server manager connections
@@ -270,7 +352,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             const newPolicies = createPolicies(newConfig);
             const newPipeline = new PolicyPipeline(newPolicies);
             // Rebuild audit logger — forward ALL rotation/memory options
-            const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "micro-mcp-audit.log" };
+            const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "mcp-slim-guard-audit.log" };
             const newAudit = new AuditLogger(buildAuditOptions(newAuditCfg, cwd));
             proxy.reload(newConfig, newPipeline, newAudit, serverManager);
             console.log("✅ [reload] Config reloaded — new policies + servers + audit active");
@@ -288,15 +370,15 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: micro-mcp.yml not found. Run 'micro-mcp init' first.");
+        console.error("Error: mcp-slim-guard.yml not found. Run 'mcp-slim-guard init' first.");
         process.exit(1);
         return;
       }
 
       const serverCount = Object.keys(config.servers).length;
 
-      console.log("🛡️ micro-mcp status");
-      console.log(`   Config: micro-mcp.yml`);
+      console.log("🛡️ mcp-slim-guard status");
+      console.log(`   Config: mcp-slim-guard.yml`);
       console.log(`   Servers: ${serverCount}`);
       for (const [name, server] of Object.entries(config.servers)) {
         console.log(`     - ${name}: ${server.command}`);
@@ -307,11 +389,15 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       console.log(`   SSRF: ${config.ssrf.mode}`);
       console.log(`   Rate limit: ${config.rate_limit.default}`);
       console.log(`   Injection detection: ${config.injection_detection.enabled ? "enabled" : "disabled"}`);
-      console.log(
-        `   Compressor: ${config.compressor?.enabled ? config.compressor.level : "off (use --compressor to enable)"}`,
-      );
+      if (config.compressor?.enabled && config.compressor.level !== "off") {
+        const ratios: Record<string, number> = { light: 83, normal: 86, extreme: 72, maximum: 77 };
+        const pct = ratios[config.compressor.level] ?? 83;
+        console.log(`   Compressor: ${config.compressor.level} (estimated ${pct}% token savings)`);
+      } else {
+        console.log(`   Compressor: off (use 'mcp-slim-guard init --compressor light' to enable)`);
+      }
       const auditOut = config.audit?.output ?? "file";
-      const auditPath = config.audit?.filePath ?? "micro-mcp-audit.log";
+      const auditPath = config.audit?.filePath ?? "mcp-slim-guard-audit.log";
       const auditMax = config.audit?.maxSize ?? "10MB";
       const auditFiles = config.audit?.maxFiles ?? 5;
       const auditGzip = config.audit?.compress ? ", gzip" : "";
@@ -327,12 +413,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: micro-mcp.yml not found. Run 'micro-mcp init' first.");
+        console.error("Error: mcp-slim-guard.yml not found. Run 'mcp-slim-guard init' first.");
         process.exit(1);
       }
 
-      console.log("🩺 micro-mcp doctor\n");
-      console.log(`Config: micro-mcp.yml (version ${config.version})`);
+      console.log("🩺 mcp-slim-guard doctor\n");
+      console.log(`Config: mcp-slim-guard.yml (version ${config.version})`);
       console.log(`Servers: ${Object.keys(config.servers).length}`);
       console.log(`SSRF mode: ${config.ssrf.mode}`);
       console.log(`Rate limit: ${config.rate_limit.default}\n`);
@@ -345,7 +431,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const serverNames = Object.keys(config.servers);
       if (serverNames.length === 0) {
         console.log("⚠️  No upstream servers configured.");
-        console.log("   Add servers to micro-mcp.yml or run 'micro-mcp init'.");
+        console.log("   Add servers to mcp-slim-guard.yml or run 'mcp-slim-guard init'.");
       }
 
       let okCount = 0;
@@ -360,7 +446,18 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           const tools = manager.getTools();
           await manager.stop();
 
-          console.log(`✅ OK (${tools.length} tools: ${tools.map((t) => t.name).join(", ")})`);
+          const stats = computeSchemaStats(
+            tools,
+            config.compressor?.enabled && config.compressor.level !== "off"
+              ? generateTools(tools, config.compressor, config.tools.allow, config.tools.deny)
+              : tools,
+          );
+          const estTokens = (chars: number) => Math.ceil(chars / 4);
+          const tokenInfo =
+            config.compressor?.enabled && config.compressor.level !== "off"
+              ? `, ${estTokens(stats.compressedChars)} est. tokens (${stats.reductionPct}% saved)`
+              : "";
+          console.log(`✅ OK (${tools.length} tools${tokenInfo}: ${tools.map((t) => t.name).join(", ")})`);
           okCount++;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -428,11 +525,11 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
-        console.error("Error: micro-mcp.yml not found. Run 'micro-mcp init' first.");
+        console.error("Error: mcp-slim-guard.yml not found. Run 'mcp-slim-guard init' first.");
         process.exit(1);
       }
 
-      console.log("🔍 micro-mcp validate — dry-run policy check\n");
+      console.log("🔍 mcp-slim-guard validate — dry-run policy check\n");
 
       const serverNames = Object.keys(config.servers);
       if (serverNames.length === 0) {
@@ -447,6 +544,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         description: string;
       }
       const allTools: ToolInfo[] = [];
+      const allToolsRaw: Tool[] = []; // Store full Tool objects for token computation
 
       for (const name of serverNames) {
         const server = config.servers[name];
@@ -464,6 +562,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
               originalName: t.name.replace(`${name}_`, ""),
               description: t.description || "(no description)",
             });
+            allToolsRaw.push(t);
           }
         } catch (err) {
           console.log(`❌ ${err instanceof Error ? err.message : String(err)}`);
@@ -471,7 +570,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       if (allTools.length === 0) {
-        console.log("\n❌ No tools found. Check connectivity with 'micro-mcp doctor'.");
+        console.log("\n❌ No tools found. Check connectivity with 'mcp-slim-guard doctor'.");
         process.exit(1);
       }
 
@@ -529,12 +628,19 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         for (const t of allowed) console.log(`   ${t.prefixedName}`);
       }
 
+      // Schema stats (only when compressor is enabled)
+      if (config.compressor?.enabled && config.compressor.level !== "off" && allToolsRaw.length > 0) {
+        const compressedTools = generateTools(allToolsRaw, config.compressor, config.tools.allow, config.tools.deny);
+        const schemaStats = computeSchemaStats(allToolsRaw, compressedTools);
+        displaySchemaStats(schemaStats);
+      }
+
       console.log(
         `\n🔒 SSRF: ${config.ssrf.mode === "off" ? "OFF ⚠️" : `${config.ssrf.mode}${config.ssrf.block_private_ips ? " + private IP blocking" : ""}`}`,
       );
 
       const exitCode = denied.length + unmatched.length === total ? 1 : 0;
-      console.log(exitCode ? `\n❌ ALL tools blocked — check micro-mcp.yml` : `\n✅ All tools pass policy`);
+      console.log(exitCode ? `\n❌ ALL tools blocked — check mcp-slim-guard.yml` : `\n✅ All tools pass policy`);
       process.exit(exitCode);
     });
 
@@ -542,13 +648,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     .command("log")
     .description("View audit log")
     .option("--tail", "Follow log output in real-time")
-    .option("--file <path>", "Log file path", "micro-mcp-audit.log")
+    .option("--file <path>", "Log file path", "mcp-slim-guard-audit.log")
     .action((options: { tail?: boolean; file: string }) => {
       const logFile = options.file;
 
       if (!fs.existsSync(logFile)) {
         console.log(`No audit log found at: ${logFile}`);
-        console.log("Start micro-mcp first: micro-mcp start");
+        console.log("Start mcp-slim-guard first: mcp-slim-guard start");
         return;
       }
 
@@ -625,30 +731,30 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
   program
     .command("uninit")
-    .description("Remove micro-mcp config and cleanup")
-    .option("--force", "Actually delete micro-mcp.yml")
+    .description("Remove mcp-slim-guard config and cleanup")
+    .option("--force", "Actually delete mcp-slim-guard.yml")
     .action((options: { force?: boolean }) => {
       const cwd = process.cwd();
-      const ymlPath = path.join(cwd, "micro-mcp.yml");
+      const ymlPath = path.join(cwd, "mcp-slim-guard.yml");
 
       if (options.force) {
         if (fs.existsSync(ymlPath)) {
           fs.unlinkSync(ymlPath);
-          console.log("✅ Deleted micro-mcp.yml");
+          console.log("✅ Deleted mcp-slim-guard.yml");
         }
         // Also remove audit log if exists
-        const auditPath = path.join(cwd, "micro-mcp-audit.log");
+        const auditPath = path.join(cwd, "mcp-slim-guard-audit.log");
         if (fs.existsSync(auditPath)) {
           fs.unlinkSync(auditPath);
-          console.log("✅ Deleted micro-mcp-audit.log");
+          console.log("✅ Deleted mcp-slim-guard-audit.log");
         }
         console.log("\nNext steps:");
         console.log("  1. Point your MCP client config back to original servers");
         console.log("  2. Restart your MCP client");
-        console.log("  3. Run 'micro-mcp init' to re-enable guard");
+        console.log("  3. Run 'mcp-slim-guard init' to re-enable guard");
       } else {
-        console.log("To remove micro-mcp:");
-        console.log(`  1. Run: micro-mcp uninit --force  (deletes ${ymlPath})`);
+        console.log("To remove mcp-slim-guard:");
+        console.log(`  1. Run: mcp-slim-guard uninit --force  (deletes ${ymlPath})`);
         console.log("  2. Point your MCP client config back to original servers");
         console.log("  3. Restart your MCP client");
       }

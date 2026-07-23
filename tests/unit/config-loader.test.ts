@@ -9,7 +9,7 @@ import { validateConfigSchema } from "../../src/config-schema.js";
 describe("ConfigLoader", () => {
   const tmpDir = "/tmp/mcp-guard-test";
   const mcpJsonPath = path.join(tmpDir, ".mcp.json");
-  const guardYmlPath = path.join(tmpDir, "micro-mcp.yml");
+  const guardYmlPath = path.join(tmpDir, "mcp-slim-guard.yml");
 
   beforeEach(() => {
     fs.mkdirSync(tmpDir, { recursive: true });
@@ -129,9 +129,9 @@ describe("ConfigLoader", () => {
   });
 
   describe("findAndLoad", () => {
-    it("finds and loads micro-mcp.yml", () => {
+    it("finds and loads mcp-slim-guard.yml", () => {
       const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      const guardYmlPath = path.join(tmpDir, "micro-mcp.yml");
+      const guardYmlPath = path.join(tmpDir, "mcp-slim-guard.yml");
       const ymlContent = fs.readFileSync(path.join(__dirname, "../fixtures/mcp-guard.test.yml"), "utf-8");
       fs.writeFileSync(guardYmlPath, ymlContent);
       const config = ConfigLoader.findAndLoad(tmpDir);
@@ -139,8 +139,8 @@ describe("ConfigLoader", () => {
       expect(config!.version).toBe(1);
     });
 
-    it("finds and loads micro-mcp.yaml", () => {
-      const altPath = path.join(tmpDir, "micro-mcp.yaml");
+    it("finds and loads mcp-slim-guard.yaml", () => {
+      const altPath = path.join(tmpDir, "mcp-slim-guard.yaml");
       fs.writeFileSync(
         altPath,
         "version: 1\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}",

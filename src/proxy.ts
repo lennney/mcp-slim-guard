@@ -74,7 +74,7 @@ export class GuardProxy {
     // Initialize cache if configured
     this.cache = this.config.cache?.enabled ? new ToolCache(this.config.cache) : null;
 
-    this.server = new Server({ name: "micro-mcp", version: "0.1.0" }, { capabilities: { tools: {} } });
+    this.server = new Server({ name: "mcp-slim-guard", version: "0.1.0" }, { capabilities: { tools: {} } });
 
     // Full tool list (from upstream, with prefixed names)
     this.fullTools = this.serverManager.getTools();

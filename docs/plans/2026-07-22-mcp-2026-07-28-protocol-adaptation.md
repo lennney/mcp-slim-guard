@@ -2,22 +2,23 @@
 
 ## 背景
 
-MCP 2026-07-28 协议更新涉及 4 项对 micro-mcp 的改动。SDK 1.29.0 (实际安装版本) 仅支持 `_meta` 字段，`resultType`/`ttlMs`/`server/discover` 均未实现 → 采用 polyfill 策略手动注入。
+MCP 2026-07-28 协议更新涉及 4 项对 mcp-slim-guard 的改动。SDK 1.29.0 (实际安装版本) 仅支持 `_meta` 字段，`resultType`/`ttlMs`/`server/discover` 均未实现 → 采用 polyfill 策略手动注入。
 
 ## SDK 兼容状态
 
-| 变更 | SDK 1.29.0 | 策略 |
-|------|-----------|------|
-| `_meta` in request | ✅ 支持 | 直接传入 `client.callTool()` |
-| `resultType` in result | ❌ 不支持 | 手动注入到返回对象 |
-| `ttlMs` in result | ❌ 不支持 | `set()` 接受可选参数，未来上游实现即可用 |
-| `server/discover` | ❌ 不支持 | ServerManager 新增合成实现 |
+| 变更                   | SDK 1.29.0 | 策略                                     |
+| ---------------------- | ---------- | ---------------------------------------- |
+| `_meta` in request     | ✅ 支持    | 直接传入 `client.callTool()`             |
+| `resultType` in result | ❌ 不支持  | 手动注入到返回对象                       |
+| `ttlMs` in result      | ❌ 不支持  | `set()` 接受可选参数，未来上游实现即可用 |
+| `server/discover`      | ❌ 不支持  | ServerManager 新增合成实现               |
 
 ---
 
 ## Task 1: proxy.ts — 注入 `resultType: "complete"`
 
 ### 文件：`src/proxy.ts`
+
 ### 测试：`tests/unit/proxy.test.ts`
 
 ### 改动
@@ -25,6 +26,7 @@ MCP 2026-07-28 协议更新涉及 4 项对 micro-mcp 的改动。SDK 1.29.0 (实
 `forwardToolCall` 函数 (line 113-187) 有 4 个返回路径，每个都需加 `resultType: "complete"`：
 
 **路径 A** — 未知工具错误 (line 119-125):
+
 ```ts
 return {
   content: [...],
@@ -34,6 +36,7 @@ return {
 ```
 
 **路径 B** — 策略拒绝 (line 147-155):
+
 ```ts
 return {
   content: [...],
@@ -43,12 +46,14 @@ return {
 ```
 
 **路径 C** — 缓存命中 (line 162-173):
+
 ```ts
 // cached already has content/isError from cache; spread + add resultType
 return { ...cached, resultType: "complete" };
 ```
 
 **路径 D** — 正常调用结果 (line 186):
+
 ```ts
 // callResult from serverManager.callTool; spread + add resultType
 return { ...callResult, resultType: "complete" };
@@ -57,11 +62,13 @@ return { ...callResult, resultType: "complete" };
 ### 测试更新
 
 `proxy.test.ts` 中所有检查 `tools/call` 返回值的断言需要更新：
+
 - `expect(result).toEqual(...)` → 加入 `resultType: "complete"`
 - 缓存命中路径确认返回包含 `resultType`
 - 约 15-20 处断言需要更新
 
 ### 验收标准
+
 1. 所有 4 个返回路径都包含 `resultType: "complete"`
 2. `proxy.test.ts` 全部通过
 3. `tsc --noEmit` 通过
@@ -72,6 +79,7 @@ return { ...callResult, resultType: "complete" };
 ## Task 2: server-manager.ts — 注入 `_meta`
 
 ### 文件：`src/server-manager.ts`
+
 ### 测试：`tests/unit/server-manager.test.ts`
 
 ### 改动
@@ -108,6 +116,7 @@ async callTool(
 ### 测试更新
 
 `server-manager.test.ts` 中 `callTool` 调用断言需验证 `_meta` 被传递：
+
 ```ts
 expect(mockClient.callTool).toHaveBeenCalledWith(
   {
@@ -120,6 +129,7 @@ expect(mockClient.callTool).toHaveBeenCalledWith(
 ```
 
 ### 验收标准
+
 1. `callTool` 调用上游时携带 `_meta`
 2. `server-manager.test.ts` 全部通过
 3. `tsc --noEmit` 通过
@@ -129,6 +139,7 @@ expect(mockClient.callTool).toHaveBeenCalledWith(
 ## Task 3: cache.ts — 消费上游 `ttlMs` 提示 (可选)
 
 ### 文件：`src/cache.ts`
+
 ### 测试：`tests/unit/cache.test.ts`
 
 ### 改动
@@ -156,7 +167,9 @@ set(
 > 注意：`getTTL()` 返回秒，`ttlMs` 是毫秒。`expiresAt` 始终用毫秒。
 
 ### proxy.ts 配套改动
+
 `forwardToolCall` 中缓存写入路径 (line 182-184) 传递 `ttlMs` (当前 SDK 不返回，传 `undefined`，但预留管线):
+
 ```ts
 // 当前 SDK 不返回 ttlMs，未来上游实现后 callResult 可能包含此字段
 const upstreamTtlMs = (callResult as any).ttlMs;
@@ -166,12 +179,14 @@ this.cache.set(prefixedName, args, callResult, upstreamTtlMs);
 ### 测试更新
 
 新增 2 个测试用例：
+
 ```ts
 it("uses upstream ttlMs when provided", () => { ... });
 it("falls back to pattern TTL when ttlMs is undefined", () => { ... });
 ```
 
 ### 验收标准
+
 1. 传入 `ttlMs=5000` 时，条目 5 秒后过期
 2. 未传入 `ttlMs` 时，行为不变（模式推断 TTL）
 3. `cache.test.ts` 全部通过
@@ -182,6 +197,7 @@ it("falls back to pattern TTL when ttlMs is undefined", () => { ... });
 ## Task 4: server-manager.ts — `server/discover` 转发
 
 ### 文件：`src/server-manager.ts`
+
 ### 测试：`tests/unit/server-manager.test.ts`
 
 ### 改动
@@ -214,7 +230,7 @@ async discover(): Promise<{
         name,
         version: (serverInfo as any).version,
         capabilities: {
-          tools: { listChanged: false },  // micro-mcp currently assumes static tool lists
+          tools: { listChanged: false },  // mcp-slim-guard currently assumes static tool lists
         },
       });
     } catch {
@@ -235,6 +251,7 @@ async discover(): Promise<{
 ### 测试更新
 
 新增 3 个测试用例：
+
 ```ts
 it("returns all connected servers with capabilities", () => { ... });
 it("returns empty when no servers connected", () => { ... });
@@ -242,6 +259,7 @@ it("handles server info failure gracefully", () => { ... });
 ```
 
 ### 验收标准
+
 1. `discover()` 返回所有已连接服务器的名称和能力信息
 2. 无连接服务器时返回空数组
 3. 单个服务器获取失败不影响其他服务器

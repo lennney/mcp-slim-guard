@@ -9,15 +9,15 @@
 安全层从"可用"到"可卖"。3 个新功能：
 
 1. **策略模板** — init 时 `--profile strict|medium|loose`，一键预设安全策略
-2. **风险评分** — `micro-mcp score`，动态连接 server 评估风险，0-100 分 + A/B/C/D 等级
-3. **安全报告 CLI** — `micro-mcp audit`，配置审查 + 日志分析 + 风险评分一体化报告
+2. **风险评分** — `mcp-slim-guard score`，动态连接 server 评估风险，0-100 分 + A/B/C/D 等级
+3. **安全报告 CLI** — `mcp-slim-guard audit`，配置审查 + 日志分析 + 风险评分一体化报告
 
 ## 架构
 
 ```
-micro-mcp init --profile strict    ──→ src/profiles.ts        (模板注入配置)
-micro-mcp score                     ──→ src/risk-score.ts      (动态连接 server，打分)
-micro-mcp audit                     ──→ src/security-report.ts (配置审查 + 日志分析 + 调用 score)
+mcp-slim-guard init --profile strict    ──→ src/profiles.ts        (模板注入配置)
+mcp-slim-guard score                     ──→ src/risk-score.ts      (动态连接 server，打分)
+mcp-slim-guard audit                     ──→ src/security-report.ts (配置审查 + 日志分析 + 调用 score)
 ```
 
 ### 分层依赖
@@ -36,17 +36,17 @@ init 命令  ──→ profiles.ts ──────────→ config-load
 
 ### 新增文件
 
-| 文件 | 职责 | 被谁调用 |
-|------|------|---------|
-| `src/profiles.ts` | 3 个预设模板，生成对应配置 | `init` 命令 |
-| `src/risk-score.ts` | 连接 server 获取真实工具 → 0-100 分 + findings | `score` 命令, `audit` 命令 |
-| `src/security-report.ts` | 配置审查 + 日志分析 → 完整报告（内嵌 score 结果） | `audit` 命令 |
+| 文件                     | 职责                                              | 被谁调用                   |
+| ------------------------ | ------------------------------------------------- | -------------------------- |
+| `src/profiles.ts`        | 3 个预设模板，生成对应配置                        | `init` 命令                |
+| `src/risk-score.ts`      | 连接 server 获取真实工具 → 0-100 分 + findings    | `score` 命令, `audit` 命令 |
+| `src/security-report.ts` | 配置审查 + 日志分析 → 完整报告（内嵌 score 结果） | `audit` 命令               |
 
 ### CLI 新增
 
 - `init --profile strict|medium|loose`（新增选项，默认 medium）
-- `micro-mcp score`（新命令）
-- `micro-mcp audit`（新命令）
+- `mcp-slim-guard score`（新命令）
+- `mcp-slim-guard audit`（新命令）
 
 ---
 
@@ -54,11 +54,11 @@ init 命令  ──→ profiles.ts ──────────→ config-load
 
 ### 3 个模板
 
-| 模板 | 适用场景 | tools.allow | tools.deny | SSRF | injection | rate_limit | compressor |
-|------|---------|-------------|------------|------|-----------|------------|------------|
-| **strict** | 生产 / 高安全 | `[]`（fail-closed） | `*_delete_*`, `*_drop_*`, `*_admin_*`, `*_exec_*` | block + block_private_ips | enabled, high, block | 30/min | off |
-| **medium**（默认） | 开发环境 | `*_read_*`, `*_search_*`, `*_list_*`, `*_get_*`, `*_find_*` | `*_delete_*`, `*_drop_*`, `*_admin_*` | block + block_private_ips | enabled, medium, block | 60/min | off |
-| **loose** | 测试 / 快速上手 | `*`（全允许） | `[]` | log | enabled, low, log | 120/min | off |
+| 模板               | 适用场景        | tools.allow                                                 | tools.deny                                        | SSRF                      | injection              | rate_limit | compressor |
+| ------------------ | --------------- | ----------------------------------------------------------- | ------------------------------------------------- | ------------------------- | ---------------------- | ---------- | ---------- |
+| **strict**         | 生产 / 高安全   | `[]`（fail-closed）                                         | `*_delete_*`, `*_drop_*`, `*_admin_*`, `*_exec_*` | block + block_private_ips | enabled, high, block   | 30/min     | off        |
+| **medium**（默认） | 开发环境        | `*_read_*`, `*_search_*`, `*_list_*`, `*_get_*`, `*_find_*` | `*_delete_*`, `*_drop_*`, `*_admin_*`             | block + block_private_ips | enabled, medium, block | 60/min     | off        |
+| **loose**          | 测试 / 快速上手 | `*`（全允许）                                               | `[]`                                              | log                       | enabled, low, log      | 120/min    | off        |
 
 ### 关键决策
 
@@ -97,7 +97,7 @@ export function applyProfile(config: GuardConfig, profile: ProfileName): GuardCo
 // 1. discoverMCPConfig → 生成基础配置
 // 2. applyProfile(config, options.profile) → 覆盖安全策略
 // 3. applyCompressor（如果 --compressor 指定）
-// 4. 写 micro-mcp.yml
+// 4. 写 mcp-slim-guard.yml
 ```
 
 ---
@@ -108,21 +108,32 @@ export function applyProfile(config: GuardConfig, profile: ProfileName): GuardCo
 
 ### 评分维度（6 项，加权求和）
 
-| 维度 | 权重 | 检查内容 | 0分（危险） | 满分（安全） |
-|------|------|---------|------------|-------------|
-| **危险工具暴露** | 30% | 工具名含 shell/exec/write/delete/drop 的数量 | ≥5 个危险工具 | 0 个危险工具 |
-| **白名单覆盖** | 20% | `tools.allow` 是否非空（fail-closed vs 全暴露） | allow 为空 = 无限制 | allow 明确限制 |
-| **SSRF 防护** | 15% | SSRF mode + block_private_ips | off | block + private IP |
-| **注入检测** | 15% | injection enabled + sensitivity | disabled | enabled + high |
-| **速率限制** | 10% | rate_limit.default 值 | 无限制 | ≤30/min |
-| **deny 列表** | 10% | `tools.deny` 是否配置了高危模式 | 无 deny | deny 含 delete/drop/admin |
+| 维度             | 权重 | 检查内容                                        | 0分（危险）         | 满分（安全）              |
+| ---------------- | ---- | ----------------------------------------------- | ------------------- | ------------------------- |
+| **危险工具暴露** | 30%  | 工具名含 shell/exec/write/delete/drop 的数量    | ≥5 个危险工具       | 0 个危险工具              |
+| **白名单覆盖**   | 20%  | `tools.allow` 是否非空（fail-closed vs 全暴露） | allow 为空 = 无限制 | allow 明确限制            |
+| **SSRF 防护**    | 15%  | SSRF mode + block_private_ips                   | off                 | block + private IP        |
+| **注入检测**     | 15%  | injection enabled + sensitivity                 | disabled            | enabled + high            |
+| **速率限制**     | 10%  | rate_limit.default 值                           | 无限制              | ≤30/min                   |
+| **deny 列表**    | 10%  | `tools.deny` 是否配置了高危模式                 | 无 deny             | deny 含 delete/drop/admin |
 
 ### 危险工具关键词
 
 ```typescript
 const DANGEROUS_KEYWORDS = [
-  "exec", "shell", "write", "delete", "drop", "remove", "rm",
-  "kill", "admin", "root", "sudo", "chmod", "chown",
+  "exec",
+  "shell",
+  "write",
+  "delete",
+  "drop",
+  "remove",
+  "rm",
+  "kill",
+  "admin",
+  "root",
+  "sudo",
+  "chmod",
+  "chown",
 ];
 ```
 
@@ -159,7 +170,7 @@ D (0-49):   危险 — 需立即修复
 ### 输出示例
 
 ```
-🛡️ micro-mcp score
+🛡️ mcp-slim-guard score
 
 Server: github (12 tools)
   危险工具:    2 (github_create_file, github_delete_file)  -12
@@ -186,16 +197,16 @@ Server: filesystem (14 tools)
 // risk-score.ts
 
 export interface RiskFinding {
-  dimension: string;       // "危险工具暴露", "白名单覆盖" 等
-  score: number;           // 该维度得分
-  maxScore: number;        // 该维度满分
-  detail: string;          // 人类可读描述
+  dimension: string; // "危险工具暴露", "白名单覆盖" 等
+  score: number; // 该维度得分
+  maxScore: number; // 该维度满分
+  detail: string; // 人类可读描述
   recommendation?: string; // 改进建议
 }
 
 export interface RiskReport {
   serverName: string;
-  score: number;           // 0-100
+  score: number; // 0-100
   grade: "A" | "B" | "C" | "D";
   toolCount: number;
   dangerousTools: string[];
@@ -210,7 +221,7 @@ export interface RiskReport {
 export function calculateRiskScore(
   config: GuardConfig,
   serverName: string,
-  tools: { name: string; description?: string }[]
+  tools: { name: string; description?: string }[],
 ): RiskReport;
 
 /**
@@ -223,7 +234,7 @@ export async function runScoreCommand(config: GuardConfig): Promise<RiskReport[]
 ### CLI 命令
 
 ```
-micro-mcp score
+mcp-slim-guard score
 
 连接每个上游 server，获取工具列表，输出风险评分。
 如果 server 不可达，跳过并标注 "connection failed"。
@@ -234,29 +245,29 @@ micro-mcp score
 
 ## 功能 3: 安全报告（security-report.ts）
 
-### `micro-mcp audit` — 一体化安全报告
+### `mcp-slim-guard audit` — 一体化安全报告
 
 分 3 个部分：
 
 #### Part 1: 配置审查（静态）
 
-不连接 server，分析 `micro-mcp.yml` 配置：
+不连接 server，分析 `mcp-slim-guard.yml` 配置：
 
-| 检查项 | 说明 | 级别 |
-|--------|------|------|
-| allow 列表为空 | fail-closed 会导致所有工具被拦 | ⚠️ warning |
-| allow 为 `["*"]` | 全允许，无白名单 | 🔴 critical |
-| SSRF 关闭 | ssrf.mode = "off" | 🔴 critical |
-| 注入检测关闭 | injection.enabled = false | 🔴 critical |
-| 注入检测低灵敏度 | sensitivity = "low" | ⚠️ warning |
-| 速率限制过高 | >120/min | ⚠️ warning |
-| deny 列表为空 | 无显式拒绝高危工具 | ℹ️ info |
-| 审计日志输出到 stdout | 生产环境建议 file | ℹ️ info |
-| 审计轮转未配置 | maxSize/maxFiles 缺失 | ⚠️ warning |
+| 检查项                | 说明                           | 级别        |
+| --------------------- | ------------------------------ | ----------- |
+| allow 列表为空        | fail-closed 会导致所有工具被拦 | ⚠️ warning  |
+| allow 为 `["*"]`      | 全允许，无白名单               | 🔴 critical |
+| SSRF 关闭             | ssrf.mode = "off"              | 🔴 critical |
+| 注入检测关闭          | injection.enabled = false      | 🔴 critical |
+| 注入检测低灵敏度      | sensitivity = "low"            | ⚠️ warning  |
+| 速率限制过高          | >120/min                       | ⚠️ warning  |
+| deny 列表为空         | 无显式拒绝高危工具             | ℹ️ info     |
+| 审计日志输出到 stdout | 生产环境建议 file              | ℹ️ info     |
+| 审计轮转未配置        | maxSize/maxFiles 缺失          | ⚠️ warning  |
 
 #### Part 2: 日志分析（动态）
 
-读取 `micro-mcp-audit.log`，统计：
+读取 `mcp-slim-guard-audit.log`，统计：
 
 ```
 📊 Audit Log Analysis (last 7 days)
@@ -277,12 +288,12 @@ micro-mcp score
 
 #### Part 3: 风险评分（动态）
 
-调用 `runScoreCommand`，为每个 server 输出风险评分（同 `micro-mcp score` 的输出）。
+调用 `runScoreCommand`，为每个 server 输出风险评分（同 `mcp-slim-guard score` 的输出）。
 
 ### 完整输出结构
 
 ```
-🛡️ micro-mcp audit — Security Report
+🛡️ mcp-slim-guard audit — Security Report
 ═══════════════════════════════════════════════
 
 📋 Part 1: Configuration Review
@@ -291,7 +302,7 @@ micro-mcp score
   ✅ SSRF: block + private IP blocking
   🔴 Injection detection: disabled
   ⚠️ Rate limit: 120/min (consider lowering)
-  ✅ Audit: file (micro-mcp-audit.log, 10MB rotation)
+  ✅ Audit: file (mcp-slim-guard-audit.log, 10MB rotation)
   ...
 
 📊 Part 2: Audit Log Analysis
@@ -332,7 +343,7 @@ export interface LogStats {
   totalCalls: number;
   allowedCount: number;
   blockedCount: number;
-  blockRate: number;          // 0-1
+  blockRate: number; // 0-1
   topBlockedTools: { name: string; count: number }[];
   blockReasons: Record<string, number>;
   peakHour?: string;
@@ -340,8 +351,8 @@ export interface LogStats {
 
 export interface SecurityReport {
   configIssues: ConfigIssue[];
-  logStats: LogStats | null;   // null if no log file
-  riskReports: RiskReport[];   // from risk-score.ts
+  logStats: LogStats | null; // null if no log file
+  riskReports: RiskReport[]; // from risk-score.ts
   summary: {
     criticalCount: number;
     warningCount: number;
@@ -367,17 +378,17 @@ export function analyzeAuditLog(logPath: string): LogStats | null;
 export async function generateSecurityReport(
   config: GuardConfig,
   logPath: string,
-  riskReports: RiskReport[]  // 由调用方通过 runScoreCommand 获取
+  riskReports: RiskReport[], // 由调用方通过 runScoreCommand 获取
 ): Promise<SecurityReport>;
 ```
 
 ### CLI 命令
 
 ```
-micro-mcp audit [--no-score]  [--log <path>]
+mcp-slim-guard audit [--no-score]  [--log <path>]
 
 --no-score  跳过风险评分（不连接 server，仅静态分析）
---log       指定日志文件路径（默认 micro-mcp-audit.log）
+--log       指定日志文件路径（默认 mcp-slim-guard-audit.log）
 ```
 
 退出码：有 critical 问题或任何 server 评分为 D 时 exit 1，否则 exit 0。

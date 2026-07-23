@@ -63,7 +63,7 @@ export class ServerManager {
   async start(): Promise<void> {
     for (const [serverName, serverConfig] of Object.entries(this.servers)) {
       try {
-        const client = new Client({ name: "micro-mcp", version: "0.1.0" }, { capabilities: {} });
+        const client = new Client({ name: "mcp-slim-guard", version: "0.1.0" }, { capabilities: {} });
 
         const transport = new StdioClientTransport({
           command: serverConfig.command,
@@ -83,7 +83,7 @@ export class ServerManager {
           tools,
         });
       } catch (error) {
-        console.warn(`[micro-mcp] Failed to connect to server "${serverName}":`, error);
+        console.warn(`[mcp-slim-guard] Failed to connect to server "${serverName}":`, error);
       }
     }
   }
@@ -249,7 +249,7 @@ export class ServerManager {
       try {
         await conn.transport.close();
       } catch (error) {
-        console.warn(`[micro-mcp] Error closing transport for "${conn.serverName}":`, error);
+        console.warn(`[mcp-slim-guard] Error closing transport for "${conn.serverName}":`, error);
       }
     }
 

@@ -47,8 +47,17 @@ vi.mock("../../src/audit.js", () => ({
   AuditLogger: vi.fn(),
 }));
 
+const { ServerManager: MockServerManager } = vi.hoisted(() => {
+  const getTools = vi.fn().mockReturnValue([]);
+  const start = vi.fn().mockResolvedValue(undefined);
+  const stop = vi.fn().mockResolvedValue(undefined);
+  return {
+    ServerManager: vi.fn().mockImplementation(() => ({ getTools, start, stop })),
+  };
+});
+
 vi.mock("../../src/server-manager.js", () => ({
-  ServerManager: vi.fn(),
+  ServerManager: MockServerManager,
 }));
 
 // GuardProxy mock — store .start reference so tests can verify it was called
@@ -157,7 +166,7 @@ describe("CLI", () => {
   // ── init ─────────────────────────────────────────────────────────
 
   describe("init", () => {
-    it("discovers MCP config and generates micro-mcp.yml → prints success", async () => {
+    it("discovers MCP config and generates mcp-slim-guard.yml → prints success", async () => {
       MockConfigLoader.ConfigLoader.discoverMCPConfig.mockReturnValue("/fake/path/.mcp.json");
       MockConfigLoader.ConfigLoader.generateGuardConfig.mockReturnValue(MOCK_GUARD_CONFIG);
 
@@ -165,7 +174,7 @@ describe("CLI", () => {
 
       expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalledWith(expect.any(String));
       expect(MockConfigLoader.ConfigLoader.generateGuardConfig).toHaveBeenCalledWith("/fake/path/.mcp.json");
-      expect(consoleLogSpy).toHaveBeenCalledWith("✅ Generated micro-mcp.yml");
+      expect(consoleLogSpy).toHaveBeenCalledWith("✅ Generated mcp-slim-guard.yml");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
     });
@@ -190,7 +199,7 @@ describe("CLI", () => {
       await main(["node", "cli.js", "start"]);
 
       expect(MockConfigLoader.ConfigLoader.findAndLoad).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ micro-mcp started");
+      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
       expect(consoleLogSpy).toHaveBeenCalledWith("   Listening on STDIO transport");
       // GuardProxy constructor was called
       expect(vi.mocked(GuardProxy)).toHaveBeenCalled();
@@ -210,7 +219,7 @@ describe("CLI", () => {
 
       await main(["node", "cli.js", "status"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ micro-mcp status");
+      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard status");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("github"));
@@ -245,7 +254,7 @@ describe("CLI", () => {
     it("shows removal instructions", async () => {
       await main(["node", "cli.js", "uninit"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("To remove micro-mcp:");
+      expect(consoleLogSpy).toHaveBeenCalledWith("To remove mcp-slim-guard:");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("uninit --force"));
     });
   });
@@ -301,7 +310,7 @@ describe("buildAuditOptions", () => {
   it("falls back to default filePath and omits unset options", () => {
     const opts = buildAuditOptions({ output: "file" }, "/tmp");
     expect(opts.output).toBe("file");
-    expect(opts.filePath).toBe("/tmp/micro-mcp-audit.log");
+    expect(opts.filePath).toBe("/tmp/mcp-slim-guard-audit.log");
     expect(opts.maxSize).toBeUndefined();
   });
 

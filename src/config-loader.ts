@@ -19,7 +19,7 @@ import { validateConfigSchema, formatSchemaErrors } from "./config-schema.js";
  */
 function normalizeCompressionLevel(level: string): "off" | "light" | "normal" | "extreme" | "maximum" {
   if (level === "tight") {
-    console.warn("[micro-mcp] Compression level 'tight' is deprecated. Use 'normal' instead.");
+    console.warn("[mcp-slim-guard] Compression level 'tight' is deprecated. Use 'normal' instead.");
     return "normal";
   }
   return level as "off" | "light" | "normal" | "extreme" | "maximum";
@@ -97,7 +97,7 @@ export class ConfigLoader {
       },
       audit: {
         output: "file",
-        filePath: "micro-mcp-audit.log",
+        filePath: "mcp-slim-guard-audit.log",
         maxSize: "10MB",
         maxFiles: 5,
         compress: false,
@@ -136,7 +136,7 @@ export class ConfigLoader {
     if (!config.audit) {
       config.audit = {
         output: "file",
-        filePath: "micro-mcp-audit.log",
+        filePath: "mcp-slim-guard-audit.log",
         maxSize: "10MB",
         maxFiles: 5,
         compress: false,
@@ -170,11 +170,11 @@ export class ConfigLoader {
   }
 
   /**
-   * 查找并加载 micro-mcp.yml。
-   * 搜索文件名变体：micro-mcp.yml, micro-mcp.yaml, .micro-mcp.yml
+   * 查找并加载 mcp-slim-guard.yml。
+   * 搜索文件名变体：mcp-slim-guard.yml, mcp-slim-guard.yaml, .mcp-slim-guard.yml
    */
   static findAndLoad(cwd: string): GuardConfig | null {
-    const yamlPaths = ["micro-mcp.yml", "micro-mcp.yaml", ".micro-mcp.yml"];
+    const yamlPaths = ["mcp-slim-guard.yml", "mcp-slim-guard.yaml", ".mcp-slim-guard.yml"];
     for (const name of yamlPaths) {
       const fullPath = path.join(cwd, name);
       if (fs.existsSync(fullPath)) {

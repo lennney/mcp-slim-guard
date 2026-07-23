@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import * as child_process from 'node:child_process';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,10 +37,33 @@ function readResponse(proc, expectedId, timeoutMs = 15000) {
 async function test() {
   console.log('🚀 mcp-guard smoke test\n');
 
-  const proc = child_process.spawn(process.execPath, [GUARD_CLI, 'start'], {
+  // Create workspace if missing
+  if (!fs.existsSync(TEST_DIR)) {
+    fs.mkdirSync(TEST_DIR, { recursive: true });
+    fs.writeFileSync(
+      path.join(TEST_DIR, 'mcp-slim-guard.yml'),
+      [
+        'version: 1',
+        '',
+        'tools:',
+        '  allow:',
+        '    - "*"',
+        '  deny:',
+        '    - "*_delete_*"',
+        '',
+        'servers:',
+        '  mock:',
+        '    command: node',
+        `    args: ["${path.resolve(__dirname, '../dist/mock-server.js')}"]`,
+        '',
+      ].join('\n'),
+    );
+  }
+
+  const proc = child_process.spawn('node', [GUARD_CLI, 'start'], {
     cwd: TEST_DIR,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', PATH: process.env.PATH },
   });
 
   const stderrChunks = [];

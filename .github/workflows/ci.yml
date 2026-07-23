@@ -38,4 +38,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: scripts/create-smoke-test-workspace.sh
       - run: node scripts/smoke-test.mjs

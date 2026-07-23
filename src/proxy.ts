@@ -81,13 +81,19 @@ export class GuardProxy {
 
     // Register tools/list handler — compressor aware
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      // Log discovery event
-      const allNames = this.fullTools.map((t) => t.name);
-      this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", this.fullTools.length, allNames);
+      try {
+        // Log discovery event
+        const allNames = this.fullTools.map((t) => t.name);
+        this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", this.fullTools.length, allNames);
 
-      return {
-        tools: generateTools(this.fullTools, this.config.compressor, this.config.tools.allow, this.config.tools.deny),
-      };
+        const compressor = this.config.compressor ?? { enabled: false, level: "off" as const };
+        return {
+          tools: generateTools(this.fullTools, compressor, this.config.tools.allow, this.config.tools.deny),
+        };
+      } catch (err) {
+        console.error("[proxy] tools/list handler error:", err);
+        return { tools: [] };
+      }
     });
 
     // Core tool call logic: resolve → policy → audit → forward

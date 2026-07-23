@@ -5,12 +5,12 @@
 ## 前置条件
 
 - Node.js ≥ 18
-- 至少一个 MCP Server（本 demo 用 `@agent-mcp-tools/agent-search-mcp` 举例）
+- 至少一个 MCP Server（本 demo 用 `agent-search-mcp` 举例）
 
 ## Step 1: 安装
 
 ```bash
-npm install -g @agent-mcp-tools/mcp-slim-guard
+npm install -g mcp-slim-guard
 ```
 
 验证安装：

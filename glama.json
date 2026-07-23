@@ -1,0 +1,11 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": ["lennney"],
+  "name": "mcp-slim-guard",
+  "description": "MCP proxy for schema compression (83%+ token savings), SSRF protection, tool access control, injection detection, rate limiting and audit logging",
+  "category": "Security & Compliance",
+  "tags": ["security", "compression", "proxy", "ssrf", "token-optimization"],
+  "runtime": "node",
+  "entryPoint": "mcp-slim-guard start",
+  "environmentVariables": []
+}

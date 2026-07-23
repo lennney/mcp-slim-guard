@@ -1,11 +1,21 @@
 {
-  "name": "mcp-slim-guard",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.lennney/mcp-slim-guard",
+  "description": "Schema compression (83%+ savings) + security proxy for MCP servers — SSRF, injection, rate limit",
+  "repository": {
+    "url": "https://github.com/lennney/mcp-slim-guard",
+    "source": "github"
+  },
   "version": "0.1.0",
-  "description": "MCP proxy for schema compression, tool access control, SSRF protection, injection detection, rate limiting and audit logging",
-  "vendor": "lennney",
-  "source": "https://github.com/lennney/mcp-slim-guard",
-  "homepage": "https://github.com/lennney/mcp-slim-guard",
-  "license": "MIT",
-  "runtime": "node",
-  "protocol": "stdio"
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@agent-mcp-tools/mcp-slim-guard",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": []
+    }
+  ]
 }

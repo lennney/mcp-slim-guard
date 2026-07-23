@@ -36,7 +36,7 @@ function readResponse(proc, expectedId, timeoutMs = 15000) {
 async function test() {
   console.log('🚀 mcp-guard smoke test\n');
 
-  const proc = child_process.spawn('node', [GUARD_CLI, 'start'], {
+  const proc = child_process.spawn(process.execPath, [GUARD_CLI, 'start'], {
     cwd: TEST_DIR,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, NODE_ENV: 'test' }

@@ -10,7 +10,7 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@agent-mcp-tools/mcp-slim-guard",
+      "identifier": "mcp-slim-guard",
       "version": "0.1.0",
       "transport": {
         "type": "stdio"

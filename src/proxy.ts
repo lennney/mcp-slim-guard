@@ -31,6 +31,7 @@ export class GuardProxy {
   private pipeline: PolicyPipeline;
   private audit: AuditLogger;
   private serverManager: ServerManager;
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- McpServer lacks setRequestHandler (needed for dynamic tools/list/call routing)
   private server: Server | null = null;
   private sessionId = "?";
   private requestCounter = 0;
@@ -74,6 +75,7 @@ export class GuardProxy {
     // Initialize cache if configured
     this.cache = this.config.cache?.enabled ? new ToolCache(this.config.cache) : null;
 
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- McpServer lacks setRequestHandler (needed for dynamic tools/list/call routing)
     this.server = new Server({ name: "micro-mcp", version: "0.1.0" }, { capabilities: { tools: {} } });
 
     // Full tool list (from upstream, with prefixed names)
@@ -257,6 +259,7 @@ export class GuardProxy {
    * @returns The Server instance
    * @throws If the server has not been started yet
    */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- McpServer lacks setRequestHandler (needed for dynamic tools/list/call routing)
   getServer(): Server {
     if (!this.server) {
       throw new Error("Server not started");

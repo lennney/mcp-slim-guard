@@ -17,7 +17,7 @@ describe("GuardConfig", () => {
         allow: ["*"],
         deny: [],
         param_restrictions: {
-          "github_search_repositories": {
+          github_search_repositories: {
             q: {
               max_length: 200,
               required: true,

@@ -19,9 +19,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
  * Handler for the "echo" tool.
  * Echoes back the input message.
  */
-export async function handleEcho(args: {
-  message: string;
-}): Promise<CallToolResult> {
+export async function handleEcho(args: { message: string }): Promise<CallToolResult> {
   return {
     content: [{ type: "text", text: JSON.stringify({ echoed: args.message }) }],
   };
@@ -31,10 +29,7 @@ export async function handleEcho(args: {
  * Handler for the "add" tool.
  * Adds two numbers and returns the result.
  */
-export async function handleAdd(args: {
-  a: number;
-  b: number;
-}): Promise<CallToolResult> {
+export async function handleAdd(args: { a: number; b: number }): Promise<CallToolResult> {
   return {
     content: [{ type: "text", text: String(args.a + args.b) }],
   };

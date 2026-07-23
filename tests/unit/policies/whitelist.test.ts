@@ -18,10 +18,7 @@ describe("WhitelistPolicy", () => {
 
   const policy = new WhitelistPolicy(config);
 
-  function ctx(
-    toolName: string,
-    args: Record<string, unknown> = {},
-  ): PolicyContext {
+  function ctx(toolName: string, args: Record<string, unknown> = {}): PolicyContext {
     return { toolName, arguments: args, serverName: "test" };
   }
 
@@ -47,9 +44,7 @@ describe("WhitelistPolicy", () => {
   });
 
   it("denies when required param missing", async () => {
-    const result = await policy.check(
-      ctx("github_create_issue", { body: "hello" }),
-    );
+    const result = await policy.check(ctx("github_create_issue", { body: "hello" }));
     expect(result.allowed).toBe(false);
     if (result.allowed === false) {
       expect(result.reason).toContain("Required param");
@@ -57,17 +52,13 @@ describe("WhitelistPolicy", () => {
   });
 
   it("allows when required param present", async () => {
-    const result = await policy.check(
-      ctx("github_create_issue", { title: "Fix bug" }),
-    );
+    const result = await policy.check(ctx("github_create_issue", { title: "Fix bug" }));
     expect(result.allowed).toBe(true);
   });
 
   it("denies when param exceeds max_length", async () => {
     const longQuery = "a".repeat(201);
-    const result = await policy.check(
-      ctx("github_search_repositories", { q: longQuery }),
-    );
+    const result = await policy.check(ctx("github_search_repositories", { q: longQuery }));
     expect(result.allowed).toBe(false);
     if (result.allowed === false) {
       expect(result.reason).toContain("exceeds max length");
@@ -101,14 +92,10 @@ describe("WhitelistPolicy", () => {
       },
     };
     const p = new WhitelistPolicy(cfg);
-    const valid = await p.check(
-      ctx("github_test_tool", { url: "https://example.com" }),
-    );
+    const valid = await p.check(ctx("github_test_tool", { url: "https://example.com" }));
     expect(valid.allowed).toBe(true);
 
-    const invalid = await p.check(
-      ctx("github_test_tool", { url: "ftp://example.com" }),
-    );
+    const invalid = await p.check(ctx("github_test_tool", { url: "ftp://example.com" }));
     expect(invalid.allowed).toBe(false);
   });
 });

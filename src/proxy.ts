@@ -9,17 +9,13 @@
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import type { GuardConfig } from "./config-types.js";
 import type { PolicyContext, PolicyResult } from "./types.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { PolicyPipeline, type DecisionStep } from "./policies/base.js";
+import { PolicyPipeline } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
 import { generateTools, handleWrapperTool, whitelistFilter, PREFIX } from "./compressor.js";
@@ -49,12 +45,7 @@ export class GuardProxy {
    * @param audit - Audit logger for recording each tool call
    * @param serverManager - Manager for upstream MCP server connections
    */
-  constructor(
-    config: GuardConfig,
-    pipeline: PolicyPipeline,
-    audit: AuditLogger,
-    serverManager: ServerManager,
-  ) {
+  constructor(config: GuardConfig, pipeline: PolicyPipeline, audit: AuditLogger, serverManager: ServerManager) {
     this.config = config;
     this.pipeline = pipeline;
     this.audit = audit;
@@ -81,14 +72,9 @@ export class GuardProxy {
     this.requestCounter = 0;
 
     // Initialize cache if configured
-    this.cache = this.config.cache?.enabled
-      ? new ToolCache(this.config.cache)
-      : null;
+    this.cache = this.config.cache?.enabled ? new ToolCache(this.config.cache) : null;
 
-    this.server = new Server(
-      { name: "micro-mcp", version: "0.1.0" },
-      { capabilities: { tools: {} } },
-    );
+    this.server = new Server({ name: "micro-mcp", version: "0.1.0" }, { capabilities: { tools: {} } });
 
     // Full tool list (from upstream, with prefixed names)
     this.fullTools = this.serverManager.getTools();
@@ -96,46 +82,36 @@ export class GuardProxy {
     // Register tools/list handler — compressor aware
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Log discovery event
-      const allNames = this.fullTools.map(t => t.name);
+      const allNames = this.fullTools.map((t) => t.name);
       this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", this.fullTools.length, allNames);
 
       return {
-        tools: generateTools(
-          this.fullTools,
-          this.config.compressor,
-          this.config.tools.allow,
-          this.config.tools.deny,
-        ),
+        tools: generateTools(this.fullTools, this.config.compressor, this.config.tools.allow, this.config.tools.deny),
       };
     });
 
     // Core tool call logic: resolve → policy → audit → forward
-    const forwardToolCall = async (
-      prefixedName: string,
-      args: Record<string, unknown>,
-    ) => {
+    const forwardToolCall = async (prefixedName: string, args: Record<string, unknown>) => {
       const resolved = this.serverManager.resolveTool(prefixedName);
       if (!resolved) {
         return {
-          content: [
-            { type: "text" as const, text: `Unknown tool: ${prefixedName}` },
-          ],
+          content: [{ type: "text" as const, text: `Unknown tool: ${prefixedName}` }],
           isError: true,
           resultType: "complete" as const,
         };
       }
 
-     const { serverName, originalToolName } = resolved;
-     const ctx: PolicyContext = {
-       toolName: prefixedName,
-       arguments: args,
-       serverName,
+      const { serverName, originalToolName } = resolved;
+      const ctx: PolicyContext = {
+        toolName: prefixedName,
+        arguments: args,
+        serverName,
         // Surface the connection session id as agentId so per_agent rate
         // limits can actually target individual callers. Without this the
         // ratelimit policy always falls back to serverName and per_agent
         // overrides never take effect.
         agentId: this.sessionId,
-     };
+      };
 
       const startTime = Date.now();
       const { result, trail } = await this.pipeline.executeWithTrail(ctx);
@@ -174,11 +150,7 @@ export class GuardProxy {
         }
       }
 
-      const callResult = await this.serverManager.callTool(
-        serverName,
-        originalToolName,
-        args,
-      );
+      const callResult = await this.serverManager.callTool(serverName, originalToolName, args);
 
       // Cache write — store result for future calls
       if (this.cache && this.cache.isCacheable(prefixedName)) {
@@ -191,46 +163,37 @@ export class GuardProxy {
     };
 
     // Register tools/call handler — compressor aware, all calls go through policy pipeline
-    this.server.setRequestHandler(
-      CallToolRequestSchema,
-      async (request) => {
-        const params = request.params;
-        const prefixedName = params.name;
-        const args: Record<string, unknown> = params.arguments ?? {};
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const params = request.params;
+      const prefixedName = params.name;
+      const args: Record<string, unknown> = params.arguments ?? {};
 
-        // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
-        if (prefixedName.startsWith(PREFIX)) {
-          // Whitelist-filter fullTools before passing to handleWrapperTool
-          // (pipeline stage 0 logic, applied here for the call path)
-          const filteredTools = whitelistFilter(
-            this.config.tools.allow,
-            this.config.tools.deny,
-          )(this.fullTools);
-          const wrapperResult = await handleWrapperTool(
-            prefixedName,
-            args,
-            filteredTools,
-            (targetName, targetArgs) => forwardToolCall(targetName, targetArgs),
+      // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
+      if (prefixedName.startsWith(PREFIX)) {
+        // Whitelist-filter fullTools before passing to handleWrapperTool
+        // (pipeline stage 0 logic, applied here for the call path)
+        const filteredTools = whitelistFilter(this.config.tools.allow, this.config.tools.deny)(this.fullTools);
+        const wrapperResult = await handleWrapperTool(prefixedName, args, filteredTools, (targetName, targetArgs) =>
+          forwardToolCall(targetName, targetArgs),
+        );
+        if (wrapperResult) {
+          // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
+          const reqId = ++this.requestCounter;
+          this.audit.log(
+            { toolName: prefixedName, arguments: args, serverName: "compressor" },
+            { allowed: true },
+            [],
+            this.sessionId,
+            reqId,
+            0,
           );
-          if (wrapperResult) {
-            // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
-            const reqId = ++this.requestCounter;
-            this.audit.log(
-              { toolName: prefixedName, arguments: args, serverName: "compressor" },
-              { allowed: true },
-              [],
-              this.sessionId,
-              reqId,
-              0,
-            );
-            return wrapperResult;
-          }
+          return wrapperResult;
         }
+      }
 
-        // Real tool → security pipeline
-        return forwardToolCall(prefixedName, args);
-      },
-    );
+      // Real tool → security pipeline
+      return forwardToolCall(prefixedName, args);
+    });
 
     await this.server.connect(transport);
   }

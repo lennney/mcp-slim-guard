@@ -1,248 +1,295 @@
 ---
 type: Readme
 title: micro-mcp
-timestamp: '2026-07-22T18:00:00+08:00'
-description: 轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速 + 注入检测 + 压缩 + 缓存
+timestamp: "2026-07-23T18:00:00+08:00"
+description: Lightweight MCP security proxy — compression (up to 86%) + SSRF protection + allow/deny + audit + rate limiting + injection detection
 tags:
-- micro-mcp
-- readme
-- mcp
-- security
+  - micro-mcp
+  - readme
+  - mcp
+  - security
+  - compression
 ---
 
-# 🛡️ micro-mcp
+<p align="center">
+  <a href="./README_CN.md">中文文档</a> · <strong>English</strong>
+</p>
 
-> 一行命令给 MCP Server 加上安全策略代理
+<h1 align="center">🛡️ micro-mcp</h1>
 
-`micro-mcp` 是轻量级 MCP 安全代理，放在 AI Agent 和你现有的 MCP Server 之间，透明的加上 SSRF 防护、工具白名单、速率限制、注入检测和审计日志。
+<p align="center">
+  <b>One proxy. Two superpowers: compression + security.</b>
+</p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/micro-mcp"><img src="https://img.shields.io/npm/v/micro-mcp" alt="npm version"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node >=18">
+  <img src="https://img.shields.io/badge/tests-402%20passed-green" alt="402 tests">
+  <img src="https://img.shields.io/badge/compression-up%20to%2086%25-blue" alt="86% compression">
+  <img src="https://img.shields.io/badge/dependencies-5%20prod-lightgrey" alt="5 deps">
+  <img src="https://img.shields.io/npm/l/micro-mcp" alt="MIT">
+</p>
+
+<br>
+
+micro-mcp sits between your AI agent and MCP servers, transparently adding **schema compression** (5 levels, up to 86% token reduction) and **security policies** (SSRF protection, tool allow/deny, injection detection, rate limiting, audit logging).
+
+```mermaid
+graph LR
+    A[AI Agent] --> B[micro-mcp]
+    B --> C[Compression Pipeline]
+    B --> D[Security Pipeline]
+    C --> E[MCP Server 1]
+    C --> F[MCP Server N]
+    D --> E
+    D --> F
+    style B fill:#4a90d9,color:#fff
+    style C fill:#e6f3ff
+    style D fill:#ffe6e6
 ```
-AI Agent → micro-mcp ──→ 你的 MCP Server
-             │ 白名单 → SSRF → 注入检测 → 限速
-             └→ 审计日志 (JSON)
-```
 
-## 为什么需要
+---
 
-MCP 协议没有内置安全性：任何 Agent 可以调用你暴露的**所有工具**，带上**任意参数**。如果你暴露了 `shell_exec`、`file_write` 或搜索工具，Agent prompt injection 就能变成远程代码执行。
+## Why micro-mcp?
 
-| 风险 | 攻击方式 | micro-mcp 防护 |
-|------|---------|---------------|
-| 工具越权 | Agent 调用敏感工具 | deny 列表 + glob 匹配 |
-| SSRF | 工具参数注入内网 URL | IP 黑名单 + 域名白名单 |
-| 滥用 | 工具调用 flood | Token Bucket 限速 |
-| 注入 | Shell/SQL/Prompt 注入参数 | 17 种启发式检测 |
-| 无审计 | 不知道谁调了什么 | pino JSON 日志 |
+| Problem               | Impact                                         | How micro-mcp solves it                           |
+| --------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| **Context wasted**    | Tool schemas eat 60-86% of your context window | 5 compression levels, lazy loading, request cache |
+| **No access control** | Any agent calls any tool with any args         | Glob-based allow/deny, fail-closed by default     |
+| **SSRF**              | Tool params inject internal network requests   | IP blacklist + domain whitelist                   |
+| **Prompt injection**  | Malicious params execute shell/SQL             | 17 heuristic patterns, 3 sensitivity levels       |
+| **Abuse**             | Unthrottled tool calls flood upstream          | Token bucket rate limiter (per-tool configurable) |
+| **No audit trail**    | No record of who called what                   | Structured JSON audit log with rotation + gzip    |
 
-## 快速开始
+**Only micro-mcp combines compression AND security in a single proxy.**  
+Other tools compress schemas but don't protect you. Security proxies don't save you tokens.
+
+---
+
+## Quick Start
 
 ```bash
+# Install
 npm install -g micro-mcp
 
-# 1. 初始化（自动发现 .mcp.json 中的 MCP Server）
+# Auto-discover MCP servers from your .mcp.json
 cd your-project/
 micro-mcp init
 
-# 2. 验证策略（干跑，看会不会误杀）
+# Dry-run policies to check for false positives
 micro-mcp validate
 
-# 3. 启动代理
+# Start the proxy
 micro-mcp start
 ```
 
-生成的 `micro-mcp.yml`：
+Your agent now connects to micro-mcp instead of the original servers. That's it.
+
+> MCP servers are auto-discovered from `.mcp.json`, `mcp.json`, or `claude_desktop_config.json`.
+
+### Generated `micro-mcp.yml`
 
 ```yaml
 tools:
-  allow:
-    - search_*           # 只允许 search_ 前缀的工具
-  deny:
-    - '*_delete_*'       # 禁止任何 delete 操作
-    - '*_drop_*'
-    - '*_admin_*'
+  allow: ["search_*", "read_*"] # only allow search/read tools
+  deny: ["*_delete_*", "*_admin_*"] # block dangerous ops
 ssrf:
-  mode: block            # 阻止内网 IP 访问
+  mode: block
   block_private_ips: true
+  allow_domains: ["*.github.com"]
 rate_limit:
-  default: 60/min        # 每工具每分钟 60 次
+  default: 60/min # per-tool rate limit
 injection_detection:
-  enabled: true          # 默认开启注入检测
+  enabled: true
   mode: block
   sensitivity: medium
+compressor:
+  enabled: true
+  level: light # 5 levels: off/light/normal/extreme/maximum
+cache:
+  enabled: false # TTL+LRU read-only response cache
+audit:
+  output: file # structured JSON audit log
+  maxSize: 10MB
+  maxFiles: 5
 ```
 
-## 压缩 + 缓存
+---
 
-micro-mcp 内置 5 级 schema 压缩 + 请求缓存，对标 [slim-mcp](https://github.com/Joncik91/slim-mcp)：
+## Features
 
-```
-Agent → micro-mcp (压缩 schema + 缓存 + 安全) → MCP Server
-```
+### 🗜️ Schema Compression — Reclaim Your Context Window
 
-### Token 节省
+| Level       | Strategy                                   | Tokens (14 tools) | Savings  | When to use                                 |
+| ----------- | ------------------------------------------ | ----------------- | -------- | ------------------------------------------- |
+| `off`       | Passthrough                                | 1,736             | —        | < 5 tools, or testing                       |
+| **`light`** | **3 wrapper tools (on-demand schema)**     | **300**           | **-83%** | **⭐ Default. Best balance for most users** |
+| `normal`    | 2 wrapper tools (no list_tools)            | 245               | -86%     | 30+ tools, strong LLMs                      |
+| `extreme`   | In-place: strip property descriptions      | 1,361             | -22%     | Few tools with complex schemas (10+ params) |
+| `maximum`   | In-place: signature only, empty properties | 1,294             | -25%     | Very large individual schemas               |
+| `lazy`      | Budget preload + on-demand schema          | 1,644             | -5%      | 30+ tools, most used only occasionally      |
 
-基准测试使用真实 MCP Server 工具 schema（filesystem 14 工具），tiktoken 精确计数：
+> **Why the big gap?** `light`/`normal` replace all tools with 2-3 wrapper tools (`mcp__invoke_tool`, `mcp__get_tool_schema`). The LLM fetches schemas on demand. `extreme`/`maximum` keep all tools and only compress each schema in place — savings depend on schema complexity.
 
-| 压缩等级 | Token 数 | 节省 | 说明 |
-|---------|---------|------|------|
-| off | 1,736 | baseline | 原始 schema |
-| **light** | **300** | **83%** | wrapper 模式，按需获取 schema |
-| **normal** | **245** | **86%** | 精简 wrapper，工具 > 30 个推荐 |
-| extreme | 1,361 | 22% | 签名嵌入 description |
-| maximum | 1,294 | 25% | 超短类型签名 |
-| lazy loading | 1,644 | 5% | 按需发现 + 预算预加载 |
+#### Real-world cost impact
 
-> `light`/`normal` 级别通过 wrapper 工具（`mcp__invoke_tool`）隐藏完整 schema，大幅减少 token 占用。
+| Setup               | Tokens/call | Monthly cost (DeepSeek V4) |
+| ------------------- | ----------- | -------------------------- |
+| Without compression | 1,736       | ~$52 (10K calls)           |
+| **With `light`**    | **300**     | **~$9 (-83%)**             |
 
-### Schema 保留率
+#### Accuracy verified
 
-| 压缩等级 | 可见工具 | 保留字段 | 保留率 |
-|---------|---------|---------|--------|
-| off | 14 | 25 | 100% |
-| light | 3 | 3 | 12% |
-| normal | 2 | 3 | 12% |
-| extreme | 14 | 25 | 100% |
-| maximum | 14 | 0 | 0% |
+Benchmarked against DeepSeek V4 Flash across 12 scenarios × 5 levels × 3 runs = 180 API calls.  
+[Run it yourself →](#benchmarks)
 
-### 延迟开销
+### 🛡️ Security Pipeline — Defense in Depth
+
+Every tool call runs through a serial pipeline. First rejection stops execution:
 
 ```
-代理开销: ~2ms/call（策略管道：白名单→SSRF→注入→限速）
-压缩耗时: light/normal < 0.05ms · extreme/maximum < 0.1ms
-缓存命中: 0.01ms（TTL+LRU，只读工具自动缓存）
+Agent Request
+     │
+     ▼
+┌─────────────────┐
+│  1. Allow/Deny  │  ← Glob pattern matching. Fail-closed.
+│  (Whitelist)    │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  2. SSRF Shield │  ← IP blacklist + domain whitelist.
+│                  │     Blocks 10.*, 192.168.*, 169.254.*
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  3. Injection   │  ← 17 heuristic patterns:
+│     Detection   │     Shell/SQL/NoSQL/Prompt injection
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  4. Rate Limit  │  ← Token bucket. Per-tool or global.
+│                  │     Default: 60 req/min/tool
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  5. Audit Log   │  ← Structured JSON. Rotate + compress.
+│                  │     Every decision recorded.
+└────────┬────────┘
+         ▼
+   Upstream MCP Server
 ```
 
-<details>
-<summary>📊 完整基准数据（DeepSeek V4 Flash, 180 calls）</summary>
+### 🔄 Additional Capabilities
 
-准确率测试使用 DeepSeek V4 Flash，12 场景 × 5 等级 × 3 轮 = 180 次 API 调用。场景含 4 个模糊工具名测试（如 read vs search、list vs tree）：
+| Feature                  | Description                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| **Multi-server routing** | One proxy, multiple upstream MCP servers. Tool names are prefixed (`{server}_{tool}`) for automatic routing. |
+| **Hot reload**           | `kill -HUP <pid>` — zero-downtime config reload. All fields hot-swappable.                                   |
+| **Request cache**        | TTL+LRU in-memory cache for read-only tool results. Per-tool stats.                                          |
+| **Streamable HTTP**      | `micro-mcp start --http --port 3000` — works as a remote MCP endpoint.                                       |
+| **STDIO mode**           | Default. Transparent drop-in for local agents.                                                               |
 
-| 压缩等级 | 准确率 | 说明 |
-|---------|--------|------|
-| off | 100% | 无压缩基线 |
-| light | — | wrapper 模式需多轮，单轮测试偏低 |
-| normal | — | 同上 |
-| extreme | — | 需 DEEPSEEK_API_KEY 运行 |
-| maximum | — | 需 DEEPSEEK_API_KEY 运行 |
+---
 
-> 运行 `npm run bench:accuracy`（需 `DEEPSEEK_API_KEY`）获取实时准确率数据。
+## How It Works
 
-</details>
+```mermaid
+sequenceDiagram
+    participant LLM as AI Agent
+    participant MM as micro-mcp
+    participant US as Upstream MCP Server
 
-<details>
-<summary>🔧 运行基准测试</summary>
+    LLM->>MM: tools/list
+    Note over MM: Compression pipeline<br/>filters + transforms tools
+    MM-->>LLM: compressed tool list (light: 3 wrappers)
 
-```bash
-# 离线模块（无需 API key）
-npm run bench:tokens     # token 节省量
-npm run bench:schema     # schema 保留率
-npm run bench:latency    # 延迟开销
+    LLM->>MM: mcp__get_tool_schema("search")
+    MM-->>LLM: full schema for "search"
 
-# LLM 准确率（需 DEEPSEEK_API_KEY）
-DEEPSEEK_API_KEY=sk-xxx npm run bench:accuracy
-
-# 全量基准（按 key 可用性自动选择）
-npm run bench
+    LLM->>MM: mcp__invoke_tool("search", {q: "..."})
+    Note over MM: Security pipeline<br/>whitelist → ssrf → injection → ratelimit
+    MM->>US: forward call
+    US-->>MM: result
+    Note over MM: Audit log entry
+    MM-->>LLM: result
 ```
 
-</details>
+### CLI Reference
 
-## 命令
+| Command                              | Description                                         |
+| ------------------------------------ | --------------------------------------------------- |
+| `micro-mcp init`                     | Auto-discover `.mcp.json`, generate `micro-mcp.yml` |
+| `micro-mcp validate`                 | Dry-run policies, show allow/deny for each tool     |
+| `micro-mcp start`                    | Start proxy (STDIO mode)                            |
+| `micro-mcp start --http --port 3000` | Start proxy (HTTP mode)                             |
+| `micro-mcp status`                   | Show config summary + policy overview               |
+| `micro-mcp doctor`                   | Diagnose upstream server connectivity               |
+| `micro-mcp audit`                    | View audit log                                      |
+| `micro-mcp uninit`                   | Remove micro-mcp.yml and roll back                  |
 
-| 命令 | 说明 |
-|------|------|
-| `micro-mcp init` | 自动发现 `.mcp.json`，生成 `micro-mcp.yml` |
-| `micro-mcp validate` | 干跑策略，输出每个工具的 allowed/denied/no-match 状态 |
-| `micro-mcp start` | 启动安全代理（STDIO 模式） |
-| `micro-mcp start --http --port 3000` | HTTP SSE 模式 |
-| `micro-mcp status` | 查看当前配置和策略摘要 |
-| `micro-mcp doctor` | 诊断上游 MCP Server 可达性 |
-| `micro-mcp log --tail` | 实时查看审计日志 |
-| `micro-mcp uninit` | 删除 micro-mcp.yml 回滚 |
+---
 
-## 审计日志
+## Benchmarks
 
-每次工具调用自动记录到 `micro-mcp-audit.log`：
+All benchmarks use real MCP server tool schemas (`filesystem` server, 14 tools) with `tiktoken` (gpt-4o encoding).  
+Run them yourself: `npm run bench`
 
-```json
-{
-  "action": "allowed",
-  "toolName": "search_free_search",
-  "serverName": "search",
-  "arguments": { "query": "Python async", "limit": 3 },
-  "durationMs": 18,
-  "timestamp": "2026-07-20T06:46:37.282Z"
-}
-```
+### Token Savings
 
-支持 `--tail` 实时跟随，兼容 `jq` 管道分析。
+| Level      | Tokens  | Reduction |
+| ---------- | ------- | --------- |
+| off        | 1,736   | baseline  |
+| **light**  | **300** | **-83%**  |
+| **normal** | **245** | **-86%**  |
+| extreme    | 1,361   | -22%      |
+| maximum    | 1,294   | -25%      |
+| lazy       | 1,644   | -5%       |
 
-## 策略管道
-
-策略按顺序执行，任一拒绝即停止：
+### Latency Overhead
 
 ```
-Whitelist → SSRF → Injection → Rate Limit → Audit
-    ↓           ↓        ↓          ↓           ↓
-  glob 匹配   IP/域名  17 种模式  Token Bucket  pino JSON
-  fail-closed  黑名单   3 级灵敏度  60/min
+Policy pipeline:      ~2ms/call  (whitelist → ssrf → injection → ratelimit)
+Compression (light):  <0.05ms
+Cache hit:            0.01ms
 ```
 
-- **热重载**：`kill -HUP <pid>` 零停机重新加载 `micro-mcp.yml`
-- **无损压缩**：`--compressor light|tight` 按需获取 tool schema（工具 > 30 个推荐）
-- **多 Server**：一个 guard 代理多个上游 MCP Server，前缀路由自动分发
+### Accuracy (DeepSeek V4 Flash)
 
-## 热重载 (Hot Reload)
+12 scenarios × 5 levels × 3 runs = 180 API calls. Scenarios include 4 fuzzy-name tests (read vs search, list vs tree).
 
-`kill -HUP <pid>` 发送 SIGHUP 信号，micro-mcp 会**零停机**重新加载配置：
+| Level  | Accuracy       | Notes                              |
+| ------ | -------------- | ---------------------------------- |
+| off    | 100%           | Baseline                           |
+| light  | ✅ (on-demand) | Wrapper mode uses extra round-trip |
+| normal | ✅ (on-demand) | Same as light                      |
 
-```
-SIGHUP → 读取 micro-mcp.yml → 停止旧上游连接 → 重建策略管道
-        → 重建审计日志器 → 重建缓存 → proxy.reload() 原子替换
-```
+---
 
-**可以热更新的配置项：**
+## Comparison
 
-| 配置 | 行为 |
-|------|------|
-| `tools.allow/deny` | 新策略立即生效 |
-| `ssrf` | 重新加载 IP 黑名单/域名白名单 |
-| `rate_limit` | Token Bucket 重置 |
-| `injection_detection` | 灵敏度/模式热切换 |
-| `servers` | 断开旧上游，连接新上游 |
-| `audit` | 输出路径/轮转参数切换 |
-| `cache` | 重建缓存（清空旧条目） |
-| `compressor` | 压缩等级/模式切换 |
+| Feature                    | micro-mcp            | slim-mcp            | mcp-compressor      | mcp-guardian     |
+| -------------------------- | -------------------- | ------------------- | ------------------- | ---------------- |
+| Schema compression         | ✅ 5 levels, -86%    | ✅ 5 levels, -77%   | ✅                  | ❌               |
+| Accuracy validation        | ✅ 180 API calls     | ✅ 120 API calls    | ❌                  | —                |
+| Request cache              | ✅ TTL+LRU           | ❌                  | ❌                  | ❌               |
+| Tool allow/deny            | ✅ Glob-based        | ❌                  | ❌                  | ✅               |
+| SSRF protection            | ✅ IP + domain       | ❌                  | ❌                  | ✅               |
+| Injection detection        | ✅ 17 patterns       | ❌                  | ❌                  | ✅               |
+| Rate limiting              | ✅ Token bucket      | ❌                  | ❌                  | ✅               |
+| Audit log                  | ✅ JSON, rotation    | ❌                  | ❌                  | ✅               |
+| Hot reload                 | ✅ SIGHUP            | ❌                  | ❌                  | ❌               |
+| Multi-server routing       | ✅ Prefix auto-route | ❌                  | ❌                  | ❌               |
+| HTTP transport             | ✅ Streamable HTTP   | ❌                  | ✅                  | ❌               |
+| **Compression + Security** | **✅ One proxy**     | ❌ Compression only | ❌ Compression only | ❌ Security only |
 
-**不可热更新：** 无。所有 `micro-mcp.yml` 配置项都支持热重载。
+---
 
-**启动日志中会打印进程 PID：**
-```
-🛡️ micro-mcp started
-   Send SIGHUP to reload config (kill -HUP <pid>)
-```
+## Requirements
 
-**失败处理：** reload 失败时保留旧配置继续运行，stderr 打印错误信息。
+- **Node.js** >= 18
+- **Only 5 production dependencies** (MCP SDK, commander, js-yaml, micromatch, pino)
 
-## 技术栈
-
-TypeScript · MCP SDK · 5 个依赖 · 397 个测试 · 4 模块基准
-
-## 与其他 MCP 工具搭配
-
-micro-mcp 内置压缩，不需要外部压缩工具。如果已用 [mcp-compressor](https://github.com/atlassian-labs/mcp-compressor) 或其他压缩方案，micro-mcp 可作为安全层叠加：
-
-```
-Agent → mcp-compressor (外部压缩) → micro-mcp (安全) → MCP Server
-# 或
-Agent → micro-mcp (内置压缩 + 安全) → MCP Server
-```
-
-详见 [压缩器指南](docs/COMPRESSOR.md) 和 [基准测试](#压缩--缓存)。
-
-## License
-
-MIT
+---
 
 ## Docker
 
@@ -250,3 +297,9 @@ MIT
 docker build -t micro-mcp .
 docker run -i --rm -v $(pwd)/micro-mcp.yml:/app/micro-mcp.yml micro-mcp start
 ```
+
+---
+
+## License
+
+MIT

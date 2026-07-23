@@ -208,15 +208,30 @@ class RotatingFileStream extends Writable {
       const compressSource = rotated ? backupPath : this.filePath;
       const compressDest = `${backupPath}.gz`;
       // 异步 gzip 压缩备份文件（不阻塞写入）
-      this.compressFile(compressSource, compressDest).catch(() => {
-        // 压缩失败则保留未压缩备份（rename 已完成）或尝试就地重命名
-        if (!rotated) {
-          try { renameSync(this.filePath, backupPath); } catch { /* ignore */ }
-        }
-      }).then(() => {
-        // 压缩成功后删除未压缩备份，只保留 .gz
-        if (rotated) { try { unlinkSync(backupPath); } catch { /* ignore */ } }
-      }).catch(() => { /* unlink 噪音忽略 */ });
+      this.compressFile(compressSource, compressDest)
+        .catch(() => {
+          // 压缩失败则保留未压缩备份（rename 已完成）或尝试就地重命名
+          if (!rotated) {
+            try {
+              renameSync(this.filePath, backupPath);
+            } catch {
+              /* ignore */
+            }
+          }
+        })
+        .then(() => {
+          // 压缩成功后删除未压缩备份，只保留 .gz
+          if (rotated) {
+            try {
+              unlinkSync(backupPath);
+            } catch {
+              /* ignore */
+            }
+          }
+        })
+        .catch(() => {
+          /* unlink 噪音忽略 */
+        });
     } else {
       // 不压缩：直接重命名
       try {
@@ -256,20 +271,17 @@ export class AuditLogger {
   private rotator: RotatingFileStream | null = null;
   private maxMemoryEntries: number;
 
- constructor(options: AuditLoggerOptions = {}) {
+  constructor(options: AuditLoggerOptions = {}) {
     const { output = "stdout", filePath, level = "info", maxMemoryEntries = DEFAULT_MAX_MEMORY_ENTRIES } = options;
     this.maxMemoryEntries = maxMemoryEntries;
 
-   if (output === "file" && filePath) {
+    if (output === "file" && filePath) {
       const maxSize = options.maxSize ?? DEFAULT_MAX_SIZE;
       const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
       const compress = options.compress ?? false;
 
       this.rotator = new RotatingFileStream(filePath, maxSize, maxFiles, compress);
-      this.logger = pino(
-        { level },
-        this.rotator as unknown as Writable,
-      );
+      this.logger = pino({ level }, this.rotator as unknown as Writable);
     } else {
       this.logger = pino({ level });
     }
@@ -312,7 +324,7 @@ export class AuditLogger {
       safeArgs = { _error: "arguments contained non-serializable values" };
     }
 
-    const action = result.allowed ? "allowed" as const : "blocked" as const;
+    const action = result.allowed ? ("allowed" as const) : ("blocked" as const);
 
     const entry: AuditEntry = {
       timestamp: new Date().toISOString(),
@@ -337,13 +349,7 @@ export class AuditLogger {
    * 记录 discovery 事件（tools/list）。
    * Agent 每次调用 tools/list 时记录，用于审计"Agent 看到了什么"。
    */
-  logDiscovery(
-    sessionId: string,
-    requestId: number,
-    serverName: string,
-    toolCount: number,
-    toolNames: string[],
-  ): void {
+  logDiscovery(sessionId: string, requestId: number, serverName: string, toolCount: number, toolNames: string[]): void {
     const entry: AuditEntry = {
       timestamp: new Date().toISOString(),
       sessionId,
@@ -352,8 +358,8 @@ export class AuditLogger {
       serverName,
       arguments: { count: toolCount, tools: toolNames },
       action: "discovery",
-    decisionTrail: [],
-  };
+      decisionTrail: [],
+    };
 
     this.pushEntry(entry);
     this.logger.info(entry, "audit discovery");

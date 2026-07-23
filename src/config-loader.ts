@@ -9,7 +9,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as yaml from "js-yaml";
-import type { GuardConfig, UpstreamServer, AuditConfig } from "./config-types.js";
+import type { GuardConfig, UpstreamServer } from "./config-types.js";
 import type { MCPConfig } from "./types.js";
 import { validateConfigSchema, formatSchemaErrors } from "./config-schema.js";
 
@@ -34,12 +34,7 @@ export class ConfigLoader {
    * 按优先级顺序查找：.mcp.json > mcp.json > claude_desktop_config.json > .cursor/mcp.json
    */
   static discoverMCPConfig(cwd: string): string | null {
-    const candidates = [
-      ".mcp.json",
-      "mcp.json",
-      "claude_desktop_config.json",
-      ".cursor/mcp.json",
-    ];
+    const candidates = [".mcp.json", "mcp.json", "claude_desktop_config.json", ".cursor/mcp.json"];
     for (const candidate of candidates) {
       const fullPath = path.join(cwd, candidate);
       if (fs.existsSync(fullPath)) return fullPath;
@@ -124,14 +119,10 @@ export class ConfigLoader {
       throw new Error("Invalid config: expected an object");
     }
     if ((config as GuardConfig).version !== 1) {
-      throw new Error(
-        `Invalid config: unsupported version ${(config as GuardConfig).version}`,
-      );
+      throw new Error(`Invalid config: unsupported version ${(config as GuardConfig).version}`);
     }
     if (!config.tools || !config.ssrf || !config.rate_limit) {
-      throw new Error(
-        "Invalid config: missing required sections (tools, ssrf, rate_limit)",
-      );
+      throw new Error("Invalid config: missing required sections (tools, ssrf, rate_limit)");
     }
 
     // JSON Schema 校验

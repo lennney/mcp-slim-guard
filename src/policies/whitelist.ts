@@ -8,7 +8,7 @@
 
 import micromatch from "micromatch";
 import type { Policy, PolicyContext, PolicyResult } from "../types.js";
-import type { ToolsConfig, ParamRule } from "../config-types.js";
+import type { ToolsConfig } from "../config-types.js";
 
 const { isMatch } = micromatch;
 
@@ -52,9 +52,7 @@ export class WhitelistPolicy implements Policy {
     }
 
     // 2. allow 检查 — 必须匹配至少一个 allow 模式
-    const allowed = this.config.allow.some((pattern) =>
-      isMatch(toolName, pattern),
-    );
+    const allowed = this.config.allow.some((pattern) => isMatch(toolName, pattern));
     if (!allowed) {
       return {
         allowed: false,
@@ -77,11 +75,7 @@ export class WhitelistPolicy implements Policy {
           };
         }
 
-        if (
-          rule.max_length !== undefined &&
-          typeof value === "string" &&
-          value.length > rule.max_length
-        ) {
+        if (rule.max_length !== undefined && typeof value === "string" && value.length > rule.max_length) {
           return {
             allowed: false,
             reason: `Param "${param}" exceeds max length ${rule.max_length} for tool "${toolName}"`,

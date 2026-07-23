@@ -61,21 +61,21 @@ describe("validateConfigSchema", () => {
     delete (c as Record<string, unknown>).servers;
     const errors = validateConfigSchema(c);
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some(e => e.path === "$.servers")).toBe(true);
+    expect(errors.some((e) => e.path === "$.servers")).toBe(true);
   });
 
   it("rejects invalid enum values", () => {
     const c = validConfig();
     (c.ssrf as Record<string, unknown>).mode = "invalid";
     const errors = validateConfigSchema(c);
-    expect(errors.some(e => e.path === "$.ssrf.mode")).toBe(true);
+    expect(errors.some((e) => e.path === "$.ssrf.mode")).toBe(true);
   });
 
   it("rejects invalid rate_limit.default type", () => {
     const c = validConfig();
     (c.rate_limit as Record<string, unknown>).default = true;
     const errors = validateConfigSchema(c);
-    expect(errors.some(e => e.path === "$.rate_limit.default")).toBe(true);
+    expect(errors.some((e) => e.path === "$.rate_limit.default")).toBe(true);
   });
 
   it("accepts rate_limit.default as number", () => {
@@ -103,6 +103,6 @@ describe("validateConfigSchema", () => {
     const c = validConfig();
     (c.servers as Record<string, Record<string, unknown>>).github.command = undefined;
     const errors = validateConfigSchema(c);
-    expect(errors.some(e => e.path === "$.servers.github.command")).toBe(true);
+    expect(errors.some((e) => e.path === "$.servers.github.command")).toBe(true);
   });
 });

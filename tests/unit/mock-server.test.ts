@@ -22,19 +22,12 @@ import { z } from "zod";
 // Import the SUT — note: startMockServer() is not called here because it
 // connects to STDIO transport; we test the handler functions directly.
 // ---------------------------------------------------------------------------
-import {
-  handleEcho,
-  handleAdd,
-  handleGetTime,
-  startMockServer,
-} from "../../src/mock-server.js";
+import { handleEcho, handleAdd, handleGetTime, startMockServer } from "../../src/mock-server.js";
 
 // ---------------------------------------------------------------------------
 // Helper: extract text from a CallToolResult content entry
 // ---------------------------------------------------------------------------
-function getTextContent(
-  content: Array<{ type: string; text?: string }>,
-): string {
+function getTextContent(content: Array<{ type: string; text?: string }>): string {
   const entry = content[0];
   if (!entry || entry.type !== "text" || entry.text === undefined) {
     throw new Error("Expected text content");
@@ -132,8 +125,7 @@ describe("MockMcpServer", () => {
           description: "Echoes back the input message",
           inputSchema: { message: z.string() },
         },
-        async ({ message }: { message: string }) =>
-          handleEcho({ message }),
+        async ({ message }: { message: string }) => handleEcho({ message }),
       );
     }).not.toThrow();
 
@@ -144,15 +136,18 @@ describe("MockMcpServer", () => {
           description: "Adds two numbers",
           inputSchema: { a: z.number(), b: z.number() },
         },
-        async ({ a, b }: { a: number; b: number }) =>
-          handleAdd({ a, b }),
+        async ({ a, b }: { a: number; b: number }) => handleAdd({ a, b }),
       );
     }).not.toThrow();
 
     expect(() => {
-      server.registerTool("get_time", {
-        description: "Returns current timestamp",
-      }, async () => handleGetTime());
+      server.registerTool(
+        "get_time",
+        {
+          description: "Returns current timestamp",
+        },
+        async () => handleGetTime(),
+      );
     }).not.toThrow();
   });
 });

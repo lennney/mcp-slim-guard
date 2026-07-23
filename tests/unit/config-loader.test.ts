@@ -106,10 +106,7 @@ describe("ConfigLoader", () => {
   describe("loadGuardConfig", () => {
     it("loads and validates YAML config", () => {
       const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      const ymlContent = fs.readFileSync(
-        path.join(__dirname, "../fixtures/mcp-guard.test.yml"),
-        "utf-8",
-      );
+      const ymlContent = fs.readFileSync(path.join(__dirname, "../fixtures/mcp-guard.test.yml"), "utf-8");
       fs.writeFileSync(guardYmlPath, ymlContent);
       const config = ConfigLoader.loadGuardConfig(guardYmlPath);
       expect(config.version).toBe(1);
@@ -122,16 +119,12 @@ describe("ConfigLoader", () => {
         guardYmlPath,
         "version: 2\ntools: { allow: [], deny: [] }\nssrf: { mode: 'block', block_private_ips: true, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}",
       );
-      expect(() => ConfigLoader.loadGuardConfig(guardYmlPath)).toThrow(
-        "unsupported version",
-      );
+      expect(() => ConfigLoader.loadGuardConfig(guardYmlPath)).toThrow("unsupported version");
     });
 
     it("throws on missing required sections", () => {
       fs.writeFileSync(guardYmlPath, "version: 1\ntools: { allow: [], deny: [] }\nservers: {}");
-      expect(() => ConfigLoader.loadGuardConfig(guardYmlPath)).toThrow(
-        "missing required sections",
-      );
+      expect(() => ConfigLoader.loadGuardConfig(guardYmlPath)).toThrow("missing required sections");
     });
   });
 
@@ -139,10 +132,7 @@ describe("ConfigLoader", () => {
     it("finds and loads micro-mcp.yml", () => {
       const __dirname = path.dirname(fileURLToPath(import.meta.url));
       const guardYmlPath = path.join(tmpDir, "micro-mcp.yml");
-      const ymlContent = fs.readFileSync(
-        path.join(__dirname, "../fixtures/mcp-guard.test.yml"),
-        "utf-8",
-      );
+      const ymlContent = fs.readFileSync(path.join(__dirname, "../fixtures/mcp-guard.test.yml"), "utf-8");
       fs.writeFileSync(guardYmlPath, ymlContent);
       const config = ConfigLoader.findAndLoad(tmpDir);
       expect(config).not.toBeNull();
@@ -151,7 +141,10 @@ describe("ConfigLoader", () => {
 
     it("finds and loads micro-mcp.yaml", () => {
       const altPath = path.join(tmpDir, "micro-mcp.yaml");
-      fs.writeFileSync(altPath, "version: 1\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}");
+      fs.writeFileSync(
+        altPath,
+        "version: 1\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}",
+      );
       const config = ConfigLoader.findAndLoad(tmpDir);
       expect(config).not.toBeNull();
       expect(config!.version).toBe(1);
@@ -165,9 +158,7 @@ describe("ConfigLoader", () => {
 
   describe("compressor lazy_loading config", () => {
     it("applies defaults lazy_loading=false, lazy_budget=8 when omitted", () => {
-      const config = ConfigLoader.loadGuardConfig(
-        "tests/fixtures/config-minimal.yaml",
-      );
+      const config = ConfigLoader.loadGuardConfig("tests/fixtures/config-minimal.yaml");
       expect(config.compressor.lazy_loading).toBe(false);
       expect(config.compressor.lazy_budget).toBe(8);
     });
@@ -206,15 +197,9 @@ servers: {}
       const tmpPath = path.join(tmpDir, `test-lazy-budget-${Date.now()}.yaml`);
       fs.writeFileSync(tmpPath, yamlContent);
       try {
-        const errors = validateConfigSchema(
-          yaml.load(fs.readFileSync(tmpPath, "utf-8")) as Record<string, unknown>,
-        );
+        const errors = validateConfigSchema(yaml.load(fs.readFileSync(tmpPath, "utf-8")) as Record<string, unknown>);
         expect(errors.length).toBeGreaterThan(0);
-        expect(
-          errors.some(
-            (e) => e.path.includes("lazy_budget") || e.message.includes("lazy_budget"),
-          ),
-        ).toBe(true);
+        expect(errors.some((e) => e.path.includes("lazy_budget") || e.message.includes("lazy_budget"))).toBe(true);
       } finally {
         fs.unlinkSync(tmpPath);
       }

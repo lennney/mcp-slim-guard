@@ -223,20 +223,12 @@ export interface SchemaError {
  * 校验值类型是否符合 schema 类型要求。
  * 支持单个类型和联合类型数组（如 ["string", "number"]）。
  */
-function checkType(
-  value: unknown,
-  expected: string | string[] | undefined,
-  path: string,
-  errors: SchemaError[],
-): void {
+function checkType(value: unknown, expected: string | string[] | undefined, path: string, errors: SchemaError[]): void {
   if (expected === undefined) return;
 
   const types = Array.isArray(expected) ? expected : [expected];
   // special-case: "array" is "object" in typeof, so check Array.isArray
-  const actual =
-    types.includes("array") && Array.isArray(value)
-      ? "array"
-      : typeof value;
+  const actual = types.includes("array") && Array.isArray(value) ? "array" : typeof value;
 
   // null is "object" in typeof but we want to catch it
   if (value === null) {
@@ -271,12 +263,7 @@ function checkType(
  * 校验值是否符合 oneOf 约束。
  * 至少有一个变体通过校验即视为通过。
  */
-function checkOneOf(
-  value: unknown,
-  oneOf: SchemaNode[],
-  path: string,
-  errors: SchemaError[],
-): boolean {
+function checkOneOf(value: unknown, oneOf: SchemaNode[], path: string, errors: SchemaError[]): boolean {
   if (oneOf.length === 0) return false;
 
   for (const variant of oneOf) {
@@ -295,12 +282,7 @@ function checkOneOf(
 /**
  * 递归校验节点值与 schema 定义。
  */
-function validateNode(
-  value: unknown,
-  schema: SchemaNode,
-  path: string,
-  errors: SchemaError[],
-): void {
+function validateNode(value: unknown, schema: SchemaNode, path: string, errors: SchemaError[]): void {
   // --- type check ---
   if (schema.type) {
     checkType(value, schema.type, path, errors);

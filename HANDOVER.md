@@ -1,11 +1,11 @@
 ---
 type: HandoverDoc
 title: micro-mcp HANDOVER
-timestamp: '2026-07-22T18:30:00+08:00'
+timestamp: "2026-07-22T18:30:00+08:00"
 description: 当前状态、已完成工作、待办事项
 tags:
-- handover
-- micro-mcp
+  - handover
+  - micro-mcp
 ---
 
 # HANDOVER.md
@@ -34,13 +34,13 @@ tags:
 
 ## 当前状态
 
-| 指标 | 数值 |
-|------|------|
-| 测试 | 401 tests, 20 files, 全绿 (1 预存 CLI 失败) |
-| 生产依赖 | 5 个（未新增）|
-| 源文件 | 15 个 |
-| Build | tsc --noEmit 通过 |
-| 分支 | main（feat/lazy-loading 已合并删除）|
+| 指标     | 数值                                        |
+| -------- | ------------------------------------------- |
+| 测试     | 401 tests, 20 files, 全绿 (1 预存 CLI 失败) |
+| 生产依赖 | 5 个（未新增）                              |
+| 源文件   | 15 个                                       |
+| Build    | tsc --noEmit 通过                           |
+| 分支     | main（feat/lazy-loading 已合并删除）        |
 
 ## 待办
 
@@ -59,29 +59,29 @@ tags:
 
 ## 关键决策
 
-| 日期 | 决策 | 原因 |
-|------|------|------|
-| 2026-07-22 | MCP 2026-07-28 协议更新审视 — 核心结论：**tools/call 和 tools/list 消息格式不变，cache 可消费 ttlMs** | 见下方详细分析 |
-| 2026-07-22 | Lazy loading 用 discover-then-call 路线（get_schema）而非 slim-mcp 的 promote-on-call+retry | 省一次 error 往返，显式可控 |
-| 2026-07-22 | 纯函数 pipeline `(tools) => tools` 替代 switch/case | 可组合、可独立测试、零状态零副作用 |
-| 2026-07-22 | slim 格式用 `{ type:"object", properties:{} }` 而非省略 inputSchema | MCP SDK Zod 校验要求 inputSchema 必须是 object |
-| 2026-07-22 | HIGH_PRIORITY 正则加 `^(?:[^_]+_)?` 前缀 | 适配 `server_toolname` 命名约定（github_search 而非 search） |
-| 2026-07-22 | 白名单过滤移到 pipeline 阶段 0 | 统一逻辑，删除 handleWrapperTool 内重复的 isToolVisible |
+| 日期       | 决策                                                                                                  | 原因                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 2026-07-22 | MCP 2026-07-28 协议更新审视 — 核心结论：**tools/call 和 tools/list 消息格式不变，cache 可消费 ttlMs** | 见下方详细分析                                               |
+| 2026-07-22 | Lazy loading 用 discover-then-call 路线（get_schema）而非 slim-mcp 的 promote-on-call+retry           | 省一次 error 往返，显式可控                                  |
+| 2026-07-22 | 纯函数 pipeline `(tools) => tools` 替代 switch/case                                                   | 可组合、可独立测试、零状态零副作用                           |
+| 2026-07-22 | slim 格式用 `{ type:"object", properties:{} }` 而非省略 inputSchema                                   | MCP SDK Zod 校验要求 inputSchema 必须是 object               |
+| 2026-07-22 | HIGH_PRIORITY 正则加 `^(?:[^_]+_)?` 前缀                                                              | 适配 `server_toolname` 命名约定（github_search 而非 search） |
+| 2026-07-22 | 白名单过滤移到 pipeline 阶段 0                                                                        | 统一逻辑，删除 handleWrapperTool 内重复的 isToolVisible      |
 
 ## MCP 2026-07-28 协议兼容分析
 
 ### 对 micro-mcp 影响评估
 
-| 变更 | 严重度 | 对 micro-mcp 的影响 |
-|------|--------|-------------------|
-| `initialize` 握手移除 | 🔴 高危 | proxy 需在每请求注入 `_meta`（protocolVersion + clientCapabilities） |
-| `resultType` 必填 | 🟡 中危 | proxy 返回结果需加 `resultType: "complete"` |
-| `InputRequiredResult` (MRTR) | 🟡 中危 | server-initiated 请求不再可拦截，嵌套在 result 内 |
-| `server/discover` 新方法 | 🟡 中危 | ServerManager 需转发或合成 |
-| `tools/call` 格式 | 🟢 不变 | **好消息：核心消息格式完全兼容** |
-| `tools/list` 格式 | 🟢 不变 | 工具定义字段不变 |
-| `isError: true` | 🟢 不变 | 错误处理保持一致 |
-| `ttlMs` + `cacheScope` | 🟢 利好 | ToolCache 可消费上游 TTL 提示，替代模式推断 |
+| 变更                         | 严重度  | 对 micro-mcp 的影响                                                  |
+| ---------------------------- | ------- | -------------------------------------------------------------------- |
+| `initialize` 握手移除        | 🔴 高危 | proxy 需在每请求注入 `_meta`（protocolVersion + clientCapabilities） |
+| `resultType` 必填            | 🟡 中危 | proxy 返回结果需加 `resultType: "complete"`                          |
+| `InputRequiredResult` (MRTR) | 🟡 中危 | server-initiated 请求不再可拦截，嵌套在 result 内                    |
+| `server/discover` 新方法     | 🟡 中危 | ServerManager 需转发或合成                                           |
+| `tools/call` 格式            | 🟢 不变 | **好消息：核心消息格式完全兼容**                                     |
+| `tools/list` 格式            | 🟢 不变 | 工具定义字段不变                                                     |
+| `isError: true`              | 🟢 不变 | 错误处理保持一致                                                     |
+| `ttlMs` + `cacheScope`       | 🟢 利好 | ToolCache 可消费上游 TTL 提示，替代模式推断                          |
 
 ### 需要适配的代码
 

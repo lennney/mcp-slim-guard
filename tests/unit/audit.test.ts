@@ -40,7 +40,13 @@ describe("AuditLogger", () => {
   });
 
   it("logs blocked action with action='blocked' and reason", () => {
-    logger.log(ctx(), blocked("custom reason"), [{ policy: "test_policy", result: "block", reason: "custom reason" }], "s1", 1);
+    logger.log(
+      ctx(),
+      blocked("custom reason"),
+      [{ policy: "test_policy", result: "block", reason: "custom reason" }],
+      "s1",
+      1,
+    );
     const entries = logger.getEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].action).toBe("blocked");
@@ -83,7 +89,8 @@ describe("AuditLogger", () => {
       ctx({ toolName: "search_repos", serverName: "github" }),
       blocked("not allowed"),
       [{ policy: "whitelist", result: "block", reason: "not allowed" }],
-      "s1", 1,
+      "s1",
+      1,
     );
     const entry = logger.getEntries()[0];
     expect(entry.serverName).toBe("github");
@@ -96,11 +103,7 @@ describe("AuditLogger", () => {
     expect(logger.getEntries()[0].arguments).toEqual({});
 
     // nested arguments
-    logger.log(
-      ctx({ arguments: { nested: { key: "deep", num: 1 } } }),
-      allowed(),
-      [], "s1", 2,
-    );
+    logger.log(ctx({ arguments: { nested: { key: "deep", num: 1 } } }), allowed(), [], "s1", 2);
     expect(logger.getEntries()[1].arguments).toEqual({
       nested: { key: "deep", num: 1 },
     });

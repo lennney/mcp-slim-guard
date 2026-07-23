@@ -5,3 +5,8 @@ coverage/
 .DS_Store
 test-workspace/
 scripts/benchmark/results/
+
+# Generated test artifacts (from tsconfig declaration)
+tests/**/*.d.ts
+tests/**/*.d.ts.map
+tests/**/*.js

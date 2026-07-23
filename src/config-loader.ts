@@ -143,16 +143,24 @@ export class ConfigLoader {
       };
     }
 
+    // Fill compressor defaults when not specified in config
+    if (!config.compressor) {
+      config.compressor = {
+        enabled: false,
+        level: "off",
+        lazy_loading: false,
+        lazy_budget: 8,
+      };
+    }
+
     // Normalize deprecated compression level aliases
-    if (config.compressor) {
-      config.compressor.level = normalizeCompressionLevel(config.compressor.level);
-      // Apply lazy_loading / lazy_budget defaults if not set
-      if (config.compressor.lazy_loading === undefined) {
-        config.compressor.lazy_loading = false;
-      }
-      if (config.compressor.lazy_budget === undefined) {
-        config.compressor.lazy_budget = 8;
-      }
+    config.compressor.level = normalizeCompressionLevel(config.compressor.level);
+    // Apply lazy_loading / lazy_budget defaults if not set
+    if (config.compressor.lazy_loading === undefined) {
+      config.compressor.lazy_loading = false;
+    }
+    if (config.compressor.lazy_budget === undefined) {
+      config.compressor.lazy_budget = 8;
     }
 
     // Fill cache defaults

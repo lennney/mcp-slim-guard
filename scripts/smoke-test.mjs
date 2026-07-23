@@ -37,10 +37,10 @@ function readResponse(proc, expectedId, timeoutMs = 15000) {
 async function test() {
   console.log('🚀 mcp-guard smoke test\n');
 
-  // Create workspace if missing
-  if (!fs.existsSync(TEST_DIR)) {
-    fs.mkdirSync(TEST_DIR, { recursive: true });
-    fs.writeFileSync(
+  // Always recreate workspace with fresh config
+  fs.rmSync(TEST_DIR, { recursive: true, force: true });
+  fs.mkdirSync(TEST_DIR, { recursive: true });
+  fs.writeFileSync(
       path.join(TEST_DIR, 'mcp-slim-guard.yml'),
       [
         'version: 1',
@@ -70,7 +70,6 @@ async function test() {
         '',
       ].join('\n'),
     );
-  }
 
   const proc = child_process.spawn('node', [GUARD_CLI, 'start'], {
     cwd: TEST_DIR,
@@ -100,6 +99,9 @@ async function test() {
     const initResp = await readResponse(proc, initId);
     console.log(`✅ initialize: ${initResp.result?.serverInfo?.name} v${initResp.result?.serverInfo?.version}`);
     proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+
+    // Wait for server discovery to complete before listing tools
+    await new Promise(r => setTimeout(r, 2000));
 
     // 1. tools/list
     console.log('\n--- tools/list ---');

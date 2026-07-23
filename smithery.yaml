@@ -3,7 +3,10 @@ startCommand:
   type: stdio
   configSchema:
     type: object
-    properties: {}
+    properties:
+      configPath:
+        type: string
+        description: "Path to mcp-slim-guard.yml (default: ./mcp-slim-guard.yml). Run 'mcp-slim-guard init' to generate one."
   commandFunction:
     - npx
     - -y

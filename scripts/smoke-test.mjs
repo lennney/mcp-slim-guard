@@ -52,7 +52,7 @@ async function test() {
         '    - "*_delete_*"',
         '',
         'ssrf:',
-        '  mode: warn',
+        '  mode: log',
         '  block_private_ips: true',
         '  allow_domains: []',
         '  block_domains: []',

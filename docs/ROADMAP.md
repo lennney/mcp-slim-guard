@@ -56,15 +56,15 @@ maximum: ~77% savings
 | 9   | 创建 SECURITY.md                                  |  ✅  |
 | 10  | 发布 GitHub Release v0.1.0                        |  ✅  |
 | 11  | 制作 20-30 秒 demo GIF（init → validate → start） |  ⬜  |
-| 12  | 更新 Glama 信息（glama.json 已推送，待手动提交）  |  🔄  |
+| 12  | 更新 Glama 信息（glama.json 已推送，已手动提交）  |  ✅  |
 
 ### 第 2 周（7/31 — 8/6）：集中发布
 
 | #   | 任务                                                                         | 状态 |
 | --- | ---------------------------------------------------------------------------- | :--: |
-| 1   | 官方 MCP Registry 提交（server.json 已验证，已 login）                       |  🔄  |
+| 1   | 官方 MCP Registry 提交（已 publish）                                         |  ✅  |
 | 2   | Smithery 发布（MCPB）                                                        |  ⬜  |
-| 3   | Glama 单独提交 mcp-slim-guard（同第 1 周 #12）                               |  🔄  |
+| 3   | Glama 单独提交 mcp-slim-guard（同第 1 周 #12）                               |  ✅  |
 | 4   | mcp.so 收录                                                                  |  ⬜  |
 | 5   | PulseMCP 收录                                                                |  ⬜  |
 | 6   | Awesome MCP Servers PR（Security / Developer Tools 分类）                    |  ⬜  |

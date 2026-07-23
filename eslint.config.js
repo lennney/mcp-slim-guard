@@ -13,7 +13,7 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["dist/", "node_modules/", "scripts/benchmark/", "tests/", "*.mjs", "*.cjs"],
+    ignores: ["dist/", "node_modules/", "scripts/benchmark/", "tests/", "*.mjs", "*.cjs", "vitest.config.ts"],
   },
   {
     rules: {

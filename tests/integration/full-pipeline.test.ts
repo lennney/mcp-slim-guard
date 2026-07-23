@@ -64,26 +64,19 @@ function makeConfig(overrides?: Partial<GuardConfig>): GuardConfig {
 async function buildProxy(config: GuardConfig) {
   const audit = new AuditLogger({ level: "silent" });
 
-  const policies = new PolicyPipeline([
-    new WhitelistPolicy(config.tools),
-    new RateLimitPolicy(config.rate_limit),
-  ]);
+  const policies = new PolicyPipeline([new WhitelistPolicy(config.tools), new RateLimitPolicy(config.rate_limit)]);
 
   const serverManager = new ServerManager(config.servers);
   const proxy = new GuardProxy(config, policies, audit, serverManager);
 
-  const [clientTransport, serverTransport] =
-    InMemoryTransport.createLinkedPair();
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
   // Start proxy — this spawns the mock-server subprocess, creates the MCP
   // Server, and connects it to the server-side InMemoryTransport.
   await proxy.start(serverTransport);
 
   // Connect test client to the client-side InMemoryTransport.
-  const client = new Client(
-    { name: "test-client", version: "1.0.0" },
-    { capabilities: {} },
-  );
+  const client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
   await client.connect(clientTransport);
 
   return { proxy, client, audit };
@@ -356,9 +349,8 @@ describe("GuardProxy Full Pipeline", () => {
 
       // Verify audit log contains cache hit
       const entries = ctx.audit.getEntries();
-      const cacheHits = entries.filter(
-        (e: { decisionTrail?: Array<{ policy: string }> }) =>
-          e.decisionTrail?.some((d) => d.policy === "cache"),
+      const cacheHits = entries.filter((e: { decisionTrail?: Array<{ policy: string }> }) =>
+        e.decisionTrail?.some((d) => d.policy === "cache"),
       );
       expect(cacheHits.length).toBeGreaterThanOrEqual(1);
     } finally {

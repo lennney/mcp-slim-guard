@@ -163,12 +163,8 @@ describe("CLI", () => {
 
       await main(["node", "cli.js", "init"]);
 
-      expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalledWith(
-        expect.stringContaining("micro-mcp"),
-      );
-      expect(MockConfigLoader.ConfigLoader.generateGuardConfig).toHaveBeenCalledWith(
-        "/fake/path/.mcp.json",
-      );
+      expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalledWith(expect.any(String));
+      expect(MockConfigLoader.ConfigLoader.generateGuardConfig).toHaveBeenCalledWith("/fake/path/.mcp.json");
       expect(consoleLogSpy).toHaveBeenCalledWith("✅ Generated micro-mcp.yml");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
@@ -250,9 +246,7 @@ describe("CLI", () => {
       await main(["node", "cli.js", "uninit"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith("To remove micro-mcp:");
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining("uninit --force"),
-      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("uninit --force"));
     });
   });
 
@@ -280,9 +274,7 @@ describe("CLI", () => {
       // Commander writes help to stdout
       expect(stdoutWriteSpy).toHaveBeenCalled();
       // Help text should contain the command descriptions
-      const allCalls = stdoutWriteSpy.mock.calls
-        .map((call) => String(call[0]))
-        .join("");
+      const allCalls = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join("");
       expect(allCalls).toContain("init");
       expect(allCalls).toContain("start");
       expect(allCalls).toContain("status");

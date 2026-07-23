@@ -63,10 +63,7 @@ export class ServerManager {
   async start(): Promise<void> {
     for (const [serverName, serverConfig] of Object.entries(this.servers)) {
       try {
-        const client = new Client(
-          { name: "micro-mcp", version: "0.1.0" },
-          { capabilities: {} },
-        );
+        const client = new Client({ name: "micro-mcp", version: "0.1.0" }, { capabilities: {} });
 
         const transport = new StdioClientTransport({
           command: serverConfig.command,
@@ -86,10 +83,7 @@ export class ServerManager {
           tools,
         });
       } catch (error) {
-        console.warn(
-          `[micro-mcp] Failed to connect to server "${serverName}":`,
-          error,
-        );
+        console.warn(`[micro-mcp] Failed to connect to server "${serverName}":`, error);
       }
     }
   }
@@ -108,9 +102,7 @@ export class ServerManager {
         allTools.push({
           ...tool,
           name: `${conn.serverName}_${tool.name}`,
-          description: tool.description
-            ? `[${conn.serverName}] ${tool.description}`
-            : `[${conn.serverName}]`,
+          description: tool.description ? `[${conn.serverName}] ${tool.description}` : `[${conn.serverName}]`,
         });
       }
     }
@@ -128,9 +120,7 @@ export class ServerManager {
    * @param prefixedName - The prefixed tool name (e.g. "github_search_repositories")
    * @returns The resolved server name and original tool name, or null if not found
    */
-  resolveTool(
-    prefixedName: string,
-  ): { serverName: string; originalToolName: string } | null {
+  resolveTool(prefixedName: string): { serverName: string; originalToolName: string } | null {
     if (!prefixedName || !prefixedName.includes("_")) {
       return null;
     }
@@ -254,18 +244,12 @@ export class ServerManager {
       try {
         await conn.client.close();
       } catch (error) {
-        console.warn(
-          `[mcp-guard] Error closing client for "${conn.serverName}":`,
-          error,
-        );
+        console.warn(`[mcp-guard] Error closing client for "${conn.serverName}":`, error);
       }
       try {
         await conn.transport.close();
       } catch (error) {
-        console.warn(
-          `[micro-mcp] Error closing transport for "${conn.serverName}":`,
-          error,
-        );
+        console.warn(`[micro-mcp] Error closing transport for "${conn.serverName}":`, error);
       }
     }
 

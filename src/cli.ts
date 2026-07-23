@@ -17,8 +17,7 @@ import * as yaml from "js-yaml";
 import { ConfigLoader } from "./config-loader.js";
 import { VERSION } from "./index.js";
 import type { GuardConfig } from "./config-types.js";
-import type { Policy, PolicyContext, PolicyResult } from "./types.js";
-import { validateConfigSchema, formatSchemaErrors } from "./config-schema.js";
+import type { Policy, PolicyResult } from "./types.js";
 import { PolicyPipeline } from "./policies/base.js";
 import { WhitelistPolicy } from "./policies/whitelist.js";
 import { SSRFPolicy } from "./policies/ssrf.js";
@@ -82,8 +81,25 @@ function createPolicies(config: GuardConfig): Policy[] {
  * (maxSize/maxFiles/compress/maxMemoryEntries) — previously only output and
  * filePath were passed, so rotation settings in the config were silently dead.
  */
-export function buildAuditOptions(auditCfg: NonNullable<GuardConfig["audit"]>, cwd: string): { output: "stdout" | "file"; filePath?: string; maxSize?: string; maxFiles?: number; compress?: boolean; maxMemoryEntries?: number } {
-  const opts: { output: "stdout" | "file"; filePath?: string; maxSize?: string; maxFiles?: number; compress?: boolean; maxMemoryEntries?: number } = {
+export function buildAuditOptions(
+  auditCfg: NonNullable<GuardConfig["audit"]>,
+  cwd: string,
+): {
+  output: "stdout" | "file";
+  filePath?: string;
+  maxSize?: string;
+  maxFiles?: number;
+  compress?: boolean;
+  maxMemoryEntries?: number;
+} {
+  const opts: {
+    output: "stdout" | "file";
+    filePath?: string;
+    maxSize?: string;
+    maxFiles?: number;
+    compress?: boolean;
+    maxMemoryEntries?: number;
+  } = {
     output: auditCfg.output,
   };
   if (auditCfg.output === "file") {
@@ -106,15 +122,16 @@ export function buildAuditOptions(auditCfg: NonNullable<GuardConfig["audit"]>, c
 export async function main(argv: string[] = process.argv): Promise<void> {
   const program = new Command();
 
-  program
-    .name("micro-mcp")
-    .version(VERSION)
-    .description("轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速");
+  program.name("micro-mcp").version(VERSION).description("轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速");
 
   program
     .command("init")
     .description("Auto-discover MCP config and generate micro-mcp.yml")
-    .option("--compressor [level]", "Enable schema compression. Levels: light, normal, extreme, maximum. Use --lazy to enable lazy loading (schema on demand)", "off")
+    .option(
+      "--compressor [level]",
+      "Enable schema compression. Levels: light, normal, extreme, maximum. Use --lazy to enable lazy loading (schema on demand)",
+      "off",
+    )
     .option("--lazy", "Enable lazy loading: tools/list omits schemas, use mcp__get_schema on demand")
     .option("--lazy-budget <n>", "Max tools with full schema in lazy mode (default 8)", "8")
     .action((options: { compressor?: string; lazy?: boolean; lazyBudget?: string }) => {
@@ -123,15 +140,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       if (!mcpConfigPath) {
         console.error("Error: No MCP configuration file found.");
-        console.error(
-          "Expected one of: .mcp.json, mcp.json, claude_desktop_config.json, .cursor/mcp.json",
-        );
+        console.error("Expected one of: .mcp.json, mcp.json, claude_desktop_config.json, .cursor/mcp.json");
         process.exit(1);
         return;
       }
 
       const guardConfig = ConfigLoader.generateGuardConfig(mcpConfigPath);
-      
+
       // Apply compressor setting
       if (options.compressor && options.compressor !== "off") {
         const level = options.compressor as "light" | "normal" | "extreme" | "maximum";
@@ -162,7 +177,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const auditMax = guardConfig.audit?.maxSize ?? "10MB";
       const auditFiles = guardConfig.audit?.maxFiles ?? 5;
       const auditGzip = guardConfig.audit?.compress ? ", gzip" : "";
-      console.log(`   Audit: ${auditOut}${auditOut === "file" ? ` (${auditPath}, maxSize: ${auditMax}, maxFiles: ${auditFiles}${auditGzip})` : ""}`);
+      console.log(
+        `   Audit: ${auditOut}${auditOut === "file" ? ` (${auditPath}, maxSize: ${auditMax}, maxFiles: ${auditFiles}${auditGzip})` : ""}`,
+      );
     });
 
   program
@@ -179,7 +196,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         return;
       }
 
-// Use config.audit with defaults; forward ALL rotation/memory options
+      // Use config.audit with defaults; forward ALL rotation/memory options
       const auditCfg = config.audit ?? { output: "file" as const, filePath: "micro-mcp-audit.log" };
       const audit = new AuditLogger(buildAuditOptions(auditCfg, cwd));
       let serverManager = new ServerManager(config.servers);
@@ -201,7 +218,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         const port = parseInt(options.port, 10);
         const httpTransport = transport as StreamableHTTPServerTransport;
         // Create HTTP server to handle incoming requests
-        const httpServer = http.createServer(async (req, res) => {
+        const httpServer = http.createServer((req, res) => {
           // Only handle POST /mcp
           if (req.method !== "POST" || req.url !== "/mcp") {
             res.writeHead(405).end("Method Not Allowed");
@@ -209,18 +226,20 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           }
           // Collect body
           const chunks: Buffer[] = [];
-          for await (const chunk of req) {
-            chunks.push(chunk);
-          }
-          const body = Buffer.concat(chunks);
-          try {
-            await (httpTransport as StreamableHTTPServerTransport).handleRequest(req, res, body);
-          } catch (err) {
-            console.error("HTTP handler error:", err);
-            if (!res.headersSent) {
-              res.writeHead(500).end("Internal Server Error");
+          void (async () => {
+            for await (const chunk of req) {
+              chunks.push(chunk);
             }
-          }
+            const body = Buffer.concat(chunks);
+            try {
+              await (httpTransport as StreamableHTTPServerTransport).handleRequest(req, res, body);
+            } catch (err) {
+              console.error("HTTP handler error:", err);
+              if (!res.headersSent) {
+                res.writeHead(500).end("Internal Server Error");
+              }
+            }
+          })();
         });
         httpServer.listen(port, () => {
           console.log(`   HTTP transport: http://localhost:${port}/mcp`);
@@ -229,32 +248,36 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       } else {
         console.log("   Listening on STDIO transport");
       }
-      console.log(`   Audit log: ${auditCfg.output === "file" ? (auditCfg.filePath ?? path.join(cwd, "mcp-guard-audit.log")) : "stdout"}`);
+      console.log(
+        `   Audit log: ${auditCfg.output === "file" ? (auditCfg.filePath ?? path.join(cwd, "mcp-guard-audit.log")) : "stdout"}`,
+      );
       console.log("   Send SIGHUP to reload config (kill -HUP <pid>)");
 
       // SIGHUP → hot reload micro-mcp.yml (rebuilds pipeline + audit + serverManager)
-      process.on("SIGHUP", async () => {
-        try {
-          const newConfig = ConfigLoader.findAndLoad(cwd);
-          if (!newConfig) {
-            console.error("⚠️ [reload] micro-mcp.yml not found — keeping old config");
-            return;
+      process.on("SIGHUP", () => {
+        void (async () => {
+          try {
+            const newConfig = ConfigLoader.findAndLoad(cwd);
+            if (!newConfig) {
+              console.error("⚠️ [reload] micro-mcp.yml not found — keeping old config");
+              return;
+            }
+            // Stop old server manager connections
+            await serverManager.stop();
+            // Create new ones
+            serverManager = new ServerManager(newConfig.servers);
+            await serverManager.start();
+            const newPolicies = createPolicies(newConfig);
+            const newPipeline = new PolicyPipeline(newPolicies);
+            // Rebuild audit logger — forward ALL rotation/memory options
+            const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "micro-mcp-audit.log" };
+            const newAudit = new AuditLogger(buildAuditOptions(newAuditCfg, cwd));
+            proxy.reload(newConfig, newPipeline, newAudit, serverManager);
+            console.log("✅ [reload] Config reloaded — new policies + servers + audit active");
+          } catch (err) {
+            console.error("⚠️ [reload] Failed:", err instanceof Error ? err.message : String(err));
           }
-          // Stop old server manager connections
-          await serverManager.stop();
-          // Create new ones
-          serverManager = new ServerManager(newConfig.servers);
-          await serverManager.start();
-          const newPolicies = createPolicies(newConfig);
-          const newPipeline = new PolicyPipeline(newPolicies);
-// Rebuild audit logger — forward ALL rotation/memory options
-          const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "micro-mcp-audit.log" };
-          const newAudit = new AuditLogger(buildAuditOptions(newAuditCfg, cwd));
-          proxy.reload(newConfig, newPipeline, newAudit, serverManager);
-         console.log("✅ [reload] Config reloaded — new policies + servers + audit active");
-        } catch (err) {
-          console.error("⚠️ [reload] Failed:", err instanceof Error ? err.message : String(err));
-        }
+        })();
       });
     });
 
@@ -283,9 +306,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       console.log(`   Policies: ${policyList.join(", ")}`);
       console.log(`   SSRF: ${config.ssrf.mode}`);
       console.log(`   Rate limit: ${config.rate_limit.default}`);
-      console.log(
-        `   Injection detection: ${config.injection_detection.enabled ? "enabled" : "disabled"}`,
-      );
+      console.log(`   Injection detection: ${config.injection_detection.enabled ? "enabled" : "disabled"}`);
       console.log(
         `   Compressor: ${config.compressor?.enabled ? config.compressor.level : "off (use --compressor to enable)"}`,
       );
@@ -294,7 +315,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const auditMax = config.audit?.maxSize ?? "10MB";
       const auditFiles = config.audit?.maxFiles ?? 5;
       const auditGzip = config.audit?.compress ? ", gzip" : "";
-      console.log(`   Audit: ${auditOut}${auditOut === "file" ? ` (${auditPath}, maxSize: ${auditMax}, maxFiles: ${auditFiles}${auditGzip})` : ""}`);
+      console.log(
+        `   Audit: ${auditOut}${auditOut === "file" ? ` (${auditPath}, maxSize: ${auditMax}, maxFiles: ${auditFiles}${auditGzip})` : ""}`,
+      );
     });
 
   program
@@ -337,7 +360,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           const tools = manager.getTools();
           await manager.stop();
 
-          console.log(`✅ OK (${tools.length} tools: ${tools.map(t => t.name).join(", ")})`);
+          console.log(`✅ OK (${tools.length} tools: ${tools.map((t) => t.name).join(", ")})`);
           okCount++;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -379,9 +402,10 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       // Compressor status
       if (config.compressor?.enabled && config.compressor.level !== "off") {
         const lazyTag = config.compressor.lazy_loading ? " +lazy" : "";
-        const mode = (config.compressor.level === "extreme" || config.compressor.level === "maximum")
-          ? "schema transformation"
-          : "wrapper tools";
+        const mode =
+          config.compressor.level === "extreme" || config.compressor.level === "maximum"
+            ? "schema transformation"
+            : "wrapper tools";
         console.log(`  📦 Schema compressor: ${config.compressor.level}${lazyTag} (${mode})`);
         if (config.compressor.lazy_loading) {
           console.log(`     Lazy loading: budget=${config.compressor.lazy_budget ?? 8}`);
@@ -417,8 +441,10 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       interface ToolInfo {
-        prefixedName: string; serverName: string;
-        originalName: string; description: string;
+        prefixedName: string;
+        serverName: string;
+        originalName: string;
+        description: string;
       }
       const allTools: ToolInfo[] = [];
 
@@ -450,11 +476,15 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       const pipeline = new PolicyPipeline(createPolicies(config));
-      const allowed: ToolInfo[] = [], denied: ToolInfo[] = [], unmatched: ToolInfo[] = [];
+      const allowed: ToolInfo[] = [],
+        denied: ToolInfo[] = [],
+        unmatched: ToolInfo[] = [];
 
       for (const tool of allTools) {
         const result = await pipeline.execute({
-          toolName: tool.prefixedName, arguments: {}, serverName: tool.serverName,
+          toolName: tool.prefixedName,
+          arguments: {},
+          serverName: tool.serverName,
         });
         if (result.allowed) {
           allowed.push(tool);
@@ -469,7 +499,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       const total = allTools.length;
-      const pct = (n: number) => `${Math.round(n / total * 100)}%`;
+      const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
 
       console.log(`\n📊 Policy coverage: ${total} tools from ${serverNames.length} server(s)\n`);
       console.log(`  ✅ Allowed:   ${allowed.length} (${pct(allowed.length)})`);
@@ -479,9 +509,10 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       if (denied.length > 0) {
         console.log(`\n🚫 Denied by policy:`);
         for (const t of denied) {
-          const matching = config.tools.deny.find(p => {
-            return micromatch.isMatch(t.prefixedName, p);
-          }) ?? "?";
+          const matching =
+            config.tools.deny.find((p) => {
+              return micromatch.isMatch(t.prefixedName, p);
+            }) ?? "?";
           console.log(`   ${t.prefixedName} → matches "${matching}"`);
         }
       }
@@ -498,7 +529,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         for (const t of allowed) console.log(`   ${t.prefixedName}`);
       }
 
-      console.log(`\n🔒 SSRF: ${config.ssrf.mode === "off" ? "OFF ⚠️" : `${config.ssrf.mode}${config.ssrf.block_private_ips ? " + private IP blocking" : ""}`}`);
+      console.log(
+        `\n🔒 SSRF: ${config.ssrf.mode === "off" ? "OFF ⚠️" : `${config.ssrf.mode}${config.ssrf.block_private_ips ? " + private IP blocking" : ""}`}`,
+      );
 
       const exitCode = denied.length + unmatched.length === total ? 1 : 0;
       console.log(exitCode ? `\n❌ ALL tools blocked — check micro-mcp.yml` : `\n✅ All tools pass policy`);
@@ -527,8 +560,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           try {
             const entry = JSON.parse(line);
             const icon = entry.action === "blocked" ? "🚫" : "✅";
-            console.log(`${icon} [${entry.timestamp?.slice(11, 19) ?? "?"}] ${entry.toolName}: ${entry.action}${entry.reason ? ` (${entry.reason})` : ""}`);
-          } catch { /* skip non-JSON */ }
+            console.log(
+              `${icon} [${entry.timestamp?.slice(11, 19) ?? "?"}] ${entry.toolName}: ${entry.action}${entry.reason ? ` (${entry.reason})` : ""}`,
+            );
+          } catch {
+            /* skip non-JSON */
+          }
         }
 
         // Watch for new entries
@@ -547,14 +584,23 @@ export async function main(argv: string[] = process.argv): Promise<void> {
               try {
                 const entry = JSON.parse(line);
                 const icon = entry.action === "blocked" ? "🚫" : "✅";
-                console.log(`${icon} [${entry.timestamp?.slice(11, 19) ?? "?"}] ${entry.toolName}: ${entry.action}${entry.reason ? ` (${entry.reason})` : ""}`);
-              } catch { /* skip */ }
+                console.log(
+                  `${icon} [${entry.timestamp?.slice(11, 19) ?? "?"}] ${entry.toolName}: ${entry.action}${entry.reason ? ` (${entry.reason})` : ""}`,
+                );
+              } catch {
+                /* skip */
+              }
             }
-          } catch { /* fs race */ }
+          } catch {
+            /* fs race */
+          }
         });
 
         // Keep process alive
-        process.on("SIGINT", () => { watcher.close(); process.exit(0); });
+        process.on("SIGINT", () => {
+          watcher.close();
+          process.exit(0);
+        });
         setInterval(() => {}, 60000); // keepalive
       } else {
         console.log("Audit log (last 20 entries):\n");
@@ -567,8 +613,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             const entry = JSON.parse(line);
             const icon = entry.action === "blocked" ? "🚫" : "✅";
             const dur = entry.durationMs !== undefined ? ` (${entry.durationMs}ms)` : "";
-            console.log(`${icon} [${entry.timestamp?.slice(0, 19) ?? "?"}] ${entry.serverName}:${entry.toolName} → ${entry.action}${dur}${entry.reason ? ` — ${entry.reason}` : ""}`);
-          } catch { console.log(`  ${line.slice(0, 80)}...`); }
+            console.log(
+              `${icon} [${entry.timestamp?.slice(0, 19) ?? "?"}] ${entry.serverName}:${entry.toolName} → ${entry.action}${dur}${entry.reason ? ` — ${entry.reason}` : ""}`,
+            );
+          } catch {
+            console.log(`  ${line.slice(0, 80)}...`);
+          }
         }
       }
     });
@@ -609,10 +659,6 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
 // Auto-run when executed directly (not when imported in tests)
 const __filename = fileURLToPath(import.meta.url);
-if (
-  process.argv[1] &&
-  (process.argv[1] === __filename ||
-    path.resolve(process.argv[1]) === __filename)
-) {
+if (process.argv[1] && (process.argv[1] === __filename || path.resolve(process.argv[1]) === __filename)) {
   main();
 }

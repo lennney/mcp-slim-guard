@@ -70,18 +70,23 @@ async function buildProxy(config: GuardConfig) {
 
   await proxy.start(serverTransport);
 
-  const client = new Client(
-    { name: "test-client", version: "1.0.0" },
-    { capabilities: {} },
-  );
+  const client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
   await client.connect(clientTransport);
 
   return { proxy, client, audit };
 }
 
 async function destroyProxy(ctx: { proxy: GuardProxy; client: Client }) {
-  try { await ctx.client.close(); } catch { /* best-effort */ }
-  try { await ctx.proxy.stop(); } catch { /* best-effort */ }
+  try {
+    await ctx.client.close();
+  } catch {
+    /* best-effort */
+  }
+  try {
+    await ctx.proxy.stop();
+  } catch {
+    /* best-effort */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +393,7 @@ describe("Compressor Pipeline", () => {
     try {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
-      const echoTool = tools.find(t => t.name === "mock_echo")!;
+      const echoTool = tools.find((t) => t.name === "mock_echo")!;
       expect(echoTool.inputSchema).toBeDefined();
       expect(echoTool.inputSchema.type).toBe("object");
       expect(echoTool.inputSchema.properties).toBeDefined();
@@ -435,7 +440,7 @@ describe("Compressor Pipeline", () => {
     try {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
-      const echoTool = tools.find(t => t.name === "mock_echo")!;
+      const echoTool = tools.find((t) => t.name === "mock_echo")!;
       expect(echoTool.inputSchema).toEqual({ type: "object", properties: {} });
     } finally {
       await destroyProxy(ctx);
@@ -451,7 +456,7 @@ describe("Compressor Pipeline", () => {
     try {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
-      const echoTool = tools.find(t => t.name === "mock_echo")!;
+      const echoTool = tools.find((t) => t.name === "mock_echo")!;
       // Description should contain the function signature
       expect(echoTool.description).toContain("mock_echo(message: string)");
     } finally {
@@ -470,7 +475,7 @@ describe("Compressor Pipeline", () => {
     try {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
-      const names = tools.map(t => t.name);
+      const names = tools.map((t) => t.name);
 
       // mock_get_time matches HIGH_PRIORITY (mock_ prefix + get verb)
       // mock_echo and mock_add do not → slim
@@ -480,11 +485,11 @@ describe("Compressor Pipeline", () => {
       expect(names).toContain("mcp__get_schema");
 
       // High-priority tool has full schema
-      const getTime = tools.find(t => t.name === "mock_get_time")!;
+      const getTime = tools.find((t) => t.name === "mock_get_time")!;
       expect(getTime.inputSchema?.properties).toBeDefined();
 
       // Low-priority tool has empty schema (slim)
-      const echo = tools.find(t => t.name === "mock_echo")!;
+      const echo = tools.find((t) => t.name === "mock_echo")!;
       expect(echo.inputSchema).toEqual({ type: "object", properties: {} });
     } finally {
       await destroyProxy(ctx);
@@ -527,15 +532,15 @@ describe("Compressor Pipeline", () => {
       const tools = result.tools as Tool[];
 
       // mock_get_time (high-priority) → full original schema (restored from original)
-      const getTime = tools.find(t => t.name === "mock_get_time")!;
+      const getTime = tools.find((t) => t.name === "mock_get_time")!;
       expect(getTime.inputSchema?.properties).toBeDefined();
 
       // mock_echo (not high-priority) → slim (empty schema)
-      const echo = tools.find(t => t.name === "mock_echo")!;
+      const echo = tools.find((t) => t.name === "mock_echo")!;
       expect(echo.inputSchema).toEqual({ type: "object", properties: {} });
 
       // mcp__get_schema present
-      expect(tools.find(t => t.name === "mcp__get_schema")).toBeDefined();
+      expect(tools.find((t) => t.name === "mcp__get_schema")).toBeDefined();
     } finally {
       await destroyProxy(ctx);
     }
@@ -553,7 +558,7 @@ describe("Compressor Pipeline", () => {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
 
-      const getTime = tools.find(t => t.name === "mock_get_time")!;
+      const getTime = tools.find((t) => t.name === "mock_get_time")!;
       expect(getTime.inputSchema?.properties).toBeDefined();
     } finally {
       await destroyProxy(ctx);
@@ -579,7 +584,7 @@ describe("Compressor Pipeline", () => {
         }
       }
       // mcp__get_schema has inputSchema
-      const getSchema = tools.find(t => t.name === "mcp__get_schema")!;
+      const getSchema = tools.find((t) => t.name === "mcp__get_schema")!;
       expect(getSchema.inputSchema).toBeDefined();
     } finally {
       await destroyProxy(ctx);

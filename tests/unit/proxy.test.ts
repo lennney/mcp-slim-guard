@@ -41,11 +41,9 @@ let mockServerInstances: Array<{
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
   Server: vi.fn(() => {
     const instance = {
-      setRequestHandler: vi.fn(
-        (schema: symbol, handler: Function) => {
-          mockServerHandlers!.set(schema, handler);
-        },
-      ),
+      setRequestHandler: vi.fn((schema: symbol, handler: Function) => {
+        mockServerHandlers!.set(schema, handler);
+      }),
       connect: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
     };
@@ -118,11 +116,9 @@ function makeMockServerManager() {
     stop: vi.fn().mockResolvedValue(undefined),
     getTools: vi.fn().mockReturnValue([]),
     resolveTool: vi.fn(),
-    callTool: vi
-      .fn()
-      .mockResolvedValue({
-        content: [{ type: "text" as const, text: "ok" }],
-      }),
+    callTool: vi.fn().mockResolvedValue({
+      content: [{ type: "text" as const, text: "ok" }],
+    }),
   };
 }
 
@@ -146,12 +142,7 @@ describe("GuardProxy", () => {
     const audit = makeMockAudit();
     const serverManager = makeMockServerManager();
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     expect(proxy).toBeInstanceOf(GuardProxy);
     // getServer() before start should throw
@@ -167,12 +158,7 @@ describe("GuardProxy", () => {
     const audit = makeMockAudit();
     const serverManager = makeMockServerManager();
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     const transport = {};
     await proxy.start(transport as never);
@@ -189,14 +175,8 @@ describe("GuardProxy", () => {
 
     // Two handlers should be registered (list + call)
     expect(srv.setRequestHandler).toHaveBeenCalledTimes(2);
-    expect(srv.setRequestHandler).toHaveBeenCalledWith(
-      LIST_TOOLS_SCHEMA,
-      expect.any(Function),
-    );
-    expect(srv.setRequestHandler).toHaveBeenCalledWith(
-      CALL_TOOL_SCHEMA,
-      expect.any(Function),
-    );
+    expect(srv.setRequestHandler).toHaveBeenCalledWith(LIST_TOOLS_SCHEMA, expect.any(Function));
+    expect(srv.setRequestHandler).toHaveBeenCalledWith(CALL_TOOL_SCHEMA, expect.any(Function));
   });
 
   // -----------------------------------------------------------------------
@@ -214,12 +194,7 @@ describe("GuardProxy", () => {
     ];
     serverManager.getTools.mockReturnValue(mockTools);
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -257,12 +232,7 @@ describe("GuardProxy", () => {
     };
     serverManager.callTool.mockResolvedValue(upstreamResult);
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -292,11 +262,7 @@ describe("GuardProxy", () => {
     });
 
     // Verify callTool was forwarded
-    expect(serverManager.callTool).toHaveBeenCalledWith(
-      "github",
-      "search",
-      { q: "mcp" },
-    );
+    expect(serverManager.callTool).toHaveBeenCalledWith("github", "search", { q: "mcp" });
   });
 
   // -----------------------------------------------------------------------
@@ -323,12 +289,7 @@ describe("GuardProxy", () => {
       trail: [{ policy: "ratelimit", result: "block", reason: "Rate limit exceeded" }],
     });
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -370,12 +331,7 @@ describe("GuardProxy", () => {
       content: [{ type: "text", text: "done" }],
     });
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -389,9 +345,9 @@ describe("GuardProxy", () => {
     expect(audit.log).toHaveBeenCalledWith(
       { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv", agentId: "s_test" },
       { allowed: true },
-      [],                // trail
+      [], // trail
       expect.any(String), // sessionId
-      1,                  // requestId
+      1, // requestId
       expect.any(Number), // durationMs
     );
   });
@@ -415,12 +371,7 @@ describe("GuardProxy", () => {
       trail: [{ policy: "whitelist", result: "block", reason: "Blocked by whitelist" }],
     });
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -453,12 +404,7 @@ describe("GuardProxy", () => {
     // resolveTool returns null for unknown tool
     serverManager.resolveTool.mockReturnValue(null);
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -492,12 +438,7 @@ describe("GuardProxy", () => {
     const audit = makeMockAudit();
     const serverManager = makeMockServerManager();
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -517,12 +458,7 @@ describe("GuardProxy", () => {
     const audit = makeMockAudit();
     const serverManager = makeMockServerManager();
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -555,12 +491,7 @@ describe("GuardProxy", () => {
       content: [{ type: "text", text: "done" }],
     });
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
 
     await proxy.start({} as never);
 
@@ -608,16 +539,9 @@ describe("GuardProxy", () => {
     const audit = makeMockAudit();
     const serverManager = makeMockServerManager();
 
-    serverManager.getTools.mockReturnValue([
-      { name: "old_tool", inputSchema: { type: "object" as const } },
-    ]);
+    serverManager.getTools.mockReturnValue([{ name: "old_tool", inputSchema: { type: "object" as const } }]);
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
     await proxy.start({} as never);
 
     const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
@@ -683,12 +607,7 @@ describe("GuardProxy", () => {
     };
     serverManager.callTool.mockResolvedValue(upstreamResult);
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
     await proxy.start({} as never);
 
     const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
@@ -739,12 +658,7 @@ describe("GuardProxy", () => {
       content: [{ type: "text" as const, text: "created" }],
     });
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
     await proxy.start({} as never);
 
     const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
@@ -789,12 +703,7 @@ describe("GuardProxy", () => {
       content: [{ type: "text" as const, text: "result" }],
     });
 
-    const proxy = new GuardProxy(
-      config,
-      pipeline as never,
-      audit as never,
-      serverManager as never,
-    );
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
     await proxy.start({} as never);
 
     const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;

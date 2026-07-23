@@ -47,9 +47,7 @@ export class PolicyPipeline {
    * 串行执行所有策略，并返回完整的决策链路。
    * 用于审计追溯——可以看到每个策略的 pass/block 结果。
    */
-  async executeWithTrail(
-    ctx: PolicyContext,
-  ): Promise<{ result: PolicyResult; trail: DecisionStep[] }> {
+  async executeWithTrail(ctx: PolicyContext): Promise<{ result: PolicyResult; trail: DecisionStep[] }> {
     const trail: DecisionStep[] = [];
 
     for (const policy of this.policies) {

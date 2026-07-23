@@ -22,8 +22,8 @@ const { isMatch } = micromatch;
 /** Prefix for wrapper tools to avoid colliding with real tool names */
 const PREFIX = "mcp__";
 const LIST_TOOLS = `${PREFIX}list_tools`;
-const GET_TOOL_SCHEMA = `${PREFIX}get_tool_schema`;  // renamed from GET_SCHEMA (wrapper mode)
-const GET_SCHEMA = `${PREFIX}get_schema`;              // new: lazy mode discovery tool
+const GET_TOOL_SCHEMA = `${PREFIX}get_tool_schema`; // renamed from GET_SCHEMA (wrapper mode)
+const GET_SCHEMA = `${PREFIX}get_schema`; // new: lazy mode discovery tool
 const INVOKE = `${PREFIX}invoke_tool`;
 
 /** A compression/lazy stage: input tools → output tools */
@@ -37,11 +37,11 @@ export type ToolStage = (tools: Tool[]) => Tool[];
 export const whitelistFilter = (allow: string[], deny: string[]): ToolStage => {
   return (tools: Tool[]) => {
     const isAllowed = (name: string): boolean => {
-      if (deny.length > 0 && deny.some(p => isMatch(name, p))) return false;
-      if (allow.length > 0) return allow.some(p => isMatch(name, p));
+      if (deny.length > 0 && deny.some((p) => isMatch(name, p))) return false;
+      if (allow.length > 0) return allow.some((p) => isMatch(name, p));
       return true;
     };
-    return tools.filter(t => isAllowed(t.name));
+    return tools.filter((t) => isAllowed(t.name));
   };
 };
 
@@ -71,7 +71,10 @@ function makeWrapperTools(tools: Tool[], includeList: boolean): Tool[] {
       properties: {
         tool_name: {
           type: "string",
-          description: `The full tool name (e.g. "mock_echo"). Available tools: ${tools.map(t => t.name).sort().join(", ")}`,
+          description: `The full tool name (e.g. "mock_echo"). Available tools: ${tools
+            .map((t) => t.name)
+            .sort()
+            .join(", ")}`,
         },
       },
       required: ["tool_name"],
@@ -80,8 +83,7 @@ function makeWrapperTools(tools: Tool[], includeList: boolean): Tool[] {
 
   result.push({
     name: INVOKE,
-    description:
-      "Invoke a tool with the given arguments. Call get_tool_schema first to see required parameters.",
+    description: "Invoke a tool with the given arguments. Call get_tool_schema first to see required parameters.",
     inputSchema: {
       type: "object",
       properties: {
@@ -122,14 +124,14 @@ export const levelToStage = (level: CompressionLevel, lazyLoading: boolean): Too
         return makeWrapperTools(tools, false);
 
       case "extreme":
-        return tools.map(t => ({
+        return tools.map((t) => ({
           name: t.name,
           description: t.description ?? "",
           inputSchema: stripPropertyDescriptions(t.inputSchema),
         }));
 
       case "maximum":
-        return tools.map(t => ({
+        return tools.map((t) => ({
           name: t.name,
           description: `${t.description ?? ""} ${buildSignature(t)}`.trim(),
           inputSchema: { type: "object" as const, properties: {} },
@@ -153,10 +155,7 @@ const HIGH_PRIORITY = /^(?:[^_]+_)?(search|list|read|get|find|describe|info)/i;
  * @param budget - Max number of high-priority tools to preload
  * @param originalTools - Original full tool map (for restoring schema after level compression)
  */
-export const applyLazyBudget = (
-  budget: number,
-  originalTools: Map<string, Tool>,
-): ToolStage => {
+export const applyLazyBudget = (budget: number, originalTools: Map<string, Tool>): ToolStage => {
   return (tools: Tool[]) => {
     // Select high-priority tools (up to budget)
     const fullSet = new Set<string>();
@@ -165,7 +164,7 @@ export const applyLazyBudget = (
       if (HIGH_PRIORITY.test(t.name)) fullSet.add(t.name);
     }
 
-    return tools.map(t => {
+    return tools.map((t) => {
       if (fullSet.has(t.name)) {
         // High-priority: restore full original schema
         return originalTools.get(t.name) ?? t;
@@ -174,7 +173,11 @@ export const applyLazyBudget = (
       // The MCP SDK's Zod validation requires inputSchema to be an object,
       // so we use { type: "object", properties: {} } instead of omitting it.
       // The LLM must call mcp__get_schema to get the full parameter list.
-      return { name: t.name, description: t.description ?? "", inputSchema: { type: "object" as const, properties: {} } };
+      return {
+        name: t.name,
+        description: t.description ?? "",
+        inputSchema: { type: "object" as const, properties: {} },
+      };
     });
   };
 };
@@ -186,13 +189,15 @@ export const applyLazyBudget = (
  * LLM can discover what it can ask about without an extra round-trip.
  */
 export const injectGetSchema: ToolStage = (tools: Tool[]) => {
-  const toolNames = tools.map(t => t.name).sort().join(", ");
+  const toolNames = tools
+    .map((t) => t.name)
+    .sort()
+    .join(", ");
   return [
     ...tools,
     {
       name: GET_SCHEMA,
-      description:
-        `Get the full input schema (parameters, types, constraints) for a specific tool. Call this before invoking a tool whose schema is not included in the tools list. Returns the complete original schema. Available tools: ${toolNames}`,
+      description: `Get the full input schema (parameters, types, constraints) for a specific tool. Call this before invoking a tool whose schema is not included in the tools list. Returns the complete original schema. Available tools: ${toolNames}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -252,11 +257,8 @@ export function generateTools(
   if (!config.enabled) return fullTools;
   if (config.level === "off" && !config.lazy_loading) return fullTools;
 
-  const originalTools = new Map(fullTools.map(t => [t.name, t]));
-  return buildPipeline(config, allow, deny, originalTools).reduce(
-    (tools, stage) => stage(tools),
-    fullTools,
-  );
+  const originalTools = new Map(fullTools.map((t) => [t.name, t]));
+  return buildPipeline(config, allow, deny, originalTools).reduce((tools, stage) => stage(tools), fullTools);
 }
 
 /**
@@ -269,7 +271,10 @@ export async function handleWrapperTool(
   toolName: string,
   args: Record<string, unknown>,
   fullTools: Tool[],
-  serverCall: (resolvedToolName: string, resolvedArgs: Record<string, unknown>) => Promise<{
+  serverCall: (
+    resolvedToolName: string,
+    resolvedArgs: Record<string, unknown>,
+  ) => Promise<{
     content: Array<{ type: string; text?: string }>;
   }>,
 ): Promise<{
@@ -286,7 +291,7 @@ export async function handleWrapperTool(
   switch (toolName) {
     case LIST_TOOLS: {
       // Return tool names + descriptions only (no inputSchema)
-      const entries = fullTools.map(t => ({
+      const entries = fullTools.map((t) => ({
         name: t.name,
         description: t.description || "(no description)",
       }));
@@ -300,10 +305,12 @@ export async function handleWrapperTool(
       const targetName = args.tool_name as string;
       if (!targetName || !nameToSchema[targetName]) {
         return {
-          content: [{
-            type: "text",
-            text: `Unknown tool: "${targetName}". Available: ${Object.keys(nameToSchema).sort().join(", ")}`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Unknown tool: "${targetName}". Available: ${Object.keys(nameToSchema).sort().join(", ")}`,
+            },
+          ],
           isError: true,
         };
       }

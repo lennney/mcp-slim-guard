@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  RateLimitPolicy,
-  parseRateLimitConfig,
-} from "../../src/policies/ratelimit.js";
+import { RateLimitPolicy, parseRateLimitConfig } from "../../src/policies/ratelimit.js";
 import type { RateLimitConfig } from "../../src/config-types.js";
 import type { PolicyContext } from "../../src/types.js";
 
@@ -74,15 +71,11 @@ describe("parseRateLimitConfig", () => {
   });
 
   it("throws on invalid string format", () => {
-    expect(() => parseRateLimitConfig("invalid")).toThrow(
-      "Invalid rate limit string",
-    );
+    expect(() => parseRateLimitConfig("invalid")).toThrow("Invalid rate limit string");
   });
 
   it("throws on unknown unit in string", () => {
-    expect(() => parseRateLimitConfig("10/day")).toThrow(
-      "Invalid rate limit string",
-    );
+    expect(() => parseRateLimitConfig("10/day")).toThrow("Invalid rate limit string");
   });
 });
 
@@ -212,15 +205,11 @@ describe("RateLimitPolicy", () => {
       };
       const policy = new RateLimitPolicy(config);
       // First call should pass
-      const r1 = await policy.check(
-        ctx("test", {}, { agentId: "restricted_agent" }),
-      );
+      const r1 = await policy.check(ctx("test", {}, { agentId: "restricted_agent" }));
       expect(r1.allowed).toBe(true);
 
       // Second call should fail
-      const r2 = await policy.check(
-        ctx("test", {}, { agentId: "restricted_agent" }),
-      );
+      const r2 = await policy.check(ctx("test", {}, { agentId: "restricted_agent" }));
       expect(r2.allowed).toBe(false);
     });
 
@@ -370,9 +359,7 @@ describe("RateLimitPolicy", () => {
 
       // Privileged agent is unlimited
       for (let i = 0; i < 100; i++) {
-        const r = await policy.check(
-          ctx("test", {}, { agentId: "privileged" }),
-        );
+        const r = await policy.check(ctx("test", {}, { agentId: "privileged" }));
         expect(r.allowed).toBe(true);
       }
     });
@@ -385,20 +372,14 @@ describe("RateLimitPolicy", () => {
       const policy = new RateLimitPolicy(config);
 
       // server-a uses its bucket
-      const r1 = await policy.check(
-        ctx("test", {}, { serverName: "server-a" }),
-      );
+      const r1 = await policy.check(ctx("test", {}, { serverName: "server-a" }));
       expect(r1.allowed).toBe(true);
 
-      const r2 = await policy.check(
-        ctx("test", {}, { serverName: "server-a" }),
-      );
+      const r2 = await policy.check(ctx("test", {}, { serverName: "server-a" }));
       expect(r2.allowed).toBe(false);
 
       // server-b has its own bucket
-      const r3 = await policy.check(
-        ctx("test", {}, { serverName: "server-b" }),
-      );
+      const r3 = await policy.check(ctx("test", {}, { serverName: "server-b" }));
       expect(r3.allowed).toBe(true);
     });
   });

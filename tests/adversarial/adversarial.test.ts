@@ -75,9 +75,7 @@ describe("RateLimitPolicy — Concurrency", () => {
     const policy = new RateLimitPolicy(config);
 
     // Fire 20 concurrent check() calls
-    const results = await Promise.all(
-      Array.from({ length: 20 }, () => policy.check(ctx("test_tool"))),
-    );
+    const results = await Promise.all(Array.from({ length: 20 }, () => policy.check(ctx("test_tool"))));
 
     const allowed = results.filter((r) => r.allowed === true).length;
     const blocked = results.filter((r) => r.allowed === false).length;
@@ -99,15 +97,9 @@ describe("RateLimitPolicy — Concurrency", () => {
 
     // Fire parallel from 3 agents simultaneously
     const results = await Promise.all([
-      ...Array.from({ length: 5 }, () =>
-        policy.check(ctx("test", {}, { agentId: "agent_a" })),
-      ),
-      ...Array.from({ length: 5 }, () =>
-        policy.check(ctx("test", {}, { agentId: "agent_b" })),
-      ),
-      ...Array.from({ length: 5 }, () =>
-        policy.check(ctx("test", {}, { agentId: "agent_c" })),
-      ),
+      ...Array.from({ length: 5 }, () => policy.check(ctx("test", {}, { agentId: "agent_a" }))),
+      ...Array.from({ length: 5 }, () => policy.check(ctx("test", {}, { agentId: "agent_b" }))),
+      ...Array.from({ length: 5 }, () => policy.check(ctx("test", {}, { agentId: "agent_c" }))),
     ]);
 
     const agentAResults = results.slice(0, 5);
@@ -159,15 +151,11 @@ describe("RateLimitPolicy — Concurrency", () => {
       serverName: servers[i % 3],
     }));
 
-    const results = await Promise.all(
-      calls.map((c) => policy.check(ctx("tool", {}, c))),
-    );
+    const results = await Promise.all(calls.map((c) => policy.check(ctx("tool", {}, c))));
 
     // Each server gets its own bucket of 2 tokens → 2 allowed, 8 blocked each
     for (const srv of servers) {
-      const srvResults = results.filter(
-        (_, i) => calls[i].serverName === srv,
-      );
+      const srvResults = results.filter((_, i) => calls[i].serverName === srv);
       expect(srvResults.filter((r) => r.allowed === true)).toHaveLength(2);
       expect(srvResults.filter((r) => r.allowed === false)).toHaveLength(8);
     }
@@ -180,16 +168,12 @@ describe("RateLimitPolicy — Concurrency", () => {
     const policy = new RateLimitPolicy(config);
 
     // Interleave reset() with concurrent checks
-    const checkResults = await Promise.all([
-      ...Array.from({ length: 10 }, () => policy.check(ctx("t"))),
-    ]);
+    const checkResults = await Promise.all([...Array.from({ length: 10 }, () => policy.check(ctx("t")))]);
 
     // reset should not throw
     expect(() => policy.reset()).not.toThrow();
 
-    const moreResults = await Promise.all(
-      Array.from({ length: 10 }, () => policy.check(ctx("t"))),
-    );
+    const moreResults = await Promise.all(Array.from({ length: 10 }, () => policy.check(ctx("t"))));
 
     // All results should be valid PolicyResult objects
     for (const r of [...checkResults, ...moreResults]) {
@@ -290,21 +274,15 @@ describe("RateLimitPolicy — Malicious Configs", () => {
     });
 
     it('rejects "-1/s" (negative count)', () => {
-      expect(() => parseRateLimitConfig("-1/s")).toThrow(
-        "Invalid rate limit string",
-      );
+      expect(() => parseRateLimitConfig("-1/s")).toThrow("Invalid rate limit string");
     });
 
     it('rejects "NaN/hour"', () => {
-      expect(() => parseRateLimitConfig("NaN/hour")).toThrow(
-        "Invalid rate limit string",
-      );
+      expect(() => parseRateLimitConfig("NaN/hour")).toThrow("Invalid rate limit string");
     });
 
     it('rejects "∞/min" (Unicode infinity)', () => {
-      expect(() => parseRateLimitConfig("∞/min")).toThrow(
-        "Invalid rate limit string",
-      );
+      expect(() => parseRateLimitConfig("∞/min")).toThrow("Invalid rate limit string");
     });
 
     it('parses "" (empty string as unlimited)', () => {
@@ -430,9 +408,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
     it("IPv6 full ::1 IS blocked by private IP check", async () => {
       const policy = new SSRFPolicy(defaultConfig);
       // ::1 is detected by net.isIPv6 → isPrivateIPv6 returns true
-      const result = await policy.check(
-        ctx("test", { url: "http://[::1]/admin" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[::1]/admin" }));
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
         expect(result.reason).toContain("private IP");
@@ -441,9 +417,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
 
     it("IPv4-mapped IPv6 ::ffff:127.0.0.1 IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://[::ffff:127.0.0.1]/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[::ffff:127.0.0.1]/" }));
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
         expect(result.reason).toContain("private IP");
@@ -452,9 +426,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
 
     it("IPv6 0:0:0:0:0:0:0:1 (long form loopback) IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://[0:0:0:0:0:0:0:1]/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[0:0:0:0:0:0:0:1]/" }));
       expect(result.allowed).toBe(false);
     });
   });
@@ -470,9 +442,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://2130706433/admin" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://2130706433/admin" }));
       // normalizeToIPv4 converts 2130706433 → 127.0.0.1 → private IP → blocked
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
@@ -485,9 +455,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://0x7f000001/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://0x7f000001/" }));
       // normalizeToIPv4 converts 0x7f000001 → 127.0.0.1 → private IP → blocked
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
@@ -500,9 +468,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://0177.0.0.1/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://0177.0.0.1/" }));
       // normalizeToIPv4 converts 0177.0.0.1 → 127.0.0.1 → private IP → blocked
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
@@ -515,9 +481,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://127.1/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://127.1/" }));
       // normalizeToIPv4 converts 127.1 → 127.0.0.1 → private IP → blocked
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
@@ -534,9 +498,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
   describe("IPv6 other private ranges", () => {
     it("fe80::1 (link-local) IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://[fe80::1]/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[fe80::1]/" }));
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
         expect(result.reason).toContain("private IP");
@@ -545,33 +507,25 @@ describe("SSRFPolicy — Bypass Vectors", () => {
 
     it("fe80::abcd:1234 (link-local expanded) IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://[fe80::abcd:1234]/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[fe80::abcd:1234]/" }));
       expect(result.allowed).toBe(false);
     });
 
     it("fc00::1 (unique-local) IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://[fc00::1]/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[fc00::1]/" }));
       expect(result.allowed).toBe(false);
     });
 
     it("fd00::1 (unique-local top) IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://[fd00::1]/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[fd00::1]/" }));
       expect(result.allowed).toBe(false);
     });
 
     it(":: (unspecified / all-zeros) IS blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://[::]/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://[::]/" }));
       expect(result.allowed).toBe(false);
     });
   });
@@ -587,9 +541,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
         block_domains: [],
       };
       const policy = new SSRFPolicy(logConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://10.0.0.1/admin" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://10.0.0.1/admin" }));
       // mode=log means log-only, no blocking
       expect(result.allowed).toBe(true);
     });
@@ -600,9 +552,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
   describe("mixed notation edge cases", () => {
     it("0x7f.0.0.1 normalized by URL parser to 127.0.0.1 and blocked", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://0x7f.0.0.1/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://0x7f.0.0.1/" }));
       // Node URL parser normalizes mixed hex+decimal octets → hostname="127.0.0.1"
       expect(result.allowed).toBe(false);
     });
@@ -617,9 +567,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       mockResolve.mockResolvedValue([{ address: "127.0.0.1", ttl: 60 }]);
 
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://7f000001.nip.io/admin" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://7f000001.nip.io/admin" }));
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
         expect(result.reason).toContain("private IP");
@@ -662,9 +610,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
   describe("cloud metadata endpoints", () => {
     it("AWS metadata (169.254.169.254) is blocked via block_domains pattern 169.254.*", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://169.254.169.254/latest/meta-data/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://169.254.169.254/latest/meta-data/" }));
       expect(result.allowed).toBe(false);
       if (result.allowed === false) {
         expect(result.reason).toContain("block list");
@@ -676,9 +622,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       mockResolve.mockResolvedValue([{ address: "142.250.80.46", ttl: 120 }]); // resolves to a public IP in our mock
 
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://metadata.google.internal/computeMetadata/v1/" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://metadata.google.internal/computeMetadata/v1/" }));
       // metadata.google.internal is not in block_domains, and our mock
       // makes it resolve to a public IP → allowed
       // In reality it resolves to 169.254.169.254, which should be caught
@@ -692,9 +636,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
   describe("URLs with embedded credentials", () => {
     it("URL with credentials still properly extracts hostname and blocks", async () => {
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: "http://user:password@192.168.1.1/admin" }),
-      );
+      const result = await policy.check(ctx("test", { url: "http://user:password@192.168.1.1/admin" }));
       // new URL strips credentials, hostname = "192.168.1.1"
       // block_domains pattern "192.168.*" matches
       expect(result.allowed).toBe(false);
@@ -726,9 +668,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
       mockResolve.mockResolvedValue([{ address: "93.184.216.34", ttl: 60 }]);
 
       const policy = new SSRFPolicy(defaultConfig);
-      const result = await policy.check(
-        ctx("test", { url: longUrl }),
-      );
+      const result = await policy.check(ctx("test", { url: longUrl }));
       expect("allowed" in result).toBe(true);
     });
   });
@@ -949,9 +889,7 @@ describe("WhitelistPolicy — Edge Cases", () => {
         },
       };
       const policy = new WhitelistPolicy(config);
-      const r = await policy.check(
-        ctx("test_tool", { name: "x".repeat(10000) }),
-      );
+      const r = await policy.check(ctx("test_tool", { name: "x".repeat(10000) }));
       expect(r.allowed).toBe(true);
     });
   });
@@ -970,9 +908,7 @@ describe("WhitelistPolicy — Edge Cases", () => {
       const policy = new WhitelistPolicy(config);
       // The try/catch in the policy catches the invalid regex error and skips
       // So the request should be allowed (if no other restriction fails)
-      const r = await policy.check(
-        ctx("test_tool", { url: "anything" }),
-      );
+      const r = await policy.check(ctx("test_tool", { url: "anything" }));
       expect(r.allowed).toBe(true);
     });
   });
@@ -991,9 +927,7 @@ describe("WhitelistPolicy — Edge Cases", () => {
       const policy = new WhitelistPolicy(config);
       // Test with ReDoS-triggering input
       const start = Date.now();
-      const r = await policy.check(
-        ctx("test_tool", { url: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac" }),
-      );
+      const r = await policy.check(ctx("test_tool", { url: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac" }));
       const elapsed = Date.now() - start;
       // Should complete quickly (< 2s), not hang
       expect(elapsed).toBeLessThan(2000);
@@ -1112,16 +1046,17 @@ describe("ConfigLoader — Robustness", () => {
 
   it("rejects YAML with null value for version field", () => {
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
-    fs.writeFileSync(ymlPath, "version: null\ntools: { allow: [], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false }\nservers: {}");
+    fs.writeFileSync(
+      ymlPath,
+      "version: null\ntools: { allow: [], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false }\nservers: {}",
+    );
     expect(() => ConfigLoader.loadGuardConfig(ymlPath)).toThrow();
   });
 
   it("rejects extremely large YAML file gracefully", () => {
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
     // 10MB YAML with repeated content
-    const largeContent = (
-      "# " + "x".repeat(1000) + "\n"
-    ).repeat(10000);
+    const largeContent = ("# " + "x".repeat(1000) + "\n").repeat(10000);
     const header =
       "version: 1\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}\n";
     fs.writeFileSync(ymlPath, header + largeContent);
@@ -1145,9 +1080,7 @@ describe("AuditLogger — Stress", () => {
     for (let i = 0; i < 10000; i++) {
       logger.log(
         ctx(`tool_${i % 100}`, { index: i }),
-        i % 2 === 0
-          ? { allowed: true }
-          : { allowed: false, reason: `stress test block ${i}`, policy: "adversarial" },
+        i % 2 === 0 ? { allowed: true } : { allowed: false, reason: `stress test block ${i}`, policy: "adversarial" },
       );
     }
 
@@ -1259,9 +1192,7 @@ describe("PolicyPipeline — Adversarial", () => {
     };
 
     const pipeline = new PolicyPipeline([crashingPolicy]);
-    await expect(
-      pipeline.execute(ctx("test")),
-    ).rejects.toThrow("catastrophic failure");
+    await expect(pipeline.execute(ctx("test"))).rejects.toThrow("catastrophic failure");
   });
 
   it("pipeline with all three real policies handles SSRF bypass vector", async () => {
@@ -1292,9 +1223,7 @@ describe("PolicyPipeline — Adversarial", () => {
     const mockResolve = vi.mocked(dns.resolve4);
     mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
-    const result = await pipeline.execute(
-      ctx("test_tool", { url: "http://[::1]/admin" }),
-    );
+    const result = await pipeline.execute(ctx("test_tool", { url: "http://[::1]/admin" }));
 
     // IPv6 loopback is now detected and blocked → blocked by SSRF
     expect(result.allowed).toBe(false);
@@ -1322,17 +1251,13 @@ describe("WhitelistPolicy — Cross-tool Param Bypass", () => {
     const policy = new WhitelistPolicy(config);
 
     // Calling "protected_tool" with long URL → blocked
-    const r1 = await policy.check(
-      ctx("protected_tool", { url: "x".repeat(100) }),
-    );
+    const r1 = await policy.check(ctx("protected_tool", { url: "x".repeat(100) }));
     expect(r1.allowed).toBe(false);
 
     // Same long URL, but via "unprotected_tool" → ALLOWED (bypass)
     // param_restrictions only check against exact tool name match,
     // not glob patterns. This documents the gap.
-    const r2 = await policy.check(
-      ctx("unprotected_tool", { url: "x".repeat(100) }),
-    );
+    const r2 = await policy.check(ctx("unprotected_tool", { url: "x".repeat(100) }));
     expect(r2.allowed).toBe(true);
   });
 });
@@ -1424,9 +1349,7 @@ describe("normalizeIPv6 & normalizeToIPv4 — Boundary", () => {
       block_domains: [],
     };
     const policy = new SSRFPolicy(config);
-    const result = await policy.check(
-      ctx("test", { url: "http://0/" }),
-    );
+    const result = await policy.check(ctx("test", { url: "http://0/" }));
     // normalizeToIPv4("0") → "0.0.0.0" → in PRIVATE_RANGES (0.0.0.0/8)
     expect(result.allowed).toBe(false);
   });
@@ -1442,9 +1365,7 @@ describe("normalizeIPv6 & normalizeToIPv4 — Boundary", () => {
     mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
     const policy = new SSRFPolicy(config);
-    const result = await policy.check(
-      ctx("test", { url: "http://0xffffffff/" }),
-    );
+    const result = await policy.check(ctx("test", { url: "http://0xffffffff/" }));
     // normalizeToIPv4("0xffffffff") → "255.255.255.255" → reserved = blocked
     // Actually 255.255.255.255 is not in our PRIVATE_RANGES
     // It's the limited broadcast address, not in RFC 1918 ranges
@@ -1464,9 +1385,7 @@ describe("normalizeIPv6 & normalizeToIPv4 — Boundary", () => {
     mockResolve.mockRejectedValue(new Error("NXDOMAIN"));
 
     const policy = new SSRFPolicy(config);
-    const result = await policy.check(
-      ctx("test", { url: "http://4294967296/" }),
-    );
+    const result = await policy.check(ctx("test", { url: "http://4294967296/" }));
     // normalizeToIPv4 returns null → treated as domain → DNS fails → allowed
     expect(result.allowed).toBe(true);
   });
@@ -1491,18 +1410,14 @@ describe("SSRF — IPv6 Zone ID Handling", () => {
     const policy = new SSRFPolicy(zoneConfig);
     // URL parser rejects IPv6 zone IDs → extractURLs may still capture
     // the raw string, but new URL() will throw → caught silently
-    const result = await policy.check(
-      ctx("test", { endpoint: "http://[fe80::1%eth0]/" }),
-    );
+    const result = await policy.check(ctx("test", { endpoint: "http://[fe80::1%eth0]/" }));
     // URL parsing fails → skipped → no URLs to check → allowed
     expect(result.allowed).toBe(true);
   });
 
   it("zone ID URL does not crash the policy", async () => {
     const policy = new SSRFPolicy(zoneConfig);
-    const result = await policy.check(
-      ctx("test", { addr: "http://[::1%lo0]/api" }),
-    );
+    const result = await policy.check(ctx("test", { addr: "http://[::1%lo0]/api" }));
     expect(result.allowed).toBe(true);
   });
 });
@@ -1522,15 +1437,13 @@ describe("SSRF — DNS with Many IPs", () => {
     const mockResolve = vi.mocked(dns.resolve4);
     // Return 500 IPs where only the last one is private
     const ips = Array.from({ length: 500 }, (_, i) => ({
-      address: i === 499 ? "127.0.0.1" : `10.0.${Math.floor(i / 256)}.${i % 254 + 1}`,
+      address: i === 499 ? "127.0.0.1" : `10.0.${Math.floor(i / 256)}.${(i % 254) + 1}`,
       ttl: 60,
     }));
     mockResolve.mockResolvedValue(ips);
 
     const policy = new SSRFPolicy(publicConfig);
-    const result = await policy.check(
-      ctx("test", { url: "http://multi-ip.example.com/api" }),
-    );
+    const result = await policy.check(ctx("test", { url: "http://multi-ip.example.com/api" }));
     // Should find and block the private IP
     expect(result.allowed).toBe(false);
     if (result.allowed === false) {
@@ -1548,9 +1461,7 @@ describe("RateLimitPolicy — Extreme Values", () => {
       default: { window_ms: 1, max_requests: 100 },
     });
     // ratePerMs = 100 / 1 = 100 tokens/ms — expect lots allowed
-    const results = await Promise.all(
-      Array.from({ length: 50 }, () => policy.check(ctx("t"))),
-    );
+    const results = await Promise.all(Array.from({ length: 50 }, () => policy.check(ctx("t"))));
     // All should be allowed (very high rate)
     expect(results.every((r) => r.allowed)).toBe(true);
   });

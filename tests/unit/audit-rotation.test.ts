@@ -45,7 +45,7 @@ describe("AuditLogger rotation", () => {
 
     const files = fs.readdirSync(tmpDir);
     expect(files.length).toBeGreaterThanOrEqual(1);
-    expect(files.some(f => f.startsWith("audit.log"))).toBe(true);
+    expect(files.some((f) => f.startsWith("audit.log"))).toBe(true);
   });
 
   it("rotates with gzip compression and does not mix new entries into the compressed stream", async () => {
@@ -90,7 +90,7 @@ describe("AuditLogger rotation", () => {
 
     logger.checkRotation();
 
-    const files = fs.readdirSync(tmpDir).filter(f => f.startsWith("audit.log"));
+    const files = fs.readdirSync(tmpDir).filter((f) => f.startsWith("audit.log"));
     expect(files.length).toBeLessThanOrEqual(4);
   });
 });

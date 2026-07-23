@@ -26,9 +26,6 @@ const PRIVATE_RANGES: Array<{ start: number; end: number }> = [
   { start: ipToInt("0.0.0.0"), end: ipToInt("0.255.255.255") },
 ];
 
-/** 默认 DNS 缓存 TTL（秒）— 用于 dns.resolve4 不带 TTL 的场景 */
-const DEFAULT_DNS_TTL = 60;
-
 /** DNS 缓存条目 */
 interface DNSCacheEntry {
   ips: string[];
@@ -134,11 +131,15 @@ export class SSRFPolicy implements Policy {
 
       // DNS 解析（带 TTL）
       const records = await dns.resolve4(hostname, { ttl: true });
-      const ips = records.map(r => r.address);
+      const ips = records.map((r) => r.address);
       // 取最小 TTL（保守策略），至少 10 秒，最多 300 秒
-      const ttl = Math.max(10, Math.min(300,
-        records.reduce((min, r) => Math.min(min, r.ttl), Infinity)
-      ));
+      const ttl = Math.max(
+        10,
+        Math.min(
+          300,
+          records.reduce((min, r) => Math.min(min, r.ttl), Infinity),
+        ),
+      );
       this.dnsCache.set(hostname, {
         ips,
         expiresAt: Date.now() + ttl * 1000,
@@ -173,9 +174,7 @@ export class SSRFPolicy implements Policy {
  * 用于范围比较，不做输入校验。
  */
 export function ipToInt(ip: string): number {
-  return (
-    ip.split(".").reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0
-  );
+  return ip.split(".").reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
 }
 
 // --- IPv6 Private Range Detection ---
@@ -228,8 +227,7 @@ function isPrivateIPv6(ip: string): boolean {
   if (/^fe[89ab][0-9a-f]/i.test(normalized)) return true;
 
   // Unique local: fc00::/7
-  if (/^fc[0-9a-f]/i.test(normalized) || /^fd[0-9a-f]/i.test(normalized))
-    return true;
+  if (/^fc[0-9a-f]/i.test(normalized) || /^fd[0-9a-f]/i.test(normalized)) return true;
 
   return false;
 }

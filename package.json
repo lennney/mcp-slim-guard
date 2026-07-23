@@ -1,6 +1,6 @@
 {
   "name": "micro-mcp",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "轻量 MCP 代理 — 工具压缩瘦身 (-86%) + SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测",
   "type": "module",
   "main": "./dist/index.js",
@@ -42,15 +42,22 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts' '*.{json,md,yml,yaml}'",
+    "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' '*.{json,md,yml,yaml}'",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "npm run build",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "prepublishOnly": "npm run build && npm run check",
     "bench": "node scripts/benchmark/bench.mjs",
     "bench:tokens": "node scripts/benchmark/tokens.mjs",
     "bench:schema": "node scripts/benchmark/schema.mjs",
     "bench:accuracy": "node scripts/benchmark/accuracy.mjs",
-    "bench:latency": "node scripts/benchmark/latency.mjs"
+    "bench:latency": "node scripts/benchmark/latency.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",
@@ -60,11 +67,17 @@
     "pino": "^9.6.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/micromatch": "^4.0.10",
     "@types/node": "^22.0.0",
+    "eslint": "^9.39.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.9.6",
     "tiktoken": "^1.0.22",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.65.0",
     "vitest": "^3.0.0"
   }
 }

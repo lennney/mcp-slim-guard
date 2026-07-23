@@ -32,8 +32,7 @@ export interface PolicyContext {
  */
 export type PolicyResult =
   // 允许通过（可携带可选 reason 作为警告，如 SSRF log 模式命中内网）
-  | { allowed: true; reason?: string }
-  | { allowed: false; reason: string; policy: string };
+  { allowed: true; reason?: string } | { allowed: false; reason: string; policy: string };
 
 /**
  * 审计日志条目（完整可追溯）。

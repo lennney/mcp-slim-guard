@@ -131,10 +131,7 @@ describe("ServerManager", () => {
 
   // 2. start() connects to all servers and collects tools
   it("should connect to all servers and call listTools on each", async () => {
-    await makeServerManager(
-      { x: serverCfg(), y: serverCfg() },
-      { x: [{ name: "foo" }], y: [{ name: "bar" }] },
-    );
+    await makeServerManager({ x: serverCfg(), y: serverCfg() }, { x: [{ name: "foo" }], y: [{ name: "bar" }] });
 
     expect(mockClientInstances).toHaveLength(2);
     for (const client of mockClientInstances) {
@@ -170,10 +167,7 @@ describe("ServerManager", () => {
 
   // 4. resolveTool() correctly parses serverName_toolName format
   it("resolveTool should correctly parse serverName_toolName", async () => {
-    const manager = await makeServerManager(
-      { my_server: serverCfg() },
-      { my_server: [{ name: "list_stuff" }] },
-    );
+    const manager = await makeServerManager({ my_server: serverCfg() }, { my_server: [{ name: "list_stuff" }] });
 
     const result = manager.resolveTool("my_server_list_stuff");
 
@@ -184,10 +178,7 @@ describe("ServerManager", () => {
 
   // 5. resolveTool() resolves any tool on a known server (policy checks later)
   it("resolveTool should resolve any tool on known server, return null for unknown server", async () => {
-    const manager = await makeServerManager(
-      { srv: serverCfg() },
-      { srv: [{ name: "exists" }] },
-    );
+    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "exists" }] });
 
     // Any tool on known server resolves (policy enforces later)
     const resolved = manager.resolveTool("srv_nonexistent");
@@ -289,10 +280,7 @@ describe("ServerManager", () => {
 
   // 9a. resolveTool handles tool names with underscores
   it("resolveTool should handle tool names with underscores", async () => {
-    const manager = await makeServerManager(
-      { srv: serverCfg() },
-      { srv: [{ name: "my_tool_with_underscores" }] },
-    );
+    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "my_tool_with_underscores" }] });
 
     const result = manager.resolveTool("srv_my_tool_with_underscores");
     expect(result).not.toBeNull();
@@ -316,10 +304,7 @@ describe("ServerManager", () => {
 
   // 9c. resolveTool handles both server and tool with underscores
   it("resolveTool should handle both server and tool with underscores", async () => {
-    const manager = await makeServerManager(
-      { my_server: serverCfg() },
-      { my_server: [{ name: "my_tool" }] },
-    );
+    const manager = await makeServerManager({ my_server: serverCfg() }, { my_server: [{ name: "my_tool" }] });
 
     const result = manager.resolveTool("my_server_my_tool");
     expect(result).not.toBeNull();
@@ -329,30 +314,18 @@ describe("ServerManager", () => {
 
   // 10a. callTool throws for unknown server
   it("callTool should throw when server is unknown", async () => {
-    const manager = await makeServerManager(
-      { srv: serverCfg() },
-      { srv: [{ name: "tool" }] },
-    );
+    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "tool" }] });
 
-    await expect(
-      manager.callTool("nonexistent", "tool", {}),
-    ).rejects.toThrow("Unknown upstream server");
+    await expect(manager.callTool("nonexistent", "tool", {})).rejects.toThrow("Unknown upstream server");
   });
 
   // 10b. callTool propagates upstream errors
   it("callTool should propagate upstream errors", async () => {
-    const manager = await makeServerManager(
-      { srv: serverCfg() },
-      { srv: [{ name: "fail_tool" }] },
-    );
+    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "fail_tool" }] });
 
-    mockClientInstances[0].callTool.mockRejectedValue(
-      new Error("Upstream server error"),
-    );
+    mockClientInstances[0].callTool.mockRejectedValue(new Error("Upstream server error"));
 
-    await expect(
-      manager.callTool("srv", "fail_tool", { data: "test" }),
-    ).rejects.toThrow("Upstream server error");
+    await expect(manager.callTool("srv", "fail_tool", { data: "test" })).rejects.toThrow("Upstream server error");
   });
 
   // 10c. discover() returns all connected servers with capabilities
@@ -399,10 +372,7 @@ describe("ServerManager", () => {
       const result = await manager.discover();
 
       expect(result.servers).toHaveLength(2);
-      expect(result.servers.map((s) => s.name).sort()).toEqual([
-        "server-a",
-        "server-b",
-      ]);
+      expect(result.servers.map((s) => s.name).sort()).toEqual(["server-a", "server-b"]);
     });
   });
 

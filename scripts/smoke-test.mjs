@@ -58,7 +58,7 @@ async function test() {
         '  block_domains: []',
         '',
         'rate_limit:',
-        '  default: "100/minute"',
+        '  default: "100/min"',
         '',
         'injection_detection:',
         '  enabled: false',

@@ -1,7 +1,10 @@
 {
-  "name": "mcp-slim-guard",
+  "name": "@agent-mcp-tools/mcp-slim-guard",
   "version": "0.1.0",
   "mcpName": "io.github.lennney/mcp-slim-guard",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "MCP proxy for schema compression, tool access control, SSRF protection, injection detection, rate limiting and audit logging",
   "type": "module",
   "main": "./dist/index.js",

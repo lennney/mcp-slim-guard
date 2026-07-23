@@ -93,10 +93,8 @@ export class RateLimitPolicy implements Policy {
    * 优先使用 per_agent 配置，无匹配时回退到 default。
    */
   private getLimitForContext(ctx: PolicyContext): ParsedRateLimit {
-    if (ctx.agentId && this.perAgentLimits.has(ctx.agentId)) {
-      return this.perAgentLimits.get(ctx.agentId)!;
-    }
-    return this.defaultLimit;
+    const limit = ctx.agentId ? this.perAgentLimits.get(ctx.agentId) : undefined;
+    return limit ?? this.defaultLimit;
   }
 
   /**

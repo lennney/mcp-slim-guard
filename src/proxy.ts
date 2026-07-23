@@ -31,6 +31,7 @@ export class GuardProxy {
   private pipeline: PolicyPipeline;
   private audit: AuditLogger;
   private serverManager: ServerManager;
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- McpServer lacks setRequestHandler (needed for dynamic tools/list/call routing)
   private server: Server | null = null;
   private sessionId = "?";
   private requestCounter = 0;
@@ -263,6 +264,7 @@ export class GuardProxy {
    * @returns The Server instance
    * @throws If the server has not been started yet
    */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- McpServer lacks setRequestHandler (needed for dynamic tools/list/call routing)
   getServer(): Server {
     if (!this.server) {
       throw new Error("Server not started");

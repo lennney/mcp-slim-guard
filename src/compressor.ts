@@ -57,7 +57,7 @@ function makeWrapperTools(tools: Tool[], includeList: boolean): Tool[] {
     result.push({
       name: LIST_TOOLS,
       description:
-        "List all available tools (names and descriptions only, no schemas). Call get_tool_schema to get full input schema for a specific tool.",
+        "List available tool names with short descriptions, without full input schemas. Read-only, no side effects.",
       inputSchema: { type: "object", properties: {} },
     });
   }
@@ -65,13 +65,13 @@ function makeWrapperTools(tools: Tool[], includeList: boolean): Tool[] {
   result.push({
     name: GET_TOOL_SCHEMA,
     description:
-      "Get the full input schema (parameters, types, constraints) for one tool. Use this before calling invoke_tool to construct correct arguments.",
+      "Get the full input schema (parameters, types, constraints, descriptions) for a single tool. Read-only operation, no side effects — safe to call at any time. Use this before calling invoke_tool to construct correct arguments.\nBest for: understanding what parameters a tool expects before calling it.\nNot recommended for: listing available tools (use list_tools instead).",
     inputSchema: {
       type: "object",
       properties: {
         tool_name: {
           type: "string",
-          description: `The full tool name (e.g. "mock_echo"). Available tools: ${tools
+          description: `The full tool name (e.g. "mock_echo"). You can specify server-prefixed names like "github_search". Passing an unknown or empty tool_name returns an error. Available tools: ${tools
             .map((t) => t.name)
             .sort()
             .join(", ")}`,
@@ -83,14 +83,20 @@ function makeWrapperTools(tools: Tool[], includeList: boolean): Tool[] {
 
   result.push({
     name: INVOKE,
-    description: "Invoke a tool with the given arguments. Call get_tool_schema first to see required parameters.",
+    description:
+      "Invoke a tool with the given arguments. ⚠️ WARNING: this actually executes the upstream tool — may have side effects such as writing data, triggering real operations, or causing irreversible changes. Call get_tool_schema first to see required parameters and understand the tool's behavior.\nBest for: executing any tool call through the security pipeline (allow/deny → SSRF → injection → rate limit → audit).\nNot recommended for: exploration or testing (use get_tool_schema first to verify parameters).",
     inputSchema: {
       type: "object",
       properties: {
-        tool_name: { type: "string", description: "The full tool name to invoke" },
+        tool_name: {
+          type: "string",
+          description:
+            "The full tool name to invoke. Must match exactly one of the available tools (including server prefix if any).",
+        },
         input: {
           type: "object",
-          description: "Arguments to pass to the tool (use get_tool_schema to see expected fields)",
+          description:
+            "Arguments to pass to the tool as a JSON object. Use get_tool_schema to see expected parameter names, types, and required fields.",
         },
       },
       required: ["tool_name", "input"],
@@ -197,7 +203,7 @@ export const injectGetSchema: ToolStage = (tools: Tool[]) => {
     ...tools,
     {
       name: GET_SCHEMA,
-      description: `Get the full input schema (parameters, types, constraints) for a specific tool. Call this before invoking a tool whose schema is not included in the tools list. Returns the complete original schema. Available tools: ${toolNames}`,
+      description: `Get the full input schema (parameters, types, constraints, descriptions) for a specific tool. Read-only, no side effects — safe to call at any time. Call this before invoking a tool whose schema is not included in the tools list. Returns the complete original schema.\nBest for: fetching the full parameter schema of a tool that was shown in slim format.\nNot recommended for: tools with full schemas already visible in the tools list. Available tools: ${toolNames}`,
       inputSchema: {
         type: "object" as const,
         properties: {

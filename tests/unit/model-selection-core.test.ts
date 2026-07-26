@@ -42,7 +42,11 @@ describe("model selection evaluation", () => {
     expect(redactCapture("Bearer abcdefghijklmnop")).not.toContain("abcdefghijklmnop");
     expect(
       summarizeModelRuns([
-        { status: "completed", profile: "baseline", score: { selected_tool_correct: true, first_arguments_valid: true, task_success: true } },
+        {
+          status: "completed",
+          profile: "baseline",
+          score: { selected_tool_correct: true, first_arguments_valid: true, task_success: true },
+        },
         { status: "error", profile: "slim-guard" },
       ]),
     ).toMatchObject({ attempted: 2, completed: 1, infrastructure_errors: 1 });

@@ -1,54 +1,77 @@
 # mcp-slim-guard
 
-**One endpoint. Three tools. Guarded by default.**
+**Context compression for MCP.**
 
-mcp-slim-guard is an opinionated MCP compatibility middle layer. It connects
-to your existing MCP servers and exposes one compact MCP endpoint:
+**Compress what agents see. Preserve what tools do.**
 
-- `find_tool` finds authorized tools and returns exact input schemas.
-- `call_tool` executes a catalog-bound reference through the security pipeline.
-- `read_result` retrieves bounded chunks of a captured large result.
+mcp-slim-guard is an MCP context compression runtime. It sits between an MCP
+host and existing MCP servers, replacing a large authorized catalog with three
+stable tools:
 
-It is not a registry, portal, server manager, or general LLM gateway.
+- `find_tool` returns a small set of exact, catalog-bound tool definitions.
+- `call_tool` forwards the selected arguments to the upstream tool unchanged.
+- `read_result` optionally restores exact chunks from a captured large result.
 
-## Why
+Compression changes the context delivered to the agent. It does not change the
+upstream tool call.
 
-Large MCP catalogs consume context before an agent does useful work. A
-transparent proxy can enforce policy but cannot substantially reduce that
-catalog. Slim Guard deliberately replaces the model-facing catalog with three
-stable tools while preserving exact schemas and recoverable results behind the
-middle layer.
-
-Atlassian
-[`mcp-compressor`](https://github.com/atlassian-labs/mcp-compressor) is the
-primary compression competitor. Slim Guard's additional contract is guarded
-execution and result delivery without requiring a proprietary control plane.
-
-## How it works
+## The MCP-native compression path
 
 ```text
-MCP client or gateway
-  -> mcp-slim-guard
-     -> authorized catalog
+MCP host
+  -> Catalog Projection at tools/list
      -> find_tool / call_tool / read_result
-     -> allow/deny + argument and URL preflight + rate limit
-     -> upstream MCP servers
-     -> bounded, recoverable result delivery
+  -> exact upstream tools/call, once
+  -> Payload Router after CallToolResult
+     -> small result: direct
+     -> large result: deterministic projection + immutable snapshot
+  -> optional read_result from the snapshot
 ```
 
-Visibility filtering runs before tool search. `call_tool` accepts only a
-reference issued by the current catalog, so guessed or stale tool names are not
-forwarded. Large results are captured once and paged from that snapshot; paging
-never re-executes an upstream tool. The initial response carries one exact
-preview, and its `next_cursor` resumes after that preview instead of sending the
-same prefix again. Full original MCP results remain recoverable.
+The fixed contracts are:
 
-The repository includes a reproducible complete-task cost harness for baseline
-MCP, the official `mcp-compressor` CLI, and Slim Guard. Its current four-task
-capture is deliberately labeled as deterministic protocol replay, not model
-accuracy or a general benchmark claim.
+- authorization filters the catalog before discovery;
+- `find_tool` preserves `inputSchema`, `outputSchema`, `title`, annotations,
+  `_meta`, and extension fields;
+- `call_tool` does not rewrite the upstream argument object;
+- the upstream tool is invoked exactly once;
+- classification, projection, validation, or storage failure returns the
+  original upstream result;
+- `read_result` never re-executes the upstream tool and is never required
+  before the agent can make another tool call.
 
-## Quick start
+The Payload Router currently recognizes only plain text, uniform JSON, log-like
+text, and opaque MCP results. Code, diffs, small results, and uncertain shapes
+remain unchanged. Normal users do not choose algorithms, compression levels,
+or chunk sizes.
+
+## Evidence, not a universal savings claim
+
+The frozen, quota-free benchmark runs 24 English and Chinese MCP tasks across
+12 fixture tools:
+
+| Profile               | Tasks | Upstream calls | Advertised tools | Normal-path tokens |
+| --------------------- | ----: | -------------: | ---------------: | -----------------: |
+| Baseline MCP          | 24/24 |             24 |               12 |             71,388 |
+| mcp-compressor 0.31.6 | 24/24 |             24 |                2 |             54,710 |
+| Slim Guard            | 24/24 |             24 |                3 |             18,385 |
+
+This fixture shows a 66.40% lower normal-path cost than `mcp-compressor`; it is
+not a general savings rate. Forced full recovery of the two large reports is
+5.01% above the competitor path, is disclosed, and remains an optimization
+target.
+
+See the [complete-task evidence](docs/evidence/2026-07-26-complete-task-benchmark.md),
+[content projection evidence](docs/evidence/2026-07-26-content-projection-compression.md),
+and machine-readable captures linked from those reports.
+
+```bash
+npm run bench:compression:verify
+```
+
+The benchmark uses deterministic MCP protocol replay, not a model or API quota.
+
+## Install the current stable release
 
 Requirements: Node.js 18 or newer.
 
@@ -61,105 +84,47 @@ mcp-slim-guard validate
 mcp-slim-guard start
 ```
 
-`init` imports MCP servers from `.mcp.json`, `mcp.json`,
-`claude_desktop_config.json`, `.cursor/mcp.json`, or `.vscode/mcp.json` and
-writes one `mcp-slim-guard.yml` with safe defaults. It accepts the common
-top-level `mcpServers` and `servers` shapes.
+`init` imports common `mcpServers` and VS Code `servers` configurations and
+writes one `mcp-slim-guard.yml`. Point the host at Slim Guard instead of the
+original server list.
 
-Point the host ecosystem at Slim Guard instead of the original server list.
-Slim Guard uses stdio by default, so protocol stdout contains only MCP
-JSON-RPC. Human status and stdout-configured audit output go to stderr.
+Local stdio is the primary supported ingress. Slim Guard can connect outward to
+stdio and Streamable HTTP upstreams through one internal adapter. Its own
+downstream Streamable HTTP ingress remains experimental and loopback-only.
 
-## Upstream compatibility
+## Alpha status
 
-Slim Guard automatically chooses the standard upstream transport from each
-entry:
-
-- `command` means local stdio;
-- `url` means Streamable HTTP first, with one legacy HTTP+SSE fallback;
-- explicit `type: sse` is accepted only for a known legacy server.
-
-This is one compatibility path, not a transport menu. Local and remote MCP
-servers can be mixed behind the same three-tool endpoint:
-
-```yaml
-servers:
-  local:
-    command: node
-    args: ["server.js"]
-  remote:
-    url: https://mcp.example.com/mcp
-    headers:
-      Authorization: "Bearer ${REMOTE_MCP_TOKEN}"
-```
-
-`${NAME}`, `${env:NAME}`, and non-sensitive `${NAME:-default}` templates are
-resolved when the connection opens. Sensitive environment entries, headers,
-and URL query parameters must reference an environment variable; plaintext
-fallbacks are rejected.
-Interactive host placeholders such as `${input:name}` are not prompted for by
-Slim Guard—map them to an environment variable. Remote OAuth is not yet
-implemented.
-
-## Security scope
-
-The current runtime provides:
-
-- catalog visibility allow/deny;
-- exact catalog-bound invocation;
-- parameter restrictions;
-- URL/domain/IP preflight;
-- heuristic injection checks on call arguments;
-- rate limiting;
-- recursively redacted JSON audit events;
-- cryptographically random session and result references.
-
-Be precise about the limits:
-
-- URL preflight is not process or socket isolation. A sandbox, container, or
-  egress proxy is required to constrain an arbitrary upstream process.
-- Heuristic injection detection cannot prove content is safe.
-- Slim Guard's downstream Streamable HTTP ingress is experimental and binds to
-  loopback. It should not be exposed remotely until authentication and the
-  remaining HTTP hardening gates in the active plan are complete. This limit is
-  separate from connecting outward to an existing remote MCP server.
-
-See [the architecture](docs/architecture-mcp-slim-guard.md) and
-[the active iteration plan](docs/plans/2026-07-26-compatible-middle-layer.md).
-
-## Compatibility
-
-The normal product surface is always the fixed three tools. Existing
-`compressor.level` values and legacy `mcp__*` calls remain accepted as migration
-inputs, but they are not part of the primary user experience.
-
-Slim Guard must preserve standard MCP result semantics, including `isError`,
-content block types and order, `structuredContent`, `_meta`, and unknown fields
-that it does not intentionally transform.
-
-## Evidence
-
-Do not compare only serialized initial tool lists. A valid comparison with
-`mcp-compressor` includes:
-
-- all discovery, schema, retry, invocation, and result-retrieval turns;
-- cumulative task tokens;
-- task success and first-valid-argument rate;
-- p50/p95 latency;
-- schema and result-field preservation;
-- security false positives, false negatives, and leakage.
-
-Current benchmark commands:
+`0.1.1-alpha.1` is the planned first public preview; it has not been published
+by the changes in this repository. When release authorization is given, the
+same verified tarball will be published with:
 
 ```bash
-npm run bench
-npm run bench:tokens
-npm run bench:schema
-npm run bench:latency
+npm install -g mcp-slim-guard@alpha
 ```
 
-Public numbers will be restored only from committed, reproducible,
-non-empty evidence.
+The npm `latest` tag remains on `0.1.0`. A second Alpha is reserved for P0
+install, protocol, or result-loss failures.
+
+## Compatibility boundary
+
+The three virtual tools intentionally replace original model-facing tool
+identities. Hosts therefore cannot always retain per-upstream-tool permission
+labels or prompts. Alpha prioritizes compact context and exact execution over
+dynamic host-native tool promotion.
+
+Existing legacy compression configuration remains accepted for migration but
+is not the primary product experience. Registry, marketplace, dashboard,
+Kubernetes operator, hosted control plane, remote-model compression, and
+user-selectable compression presets are not part of the product.
+
+Security checks remain supporting protection: catalog policy, exact references,
+URL/argument preflight, rate limits, redacted audit data, and result findings.
+They are not the main positioning, and an untrusted string is never treated as
+safely isolated merely because text was deleted.
+
+See the [architecture](docs/architecture-mcp-slim-guard.md),
+[roadmap](docs/ROADMAP.md), and
+[Alpha execution plan](docs/plans/2026-07-26-alpha-market-entry.md).
 
 ## Development
 
@@ -167,10 +132,13 @@ non-empty evidence.
 npm install
 npm run build
 npm test
-npm run lint
+npm run bench:compression:verify
+npm run demo:alpha
+npm run smoke:package
 ```
 
-No package publish, release, or version bump is implied by changes on `main`.
+No version bump, push, tag, npm publish, GitHub Release, Registry update, or
+external post is implied by repository changes.
 
 ## License
 

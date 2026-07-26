@@ -16,8 +16,41 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: npm
       - run: npm ci
-      - run: npm run build
-      - run: npm run check
-      - run: npm publish --access public
+      - name: Resolve release channel
+        id: release
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package version v$VERSION"
+            exit 1
+          fi
+          case "$VERSION" in
+            *-alpha.*) NPM_TAG="alpha" ;;
+            *-*) echo "::error::Unsupported prerelease channel: $VERSION"; exit 1 ;;
+            *) NPM_TAG="latest" ;;
+          esac
+          echo "npm_tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
+      - name: Verify release candidate
+        run: |
+          npm run build
+          npm run typecheck
+          npm run lint
+          npm run format:check
+          npm test
+          npm run test:coverage
+          npm run bench:security-accuracy
+          npm run bench:compression:verify
+      - name: Pack immutable release candidate
+        id: pack
+        shell: bash
+        run: |
+          npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/slim-guard-pack.json"
+          PACKAGE_FILE="$(jq -r '.[0].filename' "$RUNNER_TEMP/slim-guard-pack.json")"
+          echo "path=$RUNNER_TEMP/$PACKAGE_FILE" >> "$GITHUB_OUTPUT"
+      - name: Smoke exact tarball
+        run: node scripts/integration/package-smoke.mjs "${{ steps.pack.outputs.path }}"
+      - name: Publish exact tarball
+        run: npm publish "${{ steps.pack.outputs.path }}" --access public --tag "${{ steps.release.outputs.npm_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -188,7 +188,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .name("mcp-slim-guard")
     .version(VERSION)
-    .description("轻量 MCP 安全代理 — SSRF 防护 + 工具白名单 + 审计 + 限速");
+    .description("MCP context compression runtime — compress what agents see, preserve what tools do");
 
   program
     .command("init")

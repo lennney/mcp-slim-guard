@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { get_encoding } from "tiktoken";
+import { MODEL_SELECTION_SCENARIOS } from "../evaluation/model-selection-scenarios.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..", "..");
@@ -17,44 +18,15 @@ const slimGuardCli = path.join(repositoryRoot, "dist", "cli.js");
 const reportPath = path.join(repositoryRoot, "docs", "evidence", "2026-07-26-complete-task-capture.json");
 const encoding = get_encoding("o200k_base");
 
-const TASKS = [
-  {
-    id: "en-catalog-search",
-    language: "en",
-    prompt: 'Search the product catalog for "adapter" and return three results.',
-    intent: "search product catalog",
-    tool: "search_catalog",
-    arguments: { query: "adapter", locale: "en", limit: 3 },
-    expected: "CATALOG:adapter:en",
-  },
-  {
-    id: "zh-catalog-search",
-    language: "zh",
-    prompt: "检索产品目录中的“适配器”，返回三个结果。",
-    intent: "检索产品目录",
-    tool: "search_catalog",
-    arguments: { query: "适配器", locale: "zh", limit: 3 },
-    expected: "CATALOG:适配器:zh",
-  },
-  {
-    id: "en-report-header",
-    language: "en",
-    prompt: "Generate the full RPT-42 report and confirm its header marker.",
-    intent: "generate detailed operational report",
-    tool: "generate_report",
-    arguments: { report_id: "RPT-42", locale: "en", detail: "full" },
-    expected: "REPORT:RPT-42:en:BEGIN",
-  },
-  {
-    id: "zh-report-tail",
-    language: "zh",
-    prompt: "生成完整的 CN-77 运营报告，并核验报告末尾标记。",
-    intent: "生成详细运营报告",
-    tool: "generate_report",
-    arguments: { report_id: "CN-77", locale: "zh", detail: "full" },
-    expected: "REPORT:CN-77:zh:END",
-  },
-];
+const TASKS = MODEL_SELECTION_SCENARIOS.map((scenario) => ({
+  id: scenario.id,
+  language: scenario.language,
+  prompt: scenario.prompt,
+  intent: scenario.tool.replaceAll("_", " "),
+  tool: scenario.tool,
+  arguments: scenario.arguments,
+  expected: scenario.marker,
+}));
 
 function normalizeWire(value) {
   return JSON.stringify(value)

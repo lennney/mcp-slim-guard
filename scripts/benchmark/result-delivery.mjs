@@ -36,7 +36,7 @@ function tokens(value) {
   return encoding.encode(stableWire).length;
 }
 
-async function retrieve(kernel, resultRef, cursor, prefix) {
+async function retrieveCurrent(kernel, resultRef, cursor, prefix) {
   const chunks = [prefix];
   let calls = 0;
   let responseTokens = 0;
@@ -50,9 +50,45 @@ async function retrieve(kernel, resultRef, cursor, prefix) {
     );
     responseTokens += tokens(response);
     calls += 1;
-    const body = parseText(response);
-    chunks.push(body.chunk);
-    nextCursor = body.next_cursor;
+    chunks.push(response.content[0].text);
+    nextCursor = response.structuredContent.next_cursor;
+  }
+
+  return {
+    calls,
+    responseTokens,
+    serialized: chunks.join(""),
+  };
+}
+
+function retrieveLegacy(serialized, resultRef) {
+  const chunks = [];
+  let calls = 0;
+  let responseTokens = 0;
+  let cursor = 0;
+
+  while (cursor < serialized.length) {
+    const chunk = serialized.slice(cursor, cursor + 8_000);
+    const nextCursor = cursor + chunk.length;
+    const done = nextCursor >= serialized.length;
+    const response = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            result_ref: resultRef,
+            cursor,
+            next_cursor: done ? null : nextCursor,
+            done,
+            chunk,
+          }),
+        },
+      ],
+    };
+    responseTokens += tokens(response);
+    calls += 1;
+    chunks.push(chunk);
+    cursor = nextCursor;
   }
 
   return {
@@ -68,7 +104,7 @@ const toolRef = found.matches[0].tool_ref;
 const delivered = await kernel.call("call_tool", { tool_ref: toolRef, arguments: {} }, async () => upstreamResult);
 const capsule = parseText(delivered);
 
-const currentRecovery = await retrieve(kernel, capsule.result_ref, capsule.next_cursor, capsule.preview);
+const currentRecovery = await retrieveCurrent(kernel, capsule.result_ref, capsule.next_cursor, capsule.preview);
 assert.deepEqual(JSON.parse(currentRecovery.serialized), upstreamResult);
 
 const legacyCapsule = {
@@ -94,7 +130,7 @@ const legacyInitial = {
     [META_KEY]: legacyCapsule,
   },
 };
-const legacyRecovery = await retrieve(kernel, capsule.result_ref, 0, "");
+const legacyRecovery = retrieveLegacy(JSON.stringify(upstreamResult), capsule.result_ref);
 assert.deepEqual(JSON.parse(legacyRecovery.serialized), upstreamResult);
 
 const legacyInitialTokens = tokens(legacyInitial);

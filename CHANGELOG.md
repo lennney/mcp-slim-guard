@@ -30,6 +30,7 @@ tags:
 - `.vscode/mcp.json`、顶层 `servers` 和远程 URL/header 配置导入。
 - 连接时环境变量模板解析与真实 Streamable HTTP MCP 集成测试。
 - 固定策略的 `ResultCapsuleStore` 深模块与可复现结果交付 benchmark。
+- baseline、官方 `mcp-compressor` CLI 与 Slim Guard 的双语完整任务 benchmark。
 
 ### Changed
 
@@ -40,6 +41,7 @@ tags:
 - README 移除未绑定当前证据的压缩率和准确率宣传。
 - 上游传输由 `command` 或 `url` 自动推断，不新增用户模式选择。
 - 大结果预览只交付一次，正常续读从预览后的游标开始，同时保留无损恢复路径。
+- `read_result` 直接交付原始有界 chunk，游标状态放入 `structuredContent` 与短文本 fallback。
 
 ### Fixed
 

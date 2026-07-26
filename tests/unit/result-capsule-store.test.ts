@@ -8,6 +8,12 @@ function parseText(result: CallToolResult): Record<string, unknown> {
   return JSON.parse(content.text) as Record<string, unknown>;
 }
 
+function textChunk(result: CallToolResult): string {
+  const content = result.content[0];
+  if (!content || content.type !== "text") throw new Error("Expected text result");
+  return content.text;
+}
+
 describe("ResultCapsuleStore", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -46,10 +52,11 @@ describe("ResultCapsuleStore", () => {
     const chunks = [capsule.preview as string];
     let cursor = capsule.next_cursor as number;
     for (let page = 0; page < 20; page++) {
-      const body = parseText(store.read({ result_ref: capsule.result_ref, cursor }));
-      chunks.push(body.chunk as string);
-      if (body.done) break;
-      cursor = body.next_cursor as number;
+      const result = store.read({ result_ref: capsule.result_ref, cursor });
+      const metadata = result.structuredContent as Record<string, unknown>;
+      chunks.push(textChunk(result));
+      if (metadata.done) break;
+      cursor = metadata.next_cursor as number;
     }
 
     expect(JSON.parse(chunks.join(""))).toEqual(original);
@@ -77,6 +84,34 @@ describe("ResultCapsuleStore", () => {
       type: "text",
       text: "cursor splits a Unicode character.",
     });
+  });
+
+  it("returns each recovery chunk once as raw text with compact metadata", () => {
+    const store = new ResultCapsuleStore();
+    const capsule = parseText(
+      store.capture({
+        content: [{ type: "text", text: `"quoted"\n${"x".repeat(20_000)}` }],
+      }),
+    );
+
+    const page = store.read({
+      result_ref: capsule.result_ref,
+      cursor: capsule.next_cursor,
+    });
+    const metadata = page.structuredContent as Record<string, unknown>;
+
+    expect(textChunk(page)).not.toContain('"chunk":');
+    expect(metadata).toEqual({
+      result_ref: capsule.result_ref,
+      cursor: capsule.next_cursor,
+      next_cursor: (capsule.next_cursor as number) + 12_000,
+      done: false,
+    });
+    expect(page.content[1]).toEqual({
+      type: "text",
+      text: JSON.stringify(metadata),
+    });
+    expect(page._meta).toBeUndefined();
   });
 
   it("invalidates every captured result when cleared", () => {

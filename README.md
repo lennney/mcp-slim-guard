@@ -43,6 +43,11 @@ never re-executes an upstream tool. The initial response carries one exact
 preview, and its `next_cursor` resumes after that preview instead of sending the
 same prefix again. Full original MCP results remain recoverable.
 
+The repository includes a reproducible complete-task cost harness for baseline
+MCP, the official `mcp-compressor` CLI, and Slim Guard. Its current four-task
+capture is deliberately labeled as deterministic protocol replay, not model
+accuracy or a general benchmark claim.
+
 ## Quick start
 
 Requirements: Node.js 18 or newer.

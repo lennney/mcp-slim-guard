@@ -46,6 +46,12 @@ function parseText(result: CallToolResult): Record<string, unknown> {
   return JSON.parse(content.text) as Record<string, unknown>;
 }
 
+function textChunk(result: CallToolResult): string {
+  const content = result.content[0];
+  if (!content || content.type !== "text") throw new Error("Expected text result");
+  return content.text;
+}
+
 describe("SecureProjectionKernel", () => {
   it("exposes exactly the three product tools", () => {
     const kernel = new SecureProjectionKernel(tools);
@@ -120,20 +126,19 @@ describe("SecureProjectionKernel", () => {
     let finalCursor = cursor;
     for (let page = 0; page < 10; page++) {
       finalCursor = cursor;
-      const body = parseText(await kernel.call(READ_RESULT, { result_ref: capsule.result_ref, cursor }, invoke));
-      chunks.push(body.chunk as string);
-      if (body.done) break;
-      cursor = body.next_cursor as number;
+      const result = await kernel.call(READ_RESULT, { result_ref: capsule.result_ref, cursor }, invoke);
+      const metadata = result.structuredContent as Record<string, unknown>;
+      chunks.push(textChunk(result));
+      if (metadata.done) break;
+      cursor = metadata.next_cursor as number;
     }
 
     expect(JSON.parse(chunks.join(""))).toEqual({
       content: [{ type: "text", text: largeText }],
       isError: false,
     });
-    const retryFinal = parseText(
-      await kernel.call(READ_RESULT, { result_ref: capsule.result_ref, cursor: finalCursor }, invoke),
-    );
-    expect(retryFinal.done).toBe(true);
+    const retryFinal = await kernel.call(READ_RESULT, { result_ref: capsule.result_ref, cursor: finalCursor }, invoke);
+    expect(retryFinal.structuredContent).toHaveProperty("done", true);
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
@@ -154,9 +159,9 @@ describe("SecureProjectionKernel", () => {
     );
     expect(rejected.isError).toBe(true);
 
-    const first = parseText(await kernel.call(READ_RESULT, { result_ref: capsule.result_ref }, invoke));
-    expect(first.cursor).toBe(0);
-    expect(first.chunk).not.toBe("");
+    const first = await kernel.call(READ_RESULT, { result_ref: capsule.result_ref }, invoke);
+    expect(first.structuredContent).toHaveProperty("cursor", 0);
+    expect(textChunk(first)).not.toBe("");
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 

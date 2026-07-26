@@ -114,7 +114,7 @@ function projectionTools(): Tool[] {
     {
       name: READ_RESULT,
       description:
-        "Read the next bounded chunk of a captured large result. Use only when call_tool returns a result_ref.",
+        "Read the next bounded chunk of a captured large result. The first text block is the raw chunk; the second carries cursor metadata. Use only when call_tool returns a result_ref.",
       inputSchema: {
         type: "object",
         properties: {

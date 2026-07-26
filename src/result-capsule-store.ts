@@ -13,7 +13,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 const RESULT_BUDGET_CHARS = 12_000;
 const RESULT_PREVIEW_CHARS = 1_000;
-const RESULT_CHUNK_CHARS = 8_000;
+const RESULT_CHUNK_CHARS = 12_000;
 const RESULT_TTL_MS = 5 * 60 * 1000;
 const MAX_STORED_RESULTS = 64;
 const CAPSULE_META_KEY = "io.github.lennney/slim-guard";
@@ -30,16 +30,17 @@ interface ResultCapsuleMetadata extends Record<string, unknown> {
   next_cursor: number;
 }
 
+interface ResultChunkMetadata extends Record<string, unknown> {
+  result_ref: string;
+  cursor: number;
+  next_cursor: number | null;
+  done: boolean;
+}
+
 function errorResult(message: string): CallToolResult {
   return {
     content: [{ type: "text", text: message }],
     isError: true,
-  };
-}
-
-function jsonResult(value: unknown): CallToolResult {
-  return {
-    content: [{ type: "text", text: JSON.stringify(value) }],
   };
 }
 
@@ -128,14 +129,20 @@ export class ResultCapsuleStore {
 
     const nextCursor = boundedEnd(stored.serialized, cursor, RESULT_CHUNK_CHARS);
     const done = nextCursor >= stored.serialized.length;
-
-    return jsonResult({
+    const metadata: ResultChunkMetadata = {
       result_ref: resultRef,
       cursor,
       next_cursor: done ? null : nextCursor,
       done,
-      chunk: stored.serialized.slice(cursor, nextCursor),
-    });
+    };
+
+    return {
+      content: [
+        { type: "text", text: stored.serialized.slice(cursor, nextCursor) },
+        { type: "text", text: JSON.stringify(metadata) },
+      ],
+      structuredContent: metadata,
+    };
   }
 
   clear(): void {

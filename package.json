@@ -64,6 +64,7 @@
     "bench": "node scripts/benchmark/bench.mjs",
     "bench:tokens": "node scripts/benchmark/tokens.mjs",
     "bench:result": "node scripts/benchmark/result-delivery.mjs",
+    "bench:task": "node scripts/benchmark/complete-task.mjs",
     "bench:schema": "node scripts/benchmark/schema.mjs",
     "bench:accuracy": "node scripts/benchmark/accuracy.mjs",
     "bench:latency": "node scripts/benchmark/latency.mjs",

@@ -10,6 +10,7 @@
 
 import { randomBytes } from "node:crypto";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ResultSecurityInspector, type ResultSecurityAssessment } from "./result-security.js";
 
 const RESULT_BUDGET_CHARS = 12_000;
 const RESULT_PREVIEW_CHARS = 1_000;
@@ -28,6 +29,8 @@ interface ResultCapsuleMetadata extends Record<string, unknown> {
   original_chars: number;
   preview_chars: number;
   next_cursor: number;
+  delivery_verified: true;
+  security: ResultSecurityAssessment;
 }
 
 interface ResultChunkMetadata extends Record<string, unknown> {
@@ -63,6 +66,30 @@ function boundedEnd(value: string, cursor: number, budget: number): number {
   return end;
 }
 
+function verifyCapsuleDelivery(
+  delivered: CallToolResult,
+  serialized: string,
+  preview: string,
+  metadata: ResultCapsuleMetadata,
+): boolean {
+  const text = delivered.content[0];
+  if (!text || text.type !== "text") return false;
+  let envelope: Record<string, unknown>;
+  try {
+    envelope = JSON.parse(text.text) as Record<string, unknown>;
+  } catch {
+    return false;
+  }
+  return (
+    preview === serialized.slice(0, metadata.next_cursor) &&
+    metadata.original_chars === serialized.length &&
+    envelope.result_ref === metadata.result_ref &&
+    envelope.preview === preview &&
+    delivered.structuredContent === metadata &&
+    delivered._meta?.[CAPSULE_META_KEY] === metadata
+  );
+}
+
 /**
  * Deep in-process module for fixed-policy, recoverable result compression.
  *
@@ -73,10 +100,25 @@ function boundedEnd(value: string, cursor: number, budget: number): number {
 export class ResultCapsuleStore {
   private results = new Map<string, StoredResult>();
   private resultOrder: string[] = [];
+  private security = new ResultSecurityInspector();
 
   capture(result: CallToolResult): CallToolResult {
-    const serialized = JSON.stringify(result);
-    if (serialized.length <= RESULT_BUDGET_CHARS) return result;
+    const security = this.security.inspect(result);
+    const securedResult =
+      security.findings.length === 0
+        ? result
+        : {
+            ...result,
+            _meta: {
+              ...result._meta,
+              [CAPSULE_META_KEY]: {
+                ...((result._meta?.[CAPSULE_META_KEY] as Record<string, unknown> | undefined) ?? {}),
+                security,
+              },
+            },
+          };
+    const serialized = JSON.stringify(securedResult);
+    if (serialized.length <= RESULT_BUDGET_CHARS) return securedResult;
 
     const resultRef = `result_${randomBytes(16).toString("hex")}`;
     this.store(resultRef, serialized);
@@ -88,9 +130,11 @@ export class ResultCapsuleStore {
       original_chars: serialized.length,
       preview_chars: preview.length,
       next_cursor: previewEnd,
+      delivery_verified: true,
+      security,
     };
 
-    return {
+    const delivered: CallToolResult = {
       content: [
         {
           type: "text",
@@ -107,6 +151,11 @@ export class ResultCapsuleStore {
         [CAPSULE_META_KEY]: metadata,
       },
     };
+    if (!verifyCapsuleDelivery(delivered, serialized, preview, metadata)) {
+      this.delete(resultRef);
+      return securedResult;
+    }
+    return delivered;
   }
 
   read(args: Record<string, unknown>): CallToolResult {

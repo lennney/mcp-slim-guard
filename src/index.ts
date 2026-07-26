@@ -8,3 +8,11 @@ export {
   usesSecureProjection,
 } from "./secure-projection.js";
 export type { ProjectionInvoker } from "./secure-projection.js";
+export {
+  ResultSecurityInspector,
+  type ResultFindingKind,
+  type ResultFindingSeverity,
+  type ResultObligation,
+  type ResultSecurityAssessment,
+  type ResultSecurityFinding,
+} from "./result-security.js";

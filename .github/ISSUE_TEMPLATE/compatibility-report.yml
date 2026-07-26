@@ -1,0 +1,85 @@
+name: Host and Server compatibility report
+description: Report one MCP host, upstream Server, and result shape.
+title: "[compat] "
+labels:
+  - compatibility
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share one reproducible host and Server combination. Remove tokens, credentials, private paths, and result contents before submitting.
+  - type: input
+    id: slim_guard_version
+    attributes:
+      label: Slim Guard version
+      placeholder: 0.1.1-alpha.1
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: MCP host and version
+      placeholder: Codex CLI 0.145.0
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Upstream MCP Server and version
+      placeholder: GitHub MCP Server 1.7.0
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Upstream transport
+      options:
+        - stdio
+        - Streamable HTTP
+        - Legacy SSE
+    validations:
+      required: true
+  - type: dropdown
+    id: result_shape
+    attributes:
+      label: Result shape
+      options:
+        - Small text
+        - Large text
+        - Structured content
+        - Resource or resource link
+        - Image or audio
+        - Multi-block or unknown
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction
+      description: Include the tool name and redacted arguments. Do not paste credentials or private result contents.
+      placeholder: |
+        1. Start the host from...
+        2. Run find_tool with...
+        3. Run call_tool with redacted arguments...
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Include whether the three-tool surface appeared and whether a result_ref was returned.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: Optional. Remove tokens, credentials, private paths, and result bodies.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private paths, and sensitive result contents.
+          required: true

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Slim Guard Alpha benchmark</title>
+  <desc id="desc">Normal-path token comparison in a frozen 12-tool, 24-task bilingual MCP fixture. Direct MCP uses 71,388 tokens, mcp-compressor uses 54,710, and Slim Guard uses 18,385. All 24 tasks completed with 24 upstream calls.</desc>
+  <rect x="1" y="1" width="1198" height="673" fill="#08090a" stroke="#282b2d" stroke-width="2"/>
+  <g transform="translate(58 26) scale(.12)">
+    <path d="M112 152h82l82 104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M112 256h148" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square"/>
+    <path d="M112 360h82l82-104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M292 256h108" fill="none" stroke="#ff5a1f" stroke-width="28" stroke-linecap="square"/>
+    <rect x="260" y="240" width="32" height="32" fill="#ff5a1f"/>
+  </g>
+  <text x="126" y="74" fill="#9ca1a4" font-family="Space Mono, Geist Mono, Consolas, monospace" font-size="20" font-weight="500" letter-spacing="2">SLIM GUARD ALPHA · FROZEN FIXTURE</text>
+  <text x="1128" y="74" text-anchor="end" fill="#666c6f" font-family="Space Mono, Geist Mono, Consolas, monospace" font-size="16">FIG. 02</text>
+  <text x="72" y="132" fill="#f2f1ec" font-family="Geist Sans, Segoe UI, sans-serif" font-size="50" font-weight="600" letter-spacing="-1.5">74.25% fewer normal-path tokens</text>
+  <text x="72" y="171" fill="#9ca1a4" font-family="Geist Sans, Segoe UI, sans-serif" font-size="23">12 MCP tools · 24 bilingual protocol tasks · o200k_base · no model or API calls</text>
+
+  <text x="72" y="242" fill="#f2f1ec" font-family="Geist Sans, Segoe UI, sans-serif" font-size="23" font-weight="650">Direct MCP</text>
+  <rect x="315" y="216" width="760" height="38" fill="#666c6f"/>
+  <text x="1100" y="243" text-anchor="end" fill="#f2f1ec" font-family="Geist Mono, Consolas, monospace" font-size="26" font-weight="700">71,388</text>
+
+  <text x="72" y="318" fill="#f2f1ec" font-family="Geist Sans, Segoe UI, sans-serif" font-size="23" font-weight="650">mcp-compressor</text>
+  <rect x="315" y="292" width="582" height="38" fill="#9ca1a4"/>
+  <text x="922" y="319" fill="#f2f1ec" font-family="Geist Mono, Consolas, monospace" font-size="26" font-weight="700">54,710</text>
+
+  <text x="72" y="394" fill="#f2f1ec" font-family="Geist Sans, Segoe UI, sans-serif" font-size="23" font-weight="750">Slim Guard</text>
+  <rect x="315" y="368" width="196" height="38" fill="#ff5a1f"/>
+  <text x="536" y="395" fill="#ff5a1f" font-family="Geist Mono, Consolas, monospace" font-size="26" font-weight="800">18,385</text>
+
+  <line x1="72" y1="455" x2="1128" y2="455" stroke="#282b2d" stroke-width="2"/>
+  <text x="72" y="508" fill="#ff5a1f" font-family="Geist Sans, Segoe UI, sans-serif" font-size="30" font-weight="750">24/24</text>
+  <text x="72" y="539" fill="#9ca1a4" font-family="Geist Sans, Segoe UI, sans-serif" font-size="19">tasks completed</text>
+
+  <text x="400" y="508" fill="#ff5a1f" font-family="Geist Sans, Segoe UI, sans-serif" font-size="30" font-weight="750">24 tasks = 24 calls</text>
+  <text x="400" y="539" fill="#9ca1a4" font-family="Geist Sans, Segoe UI, sans-serif" font-size="19">one upstream execution per task</text>
+
+  <text x="860" y="508" fill="#ff5a1f" font-family="Geist Sans, Segoe UI, sans-serif" font-size="30" font-weight="750">12 → 3</text>
+  <text x="860" y="539" fill="#9ca1a4" font-family="Geist Sans, Segoe UI, sans-serif" font-size="19">agent-facing tools</text>
+
+  <rect x="72" y="578" width="1056" height="54" fill="#0d0f10" stroke="#282b2d"/>
+  <text x="94" y="611" fill="#9ca1a4" font-family="Geist Sans, Segoe UI, sans-serif" font-size="17">Fixture-bound result, not a universal savings rate. Full recovery of two large reports: +5.01% vs competitor.</text>
+</svg>

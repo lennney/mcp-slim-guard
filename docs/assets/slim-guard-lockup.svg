@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220" role="img" aria-labelledby="title desc">
+  <title id="title">Slim Guard</title>
+  <desc id="desc">Slim Guard, context compression for MCP.</desc>
+  <rect x="1" y="1" width="958" height="218" fill="#08090a" stroke="#282b2d" stroke-width="2"/>
+  <g transform="translate(38 30) scale(.3125)">
+    <path d="M112 152h82l82 104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M112 256h148" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square"/>
+    <path d="M112 360h82l82-104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M292 256h108" fill="none" stroke="#ff5a1f" stroke-width="28" stroke-linecap="square"/>
+    <rect x="260" y="240" width="32" height="32" fill="#ff5a1f"/>
+  </g>
+  <text x="224" y="104" fill="#f2f1ec" font-family="Geist Sans, Segoe UI, sans-serif" font-size="64" font-weight="600" letter-spacing="-1">SLIM GUARD</text>
+  <text x="228" y="151" fill="#9ca1a4" font-family="Geist Mono, Consolas, monospace" font-size="20" font-weight="600" letter-spacing="2.4">CONTEXT COMPRESSION FOR MCP</text>
+  <line x1="228" y1="177" x2="908" y2="177" stroke="#1a1d1f"/>
+  <rect x="228" y="175" width="54" height="4" fill="#ff5a1f"/>
+</svg>

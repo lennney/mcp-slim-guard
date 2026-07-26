@@ -1,103 +1,210 @@
-# mcp-slim-guard
+<p align="center">
+  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
+</p>
 
-**MCP 上下文压缩运行时。**
+<p align="center"><strong>MCP 上下文压缩层</strong></p>
 
-**压缩 Agent 看到的内容，保留工具真实执行。**
+<p align="center">
+  在工具目录和大型结果进入 Agent 前压缩。<br>
+  上游调用保持不变，原始结果可以精确恢复。
+</p>
 
-mcp-slim-guard 位于 MCP 宿主与现有 MCP Server 之间，把大型授权工具目录收口为三个固定入口：
+<p align="center">
+  <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard.svg?label=npm" alt="npm"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D18-282b2d.svg" alt="Node.js 18 or newer"></a>
+</p>
 
-- `find_tool`：返回少量完整、可调用的工具定义；
-- `call_tool`：把参数原样交给上游工具；
-- `read_result`：按需从已捕获的大结果快照恢复原文。
+<p align="center">
+  <a href="#安装-alpha">安装</a> ·
+  <a href="#数据证明">数据证明</a> ·
+  <a href="#兼容性">兼容性</a> ·
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/docs/architecture-mcp-slim-guard.md">架构</a> ·
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README.md">English</a>
+</p>
 
-压缩发生在 MCP 上下文交付层，不改变上游工具调用。上游调用只执行一次；
-分类、投影、校验或存储异常时直接返回原始结果；`read_result` 不是继续调用其他工具的前置条件。
+![Slim Guard 冻结 Alpha 基准图](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/benchmark-alpha.svg)
 
-## 产品路径
+<p align="center"><sub>
+冻结的 12 工具、24 个中英文 MCP 协议任务。使用 <code>o200k_base</code> 计数，
+不调用模型或 API。这是 fixture 内结果，不代表通用节省率。
+</sub></p>
 
-```text
-宿主 tools/list
-  -> 三工具 Catalog Projection
-  -> find_tool
-  -> call_tool 参数原样进入上游，执行一次
-  -> CallToolResult 返回后自动路由
-     -> 小结果直接返回
-     -> 大结果生成确定性投影并保存不可变快照
-  -> 需要时 read_result，无需重跑上游
-```
-
-当前 Payload Router 只识别普通文本、统一 JSON、日志和不透明 MCP 结果。
-代码、diff、小结果和无法确定的复杂结果保持原样。用户不需要选择算法、压缩档位或分片大小。
-
-## 可复现证据
-
-冻结基准使用 12 个工具和 24 个中英文确定性 MCP 任务，不调用模型：
-
-| 路径                  | 任务成功 | 上游调用 | Agent 可见工具 | 正常路径 Token |
-| --------------------- | -------: | -------: | -------------: | -------------: |
-| 原始 MCP              |    24/24 |       24 |             12 |         71,388 |
-| mcp-compressor 0.31.6 |    24/24 |       24 |              2 |         54,710 |
-| Slim Guard            |    24/24 |       24 |              3 |         18,385 |
-
-在这组冻结 fixture 中，Slim Guard 正常路径比 `mcp-compressor` 少 66.40%；
-这不是通用节省率。两个完整大报告强制恢复时仍有 5.01% 额外开销，已公开披露并列为后续优化项。
-
-```bash
-npm run bench:compression:verify
-```
-
-详细证据见[完整任务报告](docs/evidence/2026-07-26-complete-task-benchmark.md)与
-[内容投影报告](docs/evidence/2026-07-26-content-projection-compression.md)。
-
-## 安装当前稳定版
+## 安装 Alpha
 
 需要 Node.js 18 或更高版本。
 
 ```bash
-npm install -g mcp-slim-guard
+npm install -g mcp-slim-guard@alpha
 
 cd your-project
 mcp-slim-guard init
 mcp-slim-guard validate
-mcp-slim-guard start
 ```
 
-本地 stdio 是当前主要发布路径。向上游连接时支持 stdio 和 Streamable HTTP；
-Slim Guard 自身的下游 HTTP 入口仍是仅绑定 loopback 的实验能力。
+`init` 会导入项目已有的 MCP Server 配置，并生成
+`mcp-slim-guard.yml`。随后把宿主中的原始 Server 列表替换为一个 Slim Guard
+入口：
 
-## Alpha 状态
-
-首个公开预览计划使用 `0.1.1-alpha.1`，但本次仓库变更没有发布它。
-得到独立发布授权后，将用已验证的同一 tarball 发布到 npm `alpha`：
-
-```bash
-npm install -g mcp-slim-guard@alpha
+```json
+{
+  "mcpServers": {
+    "slim-guard": {
+      "command": "mcp-slim-guard",
+      "args": ["start"],
+      "cwd": "/absolute/path/to/your-project"
+    }
+  }
+}
 ```
 
-`latest` 继续保持 `0.1.0`。只有安装失败、协议损坏或结果丢失等 P0 问题才考虑 `alpha.2`。
+宿主通过 stdio 启动 Slim Guard，Agent 只看到：
 
-## 边界
+```text
+find_tool
+call_tool
+read_result
+```
 
-固定三工具会替代原始工具在模型侧的身份，因此部分宿主无法继续显示每个原始工具的独立权限标签。
-Alpha 优先保证上下文压缩、参数原样调用、结果可恢复与上游恰好执行一次；动态工具提升留到未来。
+API key 必须使用环境变量。`init` 会拒绝敏感配置字段中的明文值。Codex、VS Code
+及常见 `mcpServers` 宿主的配置见
+[宿主接入配方](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md)。
 
-本产品不做大型 Gateway 控制面、Registry、Marketplace、Dashboard、Kubernetes
-Operator、托管多租户平台、用户自选压缩参数或默认依赖远程模型的语义压缩。
+## 一次完整调用
 
-参见[架构](docs/architecture-mcp-slim-guard.md)、[路线图](docs/ROADMAP.md)和
-[Alpha 执行计划](docs/plans/2026-07-26-alpha-market-entry.md)。
+仓库 Demo 从 12 个上游工具开始，发现其中一个工具，捕获 73,507 字符结果，再
+精确恢复一个分片。上游计数保持为一次。
 
-## 开发
+```text
+$ npm run demo:alpha
+
+1. Upstream catalog: 12 tools
+2. Agent catalog: 3 tools -> find_tool, call_tool, read_result
+3. Discovery: fixture_generate_report -> tool_3b5c122fb5b6a0d...
+4. Large result: head-tail-v1, 73507 chars -> capsule
+5. On-demand recovery: 24000 exact chars
+6. Upstream execution count: 1
+PASS: Compress what agents see. Preserve what tools do.
+```
+
+![Slim Guard 调用流程](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-demo.gif)
+
+## 压缩范围
+
+| MCP 上下文                      | Slim Guard 交付                   |
+| ------------------------------- | --------------------------------- |
+| 大型授权工具目录                | 三个 Agent 入口，按需发现工具     |
+| 大段普通文本                    | 头尾投影和精确快照                |
+| 统一 JSON 数组                  | 仅在 Token 更少时使用字段名复用表 |
+| 日志                            | 保留错误和边界，明确标记重复噪声  |
+| 小结果、代码、diff 或不确定内容 | 原样返回                          |
+| 复杂 MCP 结果                   | 保存完整 JSON 快照和所有字段      |
+
+压缩从上游结果返回后开始，不会改变目标工具或调用参数。
+
+`read_result` 读取已捕获的快照，不会再次调用上游。Agent 无需完整恢复当前结果
+也可以继续调用其他工具。
+
+## 数据证明
+
+| 冻结协议 fixture | 原始 MCP | `mcp-compressor 0.31.6` | Slim Guard |
+| ---------------- | -------: | ----------------------: | ---------: |
+| 正常路径 Token   |   71,388 |                  54,710 | **18,385** |
+| Agent 可见工具   |       12 |                       2 |      **3** |
+| 完成任务         |    24/24 |                   24/24 |  **24/24** |
+| 上游调用         |       24 |                      24 |     **24** |
+
+在这组 fixture 中，Slim Guard 正常路径比原始 MCP 少 74.25%，比
+`mcp-compressor` 少 66.40%。23 个大型结果都能精确重建。
+
+两个大报告强制完整恢复后，Slim Guard 使用 39,879 Token，竞品路径使用
+37,975 Token。5.01% 的额外开销已公开，并保留为优化目标。
+
+无需模型额度即可复现：
 
 ```bash
 npm install
 npm run build
+npm run bench:compression:verify
+```
+
+查看
+[基准方法和 capture](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-alpha-benchmark-bilingual.md)及
+[三类真实 Server 证据](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-real-mcp-server-smoke.md)。
+
+## 执行契约
+
+```text
+MCP 宿主
+  |
+  | tools/list
+  v
+Slim Guard 目录投影 -> find_tool / call_tool / read_result
+  |
+  | 使用精确引用和原始参数调用 call_tool
+  v
+上游 MCP Server，只执行一次
+  |
+  | CallToolResult
+  v
+小结果或不确定结果 -> 原样返回
+大型结果           -> 投影 + 精确快照
+```
+
+Slim Guard 保留：
+
+- 与当前目录绑定的上游路由和原始参数对象；
+- 每次 `call_tool` 对应一次上游执行；
+- content block 类型与顺序、`isError`、`structuredContent`、`_meta`
+  和未知字段；
+- 无需重跑上游的精确恢复；
+- 分类、投影、校验或存储失败时的原始结果。
+
+## 兼容性
+
+| 路径                  | 当前证据                                      |
+| --------------------- | --------------------------------------------- |
+| 本地 stdio 入口       | Alpha 主要路径                                |
+| stdio 上游            | 支持                                          |
+| Streamable HTTP 上游  | 通过统一 Adapter 支持                         |
+| GitHub MCP Server     | 只读 `text` + `resource` 多 block 调用通过    |
+| Filesystem MCP Server | 大型结构化文本精确恢复                        |
+| Everything MCP Server | 小型 `structuredContent` 原样透传             |
+| ContextForge          | 真实 HTTP bridge 到 Slim Guard stdio 调用通过 |
+| Codex CLI             | 隔离配置接受通过                              |
+| VS Code               | 隔离 `--add-mcp` 接受通过                     |
+| 下游 Streamable HTTP  | 实验能力，仅 loopback                         |
+
+Codex 和 VS Code 证据只覆盖配置接受，不宣称模型自主调用。具体边界见
+[宿主证据](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-host-and-gateway-smoke.md)。
+
+## 当前边界
+
+Slim Guard 适合一次加载很多工具，或经常返回长报告、JSON 和日志的 MCP
+工作流。本地确定性压缩无需另一个模型，并在同一连接中保留恢复路径。
+
+Alpha 使用三个固定入口替代模型侧的原始工具身份。需要为每个上游工具显示独立
+权限确认的宿主可能无法保留该 UI 身份。生产级远程入口、多租户控制面和相关性
+恢复不进入本次发布。
+
+安全能力提供检查和审计 finding。Slim Guard 不会自动修改可恢复的原始结果。
+
+## 开发
+
+```bash
+npm run build
+npm run typecheck
+npm run lint
+npm run format:check
 npm test
 npm run demo:alpha
 npm run smoke:package
 ```
 
-仓库变更不代表已经 bump 版本、push、tag、publish、创建 Release 或发布外部文章。
+参见[路线图](https://github.com/lennney/mcp-slim-guard/blob/main/docs/ROADMAP.md)、
+[架构](https://github.com/lennney/mcp-slim-guard/blob/main/docs/architecture-mcp-slim-guard.md)和
+[Alpha 计划](https://github.com/lennney/mcp-slim-guard/blob/main/docs/plans/2026-07-26-alpha-market-entry.md)。
 
 ## License
 

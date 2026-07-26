@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Slim Guard mark</title>
+  <desc id="desc">Three context streams converge into one preserved MCP output.</desc>
+  <rect x="24" y="24" width="464" height="464" fill="#08090a" stroke="#282b2d" stroke-width="3"/>
+  <path d="M112 152h82l82 104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M112 256h148" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square"/>
+  <path d="M112 360h82l82-104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M292 256h108" fill="none" stroke="#ff5a1f" stroke-width="28" stroke-linecap="square"/>
+  <rect x="260" y="240" width="32" height="32" fill="#ff5a1f"/>
+</svg>

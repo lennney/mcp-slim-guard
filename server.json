@@ -6,12 +6,12 @@
     "url": "https://github.com/lennney/mcp-slim-guard",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.1.1-alpha.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-slim-guard",
-      "version": "0.1.0",
+      "version": "0.1.1-alpha.1",
       "transport": {
         "type": "stdio"
       },

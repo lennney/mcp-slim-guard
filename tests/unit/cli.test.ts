@@ -25,7 +25,7 @@ vi.mock("../../src/config-loader.js", () => ({
 }));
 
 vi.mock("../../src/index.js", () => ({
-  VERSION: "0.1.0",
+  VERSION: "0.1.1-alpha.1",
 }));
 
 vi.mock("../../src/policies/base.js", () => ({
@@ -276,7 +276,7 @@ describe("CLI", () => {
       await main(["node", "cli.js", "--version"]);
 
       // Commander writes version to stdout
-      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.1.0"));
+      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.1.1-alpha.1"));
     });
 
     it("shows help text with --help", async () => {

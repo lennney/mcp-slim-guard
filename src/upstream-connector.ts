@@ -7,6 +7,7 @@ import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotoc
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "./config-types.js";
 import { resolveUpstreamServer } from "./upstream-config.js";
+import { VERSION } from "./index.js";
 
 export type UpstreamTransportKind = "stdio" | "streamable-http" | "sse";
 
@@ -83,7 +84,7 @@ async function openClient(
   transportKind: UpstreamTransportKind,
   transport: StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport,
 ): Promise<OpenedClient> {
-  const client = new Client({ name: "mcp-slim-guard", version: "0.1.0" }, { capabilities: {} });
+  const client = new Client({ name: "mcp-slim-guard", version: VERSION }, { capabilities: {} });
   try {
     await client.connect(transport);
     return { client, transportKind };

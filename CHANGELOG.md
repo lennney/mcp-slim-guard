@@ -5,8 +5,12 @@ numbers are intentionally omitted.
 
 ## [Unreleased]
 
-Target preview: `0.1.1-alpha.1` on the npm `alpha` dist-tag. The package version
-has not been changed and no preview has been published by this work.
+No changes yet.
+
+## [0.1.1-alpha.1] - 2026-07-26
+
+Internal Alpha candidate. The package version is prepared locally for frozen
+dogfood; no npm preview has been published.
 
 ### Added
 

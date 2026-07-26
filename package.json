@@ -1,6 +1,6 @@
 {
   "name": "mcp-slim-guard",
-  "version": "0.1.0",
+  "version": "0.1.1-alpha.1",
   "mcpName": "io.github.lennney/mcp-slim-guard",
   "description": "Cut MCP context before it reaches the agent. Same upstream call, exact results recoverable.",
   "type": "module",

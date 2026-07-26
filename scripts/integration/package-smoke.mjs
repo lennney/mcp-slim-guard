@@ -50,6 +50,43 @@ function createTarball() {
   return path.join(packDirectory, filename);
 }
 
+function verifyCodexConfiguration(cli, runtimeDirectory) {
+  if (process.env.SLIM_GUARD_DOGFOOD_CODEX !== "1") return null;
+
+  const codexEntry =
+    process.env.SLIM_GUARD_CODEX_ENTRY ??
+    path.join(process.env.APPDATA ?? "", "npm", "node_modules", "@openai", "codex", "bin", "codex.js");
+  if (!fs.existsSync(codexEntry)) {
+    throw new Error(`Codex CLI entry not found: ${codexEntry}`);
+  }
+
+  const version = run(process.execPath, [codexEntry, "--version"]).stdout.trim();
+  const result = run(process.execPath, [
+    codexEntry,
+    "mcp",
+    "list",
+    "-c",
+    `mcp_servers.slim_guard.command=${JSON.stringify(process.execPath)}`,
+    "-c",
+    `mcp_servers.slim_guard.args=${JSON.stringify([cli, "start"])}`,
+    "-c",
+    `mcp_servers.slim_guard.cwd=${JSON.stringify(runtimeDirectory)}`,
+  ]);
+  if (!result.stdout.includes("slim_guard")) {
+    throw new Error("Codex did not accept the installed candidate configuration");
+  }
+
+  return {
+    host: "Codex CLI",
+    version,
+    mode: "ephemeral configuration",
+    configured_server: "slim_guard",
+    global_config_changed: false,
+    model_calls: 0,
+    passed: true,
+  };
+}
+
 function fixtureSource() {
   return String.raw`#!/usr/bin/env node
 import readline from "node:readline";
@@ -106,11 +143,12 @@ input.on("line", (line) => {
   if (request.method === "tools/call") {
     callCount += 1;
     const marker = "PACKAGE_SMOKE:" + request.params?.arguments?.value + ":CALLS:" + callCount;
+    const text = marker + "\n" + "deterministic package payload\n".repeat(3000);
     send({
       jsonrpc: "2.0",
       id: request.id,
       result: {
-        content: [{ type: "text", text: marker }],
+        content: [{ type: "text", text }],
         structuredContent: { marker },
         _meta: { fixture: "package-smoke" }
       }
@@ -150,6 +188,15 @@ try {
   const installedPackage = path.join(installDirectory, "node_modules", "mcp-slim-guard");
   const cli = path.join(installedPackage, "dist", "cli.js");
   if (!fs.existsSync(cli)) throw new Error("Installed tarball does not contain dist/cli.js");
+  const sourceVersion = JSON.parse(
+    fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
+  ).version;
+  const installedVersion = JSON.parse(
+    fs.readFileSync(path.join(installedPackage, "package.json"), "utf8"),
+  ).version;
+  if (installedVersion !== sourceVersion) {
+    throw new Error(`Installed version ${installedVersion} does not match source ${sourceVersion}`);
+  }
 
   const runtimeDirectory = path.join(temporaryRoot, "runtime");
   fs.mkdirSync(runtimeDirectory);
@@ -230,6 +277,19 @@ servers:
   if (!JSON.stringify(called).includes(marker)) {
     throw new Error("Installed package did not return the once-only fixture marker");
   }
+  const capsule = textJson(called);
+  if (!capsule.result_ref) {
+    throw new Error("Installed package did not capture the large result");
+  }
+  const recovered = await client.callTool({
+    name: "read_result",
+    arguments: { result_ref: capsule.result_ref, cursor: 0 },
+  });
+  if (!JSON.stringify(recovered).includes(marker)) {
+    throw new Error("Installed package could not recover the captured marker");
+  }
+
+  const codex = verifyCodexConfiguration(cli, runtimeDirectory);
 
   await client.close();
   client = undefined;
@@ -240,14 +300,17 @@ servers:
 
   console.log(
     JSON.stringify({
+      version: installedVersion,
       tarball: path.basename(tarball),
       sha256: createHash("sha256").update(fs.readFileSync(tarball)).digest("hex"),
       installed: true,
       transport: "stdio",
       tools: names,
-      flow: ["find_tool", "call_tool"],
+      flow: ["find_tool", "call_tool", "read_result"],
       marker,
+      projection: capsule.projection,
       upstream_calls: 1,
+      codex,
       uninstalled: true,
       passed: true,
     }),

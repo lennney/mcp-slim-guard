@@ -55,12 +55,44 @@ mcp-slim-guard start
 ```
 
 `init` imports MCP servers from `.mcp.json`, `mcp.json`,
-`claude_desktop_config.json`, or `.cursor/mcp.json` and writes one
-`mcp-slim-guard.yml` with safe defaults.
+`claude_desktop_config.json`, `.cursor/mcp.json`, or `.vscode/mcp.json` and
+writes one `mcp-slim-guard.yml` with safe defaults. It accepts the common
+top-level `mcpServers` and `servers` shapes.
 
 Point the host ecosystem at Slim Guard instead of the original server list.
 Slim Guard uses stdio by default, so protocol stdout contains only MCP
 JSON-RPC. Human status and stdout-configured audit output go to stderr.
+
+## Upstream compatibility
+
+Slim Guard automatically chooses the standard upstream transport from each
+entry:
+
+- `command` means local stdio;
+- `url` means Streamable HTTP first, with one legacy HTTP+SSE fallback;
+- explicit `type: sse` is accepted only for a known legacy server.
+
+This is one compatibility path, not a transport menu. Local and remote MCP
+servers can be mixed behind the same three-tool endpoint:
+
+```yaml
+servers:
+  local:
+    command: node
+    args: ["server.js"]
+  remote:
+    url: https://mcp.example.com/mcp
+    headers:
+      Authorization: "Bearer ${REMOTE_MCP_TOKEN}"
+```
+
+`${NAME}`, `${env:NAME}`, and non-sensitive `${NAME:-default}` templates are
+resolved when the connection opens. Sensitive environment entries, headers,
+and URL query parameters must reference an environment variable; plaintext
+fallbacks are rejected.
+Interactive host placeholders such as `${input:name}` are not prompted for by
+Slim Guard—map them to an environment variable. Remote OAuth is not yet
+implemented.
 
 ## Security scope
 
@@ -80,9 +112,10 @@ Be precise about the limits:
 - URL preflight is not process or socket isolation. A sandbox, container, or
   egress proxy is required to constrain an arbitrary upstream process.
 - Heuristic injection detection cannot prove content is safe.
-- Streamable HTTP is experimental and binds to loopback. It should not be
-  exposed remotely until authentication and the remaining HTTP hardening gates
-  in the active plan are complete.
+- Slim Guard's downstream Streamable HTTP ingress is experimental and binds to
+  loopback. It should not be exposed remotely until authentication and the
+  remaining HTTP hardening gates in the active plan are complete. This limit is
+  separate from connecting outward to an existing remote MCP server.
 
 See [the architecture](docs/architecture-mcp-slim-guard.md) and
 [the active iteration plan](docs/plans/2026-07-26-compatible-middle-layer.md).

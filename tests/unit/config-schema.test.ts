@@ -105,4 +105,33 @@ describe("validateConfigSchema", () => {
     const errors = validateConfigSchema(c);
     expect(errors.some((e) => e.path === "$.servers.github.command")).toBe(true);
   });
+
+  it("accepts remote HTTP and legacy SSE upstream entries", () => {
+    const c = validConfig();
+    c.servers = {
+      modern: {
+        type: "http",
+        url: "https://mcp.example.test/mcp",
+        headers: { Authorization: "Bearer ${REMOTE_AUTH}" },
+      },
+      legacy: {
+        type: "sse",
+        url: "https://mcp.example.test/sse",
+      },
+    };
+
+    expect(validateConfigSchema(c)).toHaveLength(0);
+  });
+
+  it("rejects mixed command and url upstream entries", () => {
+    const c = validConfig();
+    c.servers = {
+      broken: {
+        command: "node",
+        url: "https://mcp.example.test/mcp",
+      },
+    };
+
+    expect(validateConfigSchema(c).length).toBeGreaterThan(0);
+  });
 });

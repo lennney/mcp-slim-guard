@@ -5,7 +5,7 @@
  * A lightweight MCP server that:
  * 1. Can be spawned as a subprocess (receives STDIO transport)
  * 2. Exposes test tools that return predictable results
- * 3. Uses the same UpstreamServer config format: {command, args, env}
+ * 3. Uses the stdio UpstreamServer config shape: {command, args, env}
  *
  * @module mock-server
  */

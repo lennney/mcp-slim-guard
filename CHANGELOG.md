@@ -25,6 +25,10 @@ tags:
 - 单次捕获、TTL/容量受限的可恢复大结果交付。
 - Windows Node 22 CI。
 - 权威架构文档与兼容中间层执行 Plan。
+- 统一的 `UpstreamConnector` seam、官方 SDK 生产 adapter 与内存测试 adapter。
+- 远程上游 Streamable HTTP 连接及旧 HTTP+SSE 单次兼容回退。
+- `.vscode/mcp.json`、顶层 `servers` 和远程 URL/header 配置导入。
+- 连接时环境变量模板解析与真实 Streamable HTTP MCP 集成测试。
 
 ### Changed
 
@@ -33,6 +37,7 @@ tags:
 - stdio 人类状态和 stdout 审计输出改走 stderr。
 - session ID 和 result reference 使用加密随机数。
 - README 移除未绑定当前证据的压缩率和准确率宣传。
+- 上游传输由 `command` 或 `url` 自动推断，不新增用户模式选择。
 
 ### Fixed
 
@@ -45,6 +50,7 @@ tags:
 
 - 审计参数递归脱敏常见 token、password、secret、authorization 等字段。
 - 拒绝猜测、陈旧或歧义的工具引用。
+- 敏感上游 env/header 必须引用运行时环境变量，拒绝明文 fallback。
 
 ## [0.1.0] — 2026-07-22
 

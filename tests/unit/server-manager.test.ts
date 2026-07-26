@@ -1,412 +1,247 @@
-/**
- * Tests for ServerManager
- *
- * Uses vi.mock() to mock Client and StdioClientTransport — does NOT spawn real processes.
- */
-
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "../../src/config-types.js";
-
-// ---------------------------------------------------------------------------
-// Shared mock configuration — set per-test to control what each server returns
-// ---------------------------------------------------------------------------
-
-/** Tools to return for each server, keyed by server name */
-let mockToolsForServer: Record<string, Array<Record<string, unknown>>> = {};
-
-/** Ordered list of server names corresponding to the order clients are created */
-let mockServerOrder: string[] = [];
-
-/** Track failures: set connectFail[srvName] = true to simulate a connect error */
-let mockConnectFails: Record<string, boolean> = {};
-
-/** Collects all mock client instances created during a test */
-let mockClientInstances: Array<{
-  connect: ReturnType<typeof vi.fn>;
-  listTools: ReturnType<typeof vi.fn>;
-  callTool: ReturnType<typeof vi.fn>;
-  close: ReturnType<typeof vi.fn>;
-}> = [];
-
-// ---------------------------------------------------------------------------
-// Mock MCP SDK modules
-// ---------------------------------------------------------------------------
-vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
-  Client: vi.fn(() => {
-    const idx = mockClientInstances.length;
-    const srvName = mockServerOrder[idx] ?? "unknown";
-    const toolsRaw = mockToolsForServer[srvName] ?? [];
-    const tools = toolsRaw.map((t) => ({
-      name: String(t.name ?? ""),
-      description: t.description != null ? String(t.description) : undefined,
-      inputSchema: {
-        type: "object" as const,
-        ...(t.inputSchema as Record<string, unknown> | undefined),
-      },
-    }));
-
-    const instance = {
-      connect: mockConnectFails[srvName]
-        ? vi.fn().mockRejectedValue(new Error("Connection refused"))
-        : vi.fn().mockResolvedValue(undefined),
-      listTools: vi.fn().mockResolvedValue({ tools }),
-      callTool: vi.fn(),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-    mockClientInstances.push(instance);
-    return instance;
-  }),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-  StdioClientTransport: vi.fn(() => ({
-    close: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
-  CallToolResultSchema: {
-    parse: (value: unknown) => value,
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// Import the SUT
-// ---------------------------------------------------------------------------
 import { ServerManager } from "../../src/server-manager.js";
+import { InMemoryUpstreamConnector, type InMemoryUpstreamDefinition } from "../helpers/in-memory-upstream.js";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const stdioServer = (command = "node"): UpstreamServer => ({
+  command,
+  args: ["server.js"],
+  env: {},
+});
 
-/** Factory for UpstreamServer test data */
-const serverCfg = (
-  command = "node",
-  args: string[] = ["server.js"],
-  env: Record<string, string> = {},
-): UpstreamServer => ({ command, args, env });
+const tool = (name: string, description?: string): Tool => ({
+  name,
+  ...(description ? { description } : {}),
+  inputSchema: { type: "object" },
+});
 
-/** Create a ServerManager with pre-configured mock tools */
-async function makeServerManager(
+async function startManager(
   servers: Record<string, UpstreamServer>,
-  tools: Record<string, Array<Record<string, unknown>>> = {},
-): Promise<ServerManager> {
-  vi.clearAllMocks();
-  mockClientInstances = [];
-  mockServerOrder = Object.keys(servers);
-  mockToolsForServer = { ...tools };
-  mockConnectFails = {};
-
-  const manager = new ServerManager(servers);
+  definitions: Record<string, InMemoryUpstreamDefinition>,
+): Promise<{ manager: ServerManager; connector: InMemoryUpstreamConnector }> {
+  const connector = new InMemoryUpstreamConnector(definitions);
+  const manager = new ServerManager(servers, connector);
   await manager.start();
-  return manager;
+  return { manager, connector };
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 describe("ServerManager", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockClientInstances = [];
-    mockServerOrder = [];
-    mockToolsForServer = {};
-    mockConnectFails = {};
+    vi.restoreAllMocks();
   });
 
-  // 1. Constructor stores server configs
-  it("should create connections for each server on start", async () => {
-    const manager = new ServerManager({
-      a: serverCfg(),
-      b: serverCfg(),
+  it("connects every configured server through the upstream seam", async () => {
+    const servers = {
+      local: stdioServer(),
+      remote: { type: "http" as const, url: "https://mcp.example.test/mcp" },
+    };
+    const { connector } = await startManager(servers, {
+      local: { tools: [tool("echo")] },
+      remote: { tools: [tool("search")], transportKind: "streamable-http" },
     });
-    expect(mockClientInstances).toHaveLength(0);
 
-    await manager.start();
-
-    expect(mockClientInstances).toHaveLength(2);
-    for (const client of mockClientInstances) {
-      expect(client.connect).toHaveBeenCalledTimes(1);
-      expect(client.listTools).toHaveBeenCalledTimes(1);
-    }
+    expect(connector.connectCalls).toEqual([
+      { serverName: "local", server: servers.local },
+      { serverName: "remote", server: servers.remote },
+    ]);
   });
 
-  // 2. start() connects to all servers and collects tools
-  it("should connect to all servers and call listTools on each", async () => {
-    await makeServerManager({ x: serverCfg(), y: serverCfg() }, { x: [{ name: "foo" }], y: [{ name: "bar" }] });
-
-    expect(mockClientInstances).toHaveLength(2);
-    for (const client of mockClientInstances) {
-      expect(client.connect).toHaveBeenCalledTimes(1);
-      expect(client.listTools).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  // 3. getTools() returns prefixed tool names
-  it("getTools should return prefixed tool names", async () => {
-    const manager = await makeServerManager(
-      { srv1: serverCfg(), srv2: serverCfg() },
+  it("returns catalog tools with exact server prefixes", async () => {
+    const { manager } = await startManager(
+      { alpha: stdioServer(), beta: stdioServer() },
       {
-        srv1: [{ name: "greet" }],
-        srv2: [{ name: "search" }, { name: "fetch" }],
+        alpha: { tools: [tool("echo", "Echo input")] },
+        beta: { tools: [tool("search"), tool("fetch")] },
       },
     );
 
-    const tools = manager.getTools();
-
-    expect(tools).toHaveLength(3);
-
-    const names = tools.map((t) => t.name);
-    expect(names).toContain("srv1_greet");
-    expect(names).toContain("srv2_search");
-    expect(names).toContain("srv2_fetch");
-
-    // Descriptions should include server name prefix
-    for (const tool of tools) {
-      expect(tool.description).toBeDefined();
-    }
+    expect(manager.getTools()).toEqual([
+      expect.objectContaining({ name: "alpha_echo", description: "[alpha] Echo input" }),
+      expect.objectContaining({ name: "beta_search", description: "[beta]" }),
+      expect.objectContaining({ name: "beta_fetch", description: "[beta]" }),
+    ]);
   });
 
-  // 4. resolveTool() correctly parses serverName_toolName format
-  it("resolveTool should correctly parse serverName_toolName", async () => {
-    const manager = await makeServerManager({ my_server: serverCfg() }, { my_server: [{ name: "list_stuff" }] });
+  it("resolves exact catalog entries with underscores", async () => {
+    const { manager } = await startManager(
+      { my_server: stdioServer() },
+      { my_server: { tools: [tool("my_tool_with_underscores")] } },
+    );
 
-    const result = manager.resolveTool("my_server_list_stuff");
-
-    expect(result).not.toBeNull();
-    expect(result!.serverName).toBe("my_server");
-    expect(result!.originalToolName).toBe("list_stuff");
-  });
-
-  // 5. resolveTool() only accepts an exact catalog entry
-  it("resolveTool should reject guessed tools and unknown servers", async () => {
-    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "exists" }] });
-
-    expect(manager.resolveTool("srv_exists")).toEqual({
-      serverName: "srv",
-      originalToolName: "exists",
+    expect(manager.resolveTool("my_server_my_tool_with_underscores")).toEqual({
+      serverName: "my_server",
+      originalToolName: "my_tool_with_underscores",
     });
-    expect(manager.resolveTool("srv_nonexistent")).toBeNull();
-    expect(manager.resolveTool("unknown_server_tool")).toBeNull();
-    expect(manager.resolveTool("no_underscore")).toBeNull();
+  });
+
+  it("rejects guessed tools, unknown servers, and malformed names", async () => {
+    const { manager } = await startManager({ server: stdioServer() }, { server: { tools: [tool("exists")] } });
+
+    expect(manager.resolveTool("server_exists")).not.toBeNull();
+    expect(manager.resolveTool("server_guessed")).toBeNull();
+    expect(manager.resolveTool("unknown_exists")).toBeNull();
     expect(manager.resolveTool("")).toBeNull();
   });
 
-  // 6. callTool() forwards to correct server
-  it("callTool should forward to the correct upstream server", async () => {
-    const manager = await makeServerManager(
-      { srv_a: serverCfg(), srv_b: serverCfg() },
-      { srv_a: [{ name: "alpha" }], srv_b: [{ name: "beta" }] },
-    );
-
-    mockClientInstances[0].callTool.mockResolvedValue({
-      content: [{ type: "text", text: "result from A" }],
-    });
-    mockClientInstances[1].callTool.mockResolvedValue({
-      content: [{ type: "text", text: "result from B" }],
-    });
-
-    const resultA = await manager.callTool("srv_a", "alpha", { x: 1 });
-    const resultB = await manager.callTool("srv_b", "beta", { y: 2 });
-
-    expect(resultA.content[0].text).toBe("result from A");
-    expect(resultB.content[0].text).toBe("result from B");
-
-    expect(mockClientInstances[0].callTool).toHaveBeenCalledWith(
+  it("rejects a prefixed name that is ambiguous across catalogs", async () => {
+    const { manager } = await startManager(
+      { foo: stdioServer(), foo_bar: stdioServer() },
       {
-        name: "alpha",
-        arguments: { x: 1 },
-        _meta: { protocolVersion: "2025-11-25", clientCapabilities: {} },
-      },
-      expect.anything(),
-    );
-    expect(mockClientInstances[1].callTool).toHaveBeenCalledWith(
-      {
-        name: "beta",
-        arguments: { y: 2 },
-        _meta: { protocolVersion: "2025-11-25", clientCapabilities: {} },
-      },
-      expect.anything(),
-    );
-  });
-
-  it("callTool preserves the complete upstream result", async () => {
-    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "read" }] });
-    const upstreamResult = {
-      content: [{ type: "text", text: "failed safely" }],
-      structuredContent: { code: "E_UPSTREAM", retryable: false },
-      isError: true,
-      _meta: { traceId: "trace-123" },
-    };
-    mockClientInstances[0].callTool.mockResolvedValue(upstreamResult);
-
-    await expect(manager.callTool("srv", "read", {})).resolves.toEqual(upstreamResult);
-  });
-
-  // 7. stop() closes all connections
-  it("stop should close all connections and clear state", async () => {
-    const manager = await makeServerManager(
-      { srv1: serverCfg(), srv2: serverCfg() },
-      { srv1: [{ name: "t1" }], srv2: [{ name: "t2" }] },
-    );
-
-    expect(manager.getTools()).toHaveLength(2);
-
-    await manager.stop();
-
-    // After stop, connections are cleared — resolveTool returns null
-    expect(manager.resolveTool("srv1_t1")).toBeNull();
-    expect(manager.getTools()).toHaveLength(0);
-  });
-
-  // 8. Graceful handling: one server fails, others still work
-  it("should continue with other servers when one fails to start", async () => {
-    vi.clearAllMocks();
-    mockClientInstances = [];
-    mockServerOrder = ["good", "bad", "also_good"];
-    mockToolsForServer = {
-      good: [{ name: "ok" }],
-      bad: [{ name: "ok" }],
-      also_good: [{ name: "ok" }],
-    };
-    mockConnectFails = { bad: true };
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const manager = new ServerManager({
-      good: serverCfg(),
-      bad: serverCfg(),
-      also_good: serverCfg(),
-    });
-    await manager.start();
-
-    warnSpy.mockRestore();
-
-    const tools = manager.getTools();
-    expect(tools).toHaveLength(2);
-
-    const names = tools.map((t) => t.name);
-    expect(names).toContain("good_ok");
-    expect(names).toContain("also_good_ok");
-    expect(names).not.toContain("bad_ok");
-  });
-
-  // 9a. resolveTool handles tool names with underscores
-  it("resolveTool should handle tool names with underscores", async () => {
-    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "my_tool_with_underscores" }] });
-
-    const result = manager.resolveTool("srv_my_tool_with_underscores");
-    expect(result).not.toBeNull();
-    expect(result!.serverName).toBe("srv");
-    expect(result!.originalToolName).toBe("my_tool_with_underscores");
-  });
-
-  // 9b. resolveTool handles server names with underscores
-  it("resolveTool should handle server names with underscores", async () => {
-    const manager = await makeServerManager(
-      { my_complex_server: serverCfg() },
-      { my_complex_server: [{ name: "list" }] },
-    );
-
-    // Tries splits: "my"(✗) → "my_complex"(✗) → "my_complex_server"(✓)
-    const result = manager.resolveTool("my_complex_server_list");
-    expect(result).not.toBeNull();
-    expect(result!.serverName).toBe("my_complex_server");
-    expect(result!.originalToolName).toBe("list");
-  });
-
-  // 9c. resolveTool handles both server and tool with underscores
-  it("resolveTool should handle both server and tool with underscores", async () => {
-    const manager = await makeServerManager({ my_server: serverCfg() }, { my_server: [{ name: "my_tool" }] });
-
-    const result = manager.resolveTool("my_server_my_tool");
-    expect(result).not.toBeNull();
-    expect(result!.serverName).toBe("my_server");
-    expect(result!.originalToolName).toBe("my_tool");
-  });
-
-  it("resolveTool rejects ambiguous prefixed names", async () => {
-    const manager = await makeServerManager(
-      { foo: serverCfg(), foo_bar: serverCfg() },
-      {
-        foo: [{ name: "bar_baz" }],
-        foo_bar: [{ name: "baz" }],
+        foo: { tools: [tool("bar_baz")] },
+        foo_bar: { tools: [tool("baz")] },
       },
     );
 
     expect(manager.resolveTool("foo_bar_baz")).toBeNull();
   });
 
-  // 10a. callTool throws for unknown server
-  it("callTool should throw when server is unknown", async () => {
-    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "tool" }] });
-
-    await expect(manager.callTool("nonexistent", "tool", {})).rejects.toThrow("Unknown upstream server");
-  });
-
-  // 10b. callTool propagates upstream errors
-  it("callTool should propagate upstream errors", async () => {
-    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "fail_tool" }] });
-
-    mockClientInstances[0].callTool.mockRejectedValue(new Error("Upstream server error"));
-
-    await expect(manager.callTool("srv", "fail_tool", { data: "test" })).rejects.toThrow("Upstream server error");
-  });
-
-  // 10c. discover() returns all connected servers with capabilities
-  describe("discover", () => {
-    it("returns all connected servers with capabilities", async () => {
-      const manager = await makeServerManager(
-        { "test-server": serverCfg() },
-        { "test-server": [{ name: "test_tool" }] },
-      );
-
-      const result = await manager.discover();
-
-      expect(result.servers).toHaveLength(1);
-      expect(result.servers[0]).toEqual({
-        name: "test-server",
-        capabilities: { tools: { listChanged: false } },
-      });
-    });
-
-    it("returns empty when no servers connected", async () => {
-      mockClientInstances = [];
-      mockServerOrder = [];
-      mockToolsForServer = {};
-      const manager = new ServerManager({});
-      await manager.start();
-
-      const result = await manager.discover();
-
-      expect(result.servers).toEqual([]);
-    });
-
-    it("handles multiple servers", async () => {
-      const manager = await makeServerManager(
-        {
-          "server-a": serverCfg(),
-          "server-b": serverCfg(),
+  it("routes calls through the connected upstream session", async () => {
+    const { manager, connector } = await startManager(
+      { alpha: stdioServer(), beta: stdioServer() },
+      {
+        alpha: { tools: [tool("read")] },
+        beta: {
+          tools: [tool("search")],
+          call: async () => ({
+            content: [{ type: "text", text: "remote result" }],
+          }),
         },
-        {
-          "server-a": [{ name: "toolA" }],
-          "server-b": [{ name: "toolB" }],
+      },
+    );
+
+    await expect(manager.callTool("beta", "search", { q: "mcp" })).resolves.toEqual({
+      content: [{ type: "text", text: "remote result" }],
+    });
+    expect(connector.state("beta").calls).toEqual([
+      {
+        toolName: "search",
+        args: { q: "mcp" },
+      },
+    ]);
+    expect(connector.state("alpha").calls).toEqual([]);
+  });
+
+  it("preserves the complete upstream CallToolResult", async () => {
+    const upstreamResult: CallToolResult = {
+      content: [{ type: "text", text: "failed safely" }],
+      structuredContent: { code: "E_UPSTREAM", retryable: false },
+      isError: true,
+      _meta: { traceId: "trace-123" },
+    };
+    const { manager } = await startManager(
+      { server: stdioServer() },
+      {
+        server: {
+          tools: [tool("read")],
+          call: async () => upstreamResult,
         },
-      );
+      },
+    );
 
-      const result = await manager.discover();
+    await expect(manager.callTool("server", "read", {})).resolves.toEqual(upstreamResult);
+  });
 
-      expect(result.servers).toHaveLength(2);
-      expect(result.servers.map((s) => s.name).sort()).toEqual(["server-a", "server-b"]);
+  it("throws for an unknown or disconnected server", async () => {
+    const { manager } = await startManager({ server: stdioServer() }, { server: { tools: [tool("read")] } });
+
+    await expect(manager.callTool("missing", "read", {})).rejects.toThrow("Unknown upstream server");
+  });
+
+  it("propagates upstream tool errors", async () => {
+    const { manager } = await startManager(
+      { server: stdioServer() },
+      {
+        server: {
+          tools: [tool("fail")],
+          call: async () => {
+            throw new Error("Upstream server error");
+          },
+        },
+      },
+    );
+
+    await expect(manager.callTool("server", "fail", {})).rejects.toThrow("Upstream server error");
+  });
+
+  it("continues when one upstream cannot connect", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { manager } = await startManager(
+      {
+        good: stdioServer(),
+        bad: stdioServer(),
+        also_good: stdioServer(),
+      },
+      {
+        good: { tools: [tool("one")] },
+        bad: { tools: [], connectError: new Error("Connection refused") },
+        also_good: { tools: [tool("two")] },
+      },
+    );
+
+    expect(manager.getTools().map((entry) => entry.name)).toEqual(["good_one", "also_good_two"]);
+    expect(warn).toHaveBeenCalledWith('[mcp-slim-guard] Failed to connect to server "bad":', expect.any(Error));
+  });
+
+  it("closes all sessions and clears the catalog", async () => {
+    const { manager, connector } = await startManager(
+      { one: stdioServer(), two: stdioServer() },
+      {
+        one: { tools: [tool("a")] },
+        two: { tools: [tool("b")] },
+      },
+    );
+
+    await manager.stop();
+
+    expect(connector.state("one").closed).toBe(true);
+    expect(connector.state("two").closed).toBe(true);
+    expect(manager.getTools()).toEqual([]);
+    expect(manager.resolveTool("one_a")).toBeNull();
+  });
+
+  it("continues shutdown when one session close fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { manager, connector } = await startManager(
+      { broken: stdioServer(), healthy: stdioServer() },
+      {
+        broken: { tools: [], closeError: new Error("close failed") },
+        healthy: { tools: [] },
+      },
+    );
+
+    await manager.stop();
+
+    expect(connector.state("broken").closed).toBe(true);
+    expect(connector.state("healthy").closed).toBe(true);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("discovers only connected upstreams", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { manager } = await startManager(
+      { one: stdioServer(), broken: stdioServer() },
+      {
+        one: { tools: [tool("a")] },
+        broken: { tools: [], connectError: new Error("offline") },
+      },
+    );
+
+    await expect(manager.discover()).resolves.toEqual({
+      servers: [
+        {
+          name: "one",
+          capabilities: { tools: { listChanged: false } },
+        },
+      ],
     });
   });
 
-  // Edge: empty server config
-  it("should handle empty server config", async () => {
-    const manager = new ServerManager({});
-    await manager.start();
+  it("handles an empty configuration", async () => {
+    const { manager, connector } = await startManager({}, {});
 
-    expect(mockClientInstances).toHaveLength(0);
-    expect(manager.getTools()).toHaveLength(0);
+    expect(connector.connectCalls).toEqual([]);
+    expect(manager.getTools()).toEqual([]);
+    await expect(manager.discover()).resolves.toEqual({ servers: [] });
   });
 });

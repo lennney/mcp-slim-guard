@@ -96,8 +96,10 @@ export interface Policy {
  * 用于加载用户已有的 MCP 服务器定义并注入 Guard。
  */
 export interface MCPConfig {
-  /** MCP 服务器映射，key 为用户定义的服务器名 */
-  mcpServers: Record<string, UpstreamServer>;
+  /** Claude Desktop、Claude Code、Cursor 等使用的服务器映射。 */
+  mcpServers?: Record<string, UpstreamServer>;
+  /** VS Code 使用的服务器映射。 */
+  servers?: Record<string, UpstreamServer>;
 }
 
 /**

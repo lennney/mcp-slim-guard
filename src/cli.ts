@@ -407,7 +407,11 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       console.log(`   Config: mcp-slim-guard.yml`);
       console.log(`   Servers: ${serverCount}`);
       for (const [name, server] of Object.entries(config.servers)) {
-        console.log(`     - ${name}: ${server.command}`);
+        if ("command" in server) {
+          console.log(`     - ${name}: stdio (${server.command})`);
+        } else {
+          console.log(`     - ${name}: ${server.type === "sse" ? "legacy SSE" : "Streamable HTTP"}`);
+        }
       }
 
       const policyList = buildPolicyList(config);

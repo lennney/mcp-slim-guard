@@ -51,13 +51,41 @@ mcp-slim-guard validate
 mcp-slim-guard start
 ```
 
-`init` 会从 `.mcp.json`、`mcp.json`、`claude_desktop_config.json` 或
-`.cursor/mcp.json` 导入 MCP Server，生成一份带安全默认值的
+`init` 会从 `.mcp.json`、`mcp.json`、`claude_desktop_config.json`、
+`.cursor/mcp.json` 或 `.vscode/mcp.json` 导入 MCP Server，识别常见顶层
+`mcpServers` 和 `servers` 结构，生成一份带安全默认值的
 `mcp-slim-guard.yml`。
 
 让宿主生态连接 Slim Guard，不再直接连接原始 server 列表即可。默认使用 stdio，
 协议 stdout 只包含 MCP JSON-RPC；人类状态和原本配置为 stdout 的审计日志会写入
 stderr。
+
+## 上游兼容
+
+Slim Guard 会根据每个条目自动选择标准上游传输：
+
+- 有 `command` 就连接本地 stdio；
+- 有 `url` 就先尝试 Streamable HTTP，失败后只兼容回退一次旧 HTTP+SSE；
+- 只有明确的旧服务才需要写 `type: sse`。
+
+这是同一条兼容路径，不是让用户选择传输模式。本地与远程 MCP 可以混合接入，
+模型侧仍然只看到三个工具：
+
+```yaml
+servers:
+  local:
+    command: node
+    args: ["server.js"]
+  remote:
+    url: https://mcp.example.com/mcp
+    headers:
+      Authorization: "Bearer ${REMOTE_MCP_TOKEN}"
+```
+
+连接时会解析 `${NAME}`、`${env:NAME}` 和非敏感字段的
+`${NAME:-default}`。敏感环境变量、header 和 URL query 参数必须引用运行时环境
+变量，明文 fallback 会被拒绝。Slim Guard 不弹窗解析 `${input:name}` 这类宿主
+交互变量，请将其改为环境变量。远程 OAuth 暂未实现。
 
 ## 安全范围
 
@@ -77,8 +105,9 @@ stderr。
 - URL 预检不等于进程或 socket 隔离。限制任意上游进程需要 sandbox、container
   或 egress proxy。
 - 启发式注入检测不能证明内容绝对安全。
-- Streamable HTTP 仍是实验入口，只绑定 loopback；在认证等 HTTP 加固门禁完成前，
-  不应暴露到远端网络。
+- Slim Guard 自身对下游提供的 Streamable HTTP 入口仍是实验能力，只绑定
+  loopback；在认证等 HTTP 加固门禁完成前，不应暴露到远端网络。这个限制与向外
+  连接已有远程 MCP Server 是两回事。
 
 参见[架构文档](docs/architecture-mcp-slim-guard.md)和
 [当前迭代 Plan](docs/plans/2026-07-26-compatible-middle-layer.md)。

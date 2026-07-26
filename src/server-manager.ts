@@ -2,27 +2,22 @@
  * MCP Guard — ServerManager
  *
  * Manages connections to upstream MCP servers.
- * Creates per-upstream Client + StdioClientTransport, collects tools,
- * and provides prefixed tool name routing for tool calls.
+ * Connects through the UpstreamConnector seam, collects tools, and provides
+ * prefixed tool name routing for tool calls.
  *
  * @module server-manager
  */
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "./config-types.js";
+import { McpSdkUpstreamConnector, type ConnectedUpstream, type UpstreamConnector } from "./upstream-connector.js";
 
 /**
  * Internal state for a single upstream server connection.
  */
 interface ServerConnection {
   serverName: string;
-  client: Client;
-  transport: StdioClientTransport;
-  /** Original tool names (without prefix) */
-  tools: Tool[];
+  upstream: ConnectedUpstream;
 }
 
 /**
@@ -40,22 +35,24 @@ interface ServerConnection {
 export class ServerManager {
   private connections: Map<string, ServerConnection> = new Map();
   private servers: Record<string, UpstreamServer>;
+  private connector: UpstreamConnector;
 
   /**
    * @param servers - Map of server name → UpstreamServer config
+   * @param connector - Production SDK connector or a test adapter
    */
-  constructor(servers: Record<string, UpstreamServer>) {
+  constructor(servers: Record<string, UpstreamServer>, connector: UpstreamConnector = new McpSdkUpstreamConnector()) {
     this.servers = servers;
+    this.connector = connector;
   }
 
   /**
    * Connect to all upstream MCP servers.
    *
    * For each server:
-   * 1. Creates a Client and StdioClientTransport
-   * 2. Connects the client to the transport
-   * 3. Calls client.listTools() to discover available tools
-   * 4. Stores tools for later retrieval with prefixed names
+   * 1. Asks the connector to open a standard MCP upstream
+   * 2. Collects the discovered tools
+   * 3. Stores the connected session for exact routing
    *
    * Errors are handled gracefully: if a server fails to connect or list tools,
    * a warning is logged and the method continues with the remaining servers.
@@ -63,24 +60,10 @@ export class ServerManager {
   async start(): Promise<void> {
     for (const [serverName, serverConfig] of Object.entries(this.servers)) {
       try {
-        const client = new Client({ name: "mcp-slim-guard", version: "0.1.0" }, { capabilities: {} });
-
-        const transport = new StdioClientTransport({
-          command: serverConfig.command,
-          args: serverConfig.args,
-          env: serverConfig.env,
-        });
-
-        await client.connect(transport);
-
-        const result = await client.listTools();
-        const tools = result.tools;
-
+        const upstream = await this.connector.connect(serverName, serverConfig);
         this.connections.set(serverName, {
           serverName,
-          client,
-          transport,
-          tools,
+          upstream,
         });
       } catch (error) {
         console.warn(`[mcp-slim-guard] Failed to connect to server "${serverName}":`, error);
@@ -98,7 +81,7 @@ export class ServerManager {
     const allTools: Tool[] = [];
 
     for (const [, conn] of this.connections) {
-      for (const tool of conn.tools) {
+      for (const tool of conn.upstream.tools) {
         allTools.push({
           ...tool,
           name: `${conn.serverName}_${tool.name}`,
@@ -123,7 +106,7 @@ export class ServerManager {
   resolveTool(prefixedName: string): { serverName: string; originalToolName: string } | null {
     const matches: Array<{ serverName: string; originalToolName: string }> = [];
     for (const [serverName, connection] of this.connections) {
-      for (const tool of connection.tools) {
+      for (const tool of connection.upstream.tools) {
         if (`${serverName}_${tool.name}` === prefixedName) {
           matches.push({ serverName, originalToolName: tool.name });
         }
@@ -148,22 +131,7 @@ export class ServerManager {
       throw new Error(`Unknown upstream server: "${serverName}"`);
     }
 
-    const result = await conn.client.callTool(
-      {
-        name: toolName,
-        arguments: args,
-        _meta: {
-          protocolVersion: "2025-11-25",
-          clientCapabilities: {},
-        },
-      },
-      CallToolResultSchema,
-    );
-
-    // Client.callTool's TypeScript return also includes task-based compatibility
-    // results. This runtime uses the standard immediate CallToolResult contract,
-    // so validate and narrow it before crossing the ServerManager interface.
-    return CallToolResultSchema.parse(result);
+    return conn.upstream.callTool(toolName, args);
   }
 
   /**
@@ -211,19 +179,10 @@ export class ServerManager {
    */
   async stop(): Promise<void> {
     for (const [, conn] of this.connections) {
-      // Close the client first so it finishes its protocol shutdown and
-      // releases the transport reference. Closing only the transport can
-      // leave the client holding callbacks/handles that keep the process
-      // alive after hot-reload or shutdown.
       try {
-        await conn.client.close();
+        await conn.upstream.close();
       } catch (error) {
-        console.warn(`[mcp-guard] Error closing client for "${conn.serverName}":`, error);
-      }
-      try {
-        await conn.transport.close();
-      } catch (error) {
-        console.warn(`[mcp-slim-guard] Error closing transport for "${conn.serverName}":`, error);
+        console.warn(`[mcp-slim-guard] Error closing upstream "${conn.serverName}":`, error);
       }
     }
 

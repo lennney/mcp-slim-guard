@@ -74,6 +74,7 @@
     "demo:alpha": "npm run build && node scripts/demo/alpha-demo.mjs",
     "smoke:protocol": "node scripts/integration/protocol-smoke.mjs",
     "smoke:codex-config": "node scripts/integration/codex-config-smoke.mjs",
+    "smoke:real-servers": "npm run build && node scripts/integration/real-server-smoke.mjs",
     "smoke:package": "npm run build && node scripts/integration/package-smoke.mjs",
     "bench:latency": "node scripts/benchmark/latency.mjs",
     "prepare": "husky"

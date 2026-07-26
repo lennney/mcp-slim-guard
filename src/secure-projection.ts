@@ -8,27 +8,19 @@
  * @module secure-projection
  */
 
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import { ResultCapsuleStore } from "./result-capsule-store.js";
 
 export const FIND_TOOL = "find_tool";
 export const CALL_TOOL = "call_tool";
 export const READ_RESULT = "read_result";
 
 const MAX_MATCHES = 3;
-const RESULT_BUDGET_CHARS = 12_000;
-const RESULT_CHUNK_CHARS = 8_000;
-const RESULT_TTL_MS = 5 * 60 * 1000;
-const MAX_STORED_RESULTS = 64;
 
 interface CatalogEntry {
   ref: string;
   tool: Tool;
-}
-
-interface StoredResult {
-  serialized: string;
-  expiresAt: number;
 }
 
 export type ProjectionInvoker = (toolName: string, args: Record<string, unknown>) => Promise<CallToolResult>;
@@ -152,8 +144,7 @@ export class SecureProjectionKernel {
   private catalogDigest = "";
   private entriesByRef = new Map<string, CatalogEntry>();
   private orderedEntries: CatalogEntry[] = [];
-  private results = new Map<string, StoredResult>();
-  private resultOrder: string[] = [];
+  private results = new ResultCapsuleStore();
 
   constructor(tools: Tool[]) {
     this.replaceCatalog(tools);
@@ -181,7 +172,6 @@ export class SecureProjectionKernel {
       return entry;
     });
     this.results.clear();
-    this.resultOrder = [];
   }
 
   async call(toolName: string, args: Record<string, unknown>, invoke: ProjectionInvoker): Promise<CallToolResult> {
@@ -234,82 +224,11 @@ export class SecureProjectionKernel {
       return errorResult("Unknown or stale tool_ref. Call find_tool again.");
     }
 
-    const result = await invoke(entry.tool.name, callArgs);
-    const serialized = JSON.stringify(result);
-    if (serialized.length <= RESULT_BUDGET_CHARS) return result;
-
-    const resultRef = `result_${randomBytes(16).toString("hex")}`;
-    this.storeResult(resultRef, serialized);
-    const preview = serialized.slice(0, 1_000);
-    const capsule = {
-      result_ref: resultRef,
-      original_chars: serialized.length,
-      preview,
-      next_cursor: 0,
-    };
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            ...capsule,
-            message: "Large result captured. Use read_result with result_ref to retrieve bounded chunks.",
-          }),
-        },
-      ],
-      isError: result.isError,
-      structuredContent: capsule,
-      _meta: {
-        ...(result._meta ?? {}),
-        "io.github.lennney/slim-guard": capsule,
-      },
-    };
+    return this.results.capture(await invoke(entry.tool.name, callArgs));
   }
 
   private readResult(args: Record<string, unknown>): CallToolResult {
-    const resultRef = typeof args.result_ref === "string" ? args.result_ref : "";
-    const cursor = args.cursor === undefined ? 0 : Number(args.cursor);
-    if (!resultRef) return errorResult("Missing required parameter: result_ref");
-    if (!Number.isInteger(cursor) || cursor < 0) return errorResult("cursor must be a non-negative integer");
-
-    const stored = this.results.get(resultRef);
-    if (!stored || stored.expiresAt <= Date.now()) {
-      if (stored) this.deleteResult(resultRef);
-      return errorResult("Unknown or expired result_ref.");
-    }
-    if (cursor > stored.serialized.length) {
-      return errorResult("cursor is beyond the captured result.");
-    }
-
-    const chunk = stored.serialized.slice(cursor, cursor + RESULT_CHUNK_CHARS);
-    const nextCursor = cursor + chunk.length;
-    const done = nextCursor >= stored.serialized.length;
-
-    return jsonResult({
-      result_ref: resultRef,
-      cursor,
-      next_cursor: done ? null : nextCursor,
-      done,
-      chunk,
-    });
-  }
-
-  private storeResult(resultRef: string, serialized: string): void {
-    this.results.set(resultRef, {
-      serialized,
-      expiresAt: Date.now() + RESULT_TTL_MS,
-    });
-    this.resultOrder.push(resultRef);
-    while (this.resultOrder.length > MAX_STORED_RESULTS) {
-      const oldest = this.resultOrder.shift();
-      if (oldest) this.results.delete(oldest);
-    }
-  }
-
-  private deleteResult(resultRef: string): void {
-    this.results.delete(resultRef);
-    this.resultOrder = this.resultOrder.filter((candidate) => candidate !== resultRef);
+    return this.results.read(args);
   }
 }
 

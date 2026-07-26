@@ -39,7 +39,9 @@ MCP client or gateway
 Visibility filtering runs before tool search. `call_tool` accepts only a
 reference issued by the current catalog, so guessed or stale tool names are not
 forwarded. Large results are captured once and paged from that snapshot; paging
-never re-executes an upstream tool.
+never re-executes an upstream tool. The initial response carries one exact
+preview, and its `next_cursor` resumes after that preview instead of sending the
+same prefix again. Full original MCP results remain recoverable.
 
 ## Quick start
 

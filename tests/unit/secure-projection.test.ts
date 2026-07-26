@@ -112,10 +112,12 @@ describe("SecureProjectionKernel", () => {
     const callResult = await kernel.call(CALL_TOOL, { tool_ref: match.tool_ref, arguments: { query: "mcp" } }, invoke);
     const capsule = parseText(callResult);
     expect(capsule.result_ref).toMatch(/^result_[a-f0-9]{32}$/);
+    expect(callResult.structuredContent).not.toHaveProperty("preview");
+    expect(callResult._meta?.["io.github.lennney/slim-guard"]).not.toHaveProperty("preview");
 
-    const chunks: string[] = [];
-    let cursor = 0;
-    let finalCursor = 0;
+    const chunks: string[] = [capsule.preview as string];
+    let cursor = capsule.next_cursor as number;
+    let finalCursor = cursor;
     for (let page = 0; page < 10; page++) {
       finalCursor = cursor;
       const body = parseText(await kernel.call(READ_RESULT, { result_ref: capsule.result_ref, cursor }, invoke));

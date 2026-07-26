@@ -29,6 +29,7 @@ tags:
 - 远程上游 Streamable HTTP 连接及旧 HTTP+SSE 单次兼容回退。
 - `.vscode/mcp.json`、顶层 `servers` 和远程 URL/header 配置导入。
 - 连接时环境变量模板解析与真实 Streamable HTTP MCP 集成测试。
+- 固定策略的 `ResultCapsuleStore` 深模块与可复现结果交付 benchmark。
 
 ### Changed
 
@@ -38,6 +39,7 @@ tags:
 - session ID 和 result reference 使用加密随机数。
 - README 移除未绑定当前证据的压缩率和准确率宣传。
 - 上游传输由 `command` 或 `url` 自动推断，不新增用户模式选择。
+- 大结果预览只交付一次，正常续读从预览后的游标开始，同时保留无损恢复路径。
 
 ### Fixed
 

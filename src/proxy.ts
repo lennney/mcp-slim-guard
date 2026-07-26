@@ -14,12 +14,13 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 
 import type { GuardConfig } from "./config-types.js";
 import type { PolicyContext, PolicyResult } from "./types.js";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PolicyPipeline } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
 import { generateTools, handleWrapperTool, whitelistFilter, PREFIX } from "./compressor.js";
 import { ToolCache } from "./cache.js";
+import { SecureProjectionKernel, usesSecureProjection } from "./secure-projection.js";
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -39,6 +40,8 @@ export class GuardProxy {
   private fullTools: Tool[] = [];
   /** Optional request cache (null when cache.enabled=false) */
   private cache: ToolCache | null = null;
+  /** Fixed three-tool product surface for newly generated light configs. */
+  private projection: SecureProjectionKernel | null = null;
 
   /**
    * @param config - Guard configuration
@@ -79,17 +82,19 @@ export class GuardProxy {
 
     // Full tool list (from upstream, with prefixed names)
     this.fullTools = this.serverManager.getTools();
+    this.refreshProjection();
 
     // Register tools/list handler — compressor aware
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       try {
-        // Log discovery event
-        const allNames = this.fullTools.map((t) => t.name);
-        this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "all", this.fullTools.length, allNames);
-
         const compressor = this.config.compressor ?? { enabled: false, level: "off" as const };
+        const tools = this.projection
+          ? this.projection.listTools()
+          : generateTools(this.fullTools, compressor, this.config.tools.allow, this.config.tools.deny);
+        const visibleNames = tools.map((tool) => tool.name);
+        this.audit.logDiscovery(this.sessionId, ++this.requestCounter, "projection", tools.length, visibleNames);
         return {
-          tools: generateTools(this.fullTools, compressor, this.config.tools.allow, this.config.tools.deny),
+          tools,
         };
       } catch (err) {
         console.error("[proxy] tools/list handler error:", err);
@@ -98,7 +103,7 @@ export class GuardProxy {
     });
 
     // Core tool call logic: resolve → policy → audit → forward
-    const forwardToolCall = async (prefixedName: string, args: Record<string, unknown>) => {
+    const forwardToolCall = async (prefixedName: string, args: Record<string, unknown>): Promise<CallToolResult> => {
       const resolved = this.serverManager.resolveTool(prefixedName);
       if (!resolved) {
         return {
@@ -175,6 +180,21 @@ export class GuardProxy {
       const prefixedName = params.name;
       const args: Record<string, unknown> = params.arguments ?? {};
 
+      if (this.projection?.handles(prefixedName)) {
+        const projectionResult = await this.projection.call(prefixedName, args, forwardToolCall);
+        this.audit.log(
+          { toolName: prefixedName, arguments: args, serverName: "projection" },
+          projectionResult.isError
+            ? { allowed: false, reason: "Projection request rejected", policy: "projection" }
+            : { allowed: true },
+          [],
+          this.sessionId,
+          ++this.requestCounter,
+          0,
+        );
+        return projectionResult;
+      }
+
       // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
       if (prefixedName.startsWith(PREFIX)) {
         // Whitelist-filter fullTools before passing to handleWrapperTool
@@ -248,6 +268,7 @@ export class GuardProxy {
       // Refresh the cached tool list served by tools/list + compressor discovery
       this.fullTools = newServerManager.getTools();
     }
+    this.refreshProjection();
     this.audit.log(
       { toolName: "<reload>", arguments: {}, serverName: "system" },
       { allowed: true },
@@ -270,5 +291,32 @@ export class GuardProxy {
       throw new Error("Server not started");
     }
     return this.server;
+  }
+
+  /**
+   * Rebuild the fixed product projection from the one authorized catalog.
+   * The legacy compressor remains available for old configs and unadvertised
+   * mcp__* aliases, but newly generated light configs use this kernel.
+   */
+  private refreshProjection(): void {
+    const compressor = this.config.compressor ?? { enabled: false, level: "off" as const };
+    if (!usesSecureProjection(compressor)) {
+      this.projection = null;
+      return;
+    }
+
+    const allow = this.config.tools.allow.filter(Boolean);
+    const deny = this.config.tools.deny.filter(Boolean);
+    const authorizedTools = allow.length === 0 ? [] : whitelistFilter(allow, deny)(this.fullTools);
+    // A flattened legacy name can collide when server and tool names both
+    // contain underscores. Never advertise a reference that cannot resolve to
+    // exactly one catalog route.
+    const visibleTools = authorizedTools.filter((tool) => this.serverManager.resolveTool(tool.name) !== null);
+
+    if (this.projection) {
+      this.projection.replaceCatalog(visibleTools);
+    } else {
+      this.projection = new SecureProjectionKernel(visibleTools);
+    }
   }
 }

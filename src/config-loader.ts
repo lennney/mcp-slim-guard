@@ -83,7 +83,7 @@ export class ConfigLoader {
         mode: "block",
       },
       compressor: {
-        enabled: false,
+        enabled: true,
         level: "light",
         lazy_loading: false,
         lazy_budget: 8,

@@ -9,7 +9,7 @@
  * @module cli
  */
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,14 +23,21 @@ import { WhitelistPolicy } from "./policies/whitelist.js";
 import { SSRFPolicy } from "./policies/ssrf.js";
 import { RateLimitPolicy } from "./policies/ratelimit.js";
 import { InjectionPolicy } from "./policies/injection.js";
-import { AuditLogger } from "./audit.js";
+import { AuditLogger, type AuditLoggerOptions } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
 import { GuardProxy } from "./proxy.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import * as http from "node:http";
 import micromatch from "micromatch";
-import { generateTools } from "./compressor.js";
+import { generateTools, whitelistFilter } from "./compressor.js";
+import {
+  CALL_TOOL,
+  FIND_TOOL,
+  READ_RESULT,
+  SecureProjectionKernel,
+  usesSecureProjection,
+} from "./secure-projection.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 /**
@@ -49,8 +56,12 @@ function buildPolicyList(config: GuardConfig): string[] {
     list.push(`injection:${config.injection_detection.sensitivity ?? "medium"}`);
   }
   if (config.compressor?.enabled) {
-    const lazy = config.compressor.lazy_loading ? "+lazy" : "";
-    list.push(`compressor:${config.compressor.level}${lazy}`);
+    if (usesSecureProjection(config.compressor)) {
+      list.push("compact-tools");
+    } else {
+      const lazy = config.compressor.lazy_loading ? "+lazy" : "";
+      list.push(`legacy-compressor:${config.compressor.level}${lazy}`);
+    }
   }
   return list;
 }
@@ -63,19 +74,22 @@ interface SchemaStats {
   totalTools: number;
   fullSchemaTools: number;
   slimSchemaTools: number;
-  wrapperTools: number;
+  compactTools: number;
   rawChars: number;
   compressedChars: number;
   reductionPct: number;
 }
 
 function computeSchemaStats(rawTools: Tool[], compressedTools: Tool[]): SchemaStats {
-  const wrapperTools = compressedTools.filter((t) => t.name.startsWith("mcp__")).length;
+  const compactNames = new Set([FIND_TOOL, CALL_TOOL, READ_RESULT]);
+  const compactTools = compressedTools.filter((tool) => compactNames.has(tool.name)).length;
   const slimTools = compressedTools.filter(
     (t) =>
-      !t.name.startsWith("mcp__") && (!t.inputSchema?.properties || Object.keys(t.inputSchema.properties).length === 0),
+      !compactNames.has(t.name) &&
+      !t.name.startsWith("mcp__") &&
+      (!t.inputSchema?.properties || Object.keys(t.inputSchema.properties).length === 0),
   ).length;
-  const fullTools = compressedTools.length - wrapperTools - slimTools;
+  const fullTools = compressedTools.length - compactTools - slimTools;
 
   const rawChars = rawTools.reduce((sum, t) => sum + JSON.stringify(t).length, 0);
   const compressedChars = compressedTools.reduce((sum, t) => sum + JSON.stringify(t).length, 0);
@@ -85,7 +99,7 @@ function computeSchemaStats(rawTools: Tool[], compressedTools: Tool[]): SchemaSt
     totalTools: compressedTools.length,
     fullSchemaTools: fullTools,
     slimSchemaTools: slimTools,
-    wrapperTools,
+    compactTools,
     rawChars,
     compressedChars,
     reductionPct,
@@ -98,8 +112,8 @@ function displaySchemaStats(stats: SchemaStats): void {
   if (stats.fullSchemaTools > 0) console.log(`    ├─ Full schema:  ${stats.fullSchemaTools} (complete inputSchema)`);
   if (stats.slimSchemaTools > 0)
     console.log(`    ├─ Slim schema:  ${stats.slimSchemaTools} (name + desc, schema on demand)`);
-  if (stats.wrapperTools > 0)
-    console.log(`    └─ Wrapper:      ${stats.wrapperTools} (mcp__get_schema, mcp__invoke_tool)`);
+  if (stats.compactTools > 0)
+    console.log(`    └─ Compact:      ${stats.compactTools} (${FIND_TOOL}, ${CALL_TOOL}, ${READ_RESULT})`);
   const estTokens = (chars: number) => Math.ceil(chars / 4);
   console.log(
     `\n  Characters: ${stats.rawChars.toLocaleString()} → ${stats.compressedChars.toLocaleString()} (${stats.reductionPct}% reduction)`,
@@ -107,6 +121,16 @@ function displaySchemaStats(stats: SchemaStats): void {
   console.log(
     `  Est. tokens: ~${estTokens(stats.rawChars).toLocaleString()} → ~${estTokens(stats.compressedChars).toLocaleString()} (${stats.reductionPct}% reduction)`,
   );
+}
+
+function projectToolsForDisplay(rawTools: Tool[], config: GuardConfig): Tool[] {
+  const compressor = config.compressor ?? { enabled: false, level: "off" as const };
+  if (usesSecureProjection(compressor)) {
+    const visible =
+      config.tools.allow.length === 0 ? [] : whitelistFilter(config.tools.allow, config.tools.deny)(rawTools);
+    return new SecureProjectionKernel(visible).listTools();
+  }
+  return generateTools(rawTools, compressor, config.tools.allow, config.tools.deny);
 }
 
 /**
@@ -137,25 +161,8 @@ function createPolicies(config: GuardConfig): Policy[] {
  * (maxSize/maxFiles/compress/maxMemoryEntries) — previously only output and
  * filePath were passed, so rotation settings in the config were silently dead.
  */
-export function buildAuditOptions(
-  auditCfg: NonNullable<GuardConfig["audit"]>,
-  cwd: string,
-): {
-  output: "stdout" | "file";
-  filePath?: string;
-  maxSize?: string;
-  maxFiles?: number;
-  compress?: boolean;
-  maxMemoryEntries?: number;
-} {
-  const opts: {
-    output: "stdout" | "file";
-    filePath?: string;
-    maxSize?: string;
-    maxFiles?: number;
-    compress?: boolean;
-    maxMemoryEntries?: number;
-  } = {
+export function buildAuditOptions(auditCfg: NonNullable<GuardConfig["audit"]>, cwd: string): AuditLoggerOptions {
+  const opts: AuditLoggerOptions = {
     output: auditCfg.output,
   };
   if (auditCfg.output === "file") {
@@ -186,13 +193,11 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .command("init")
     .description("Auto-discover MCP config and generate mcp-slim-guard.yml")
-    .option(
-      "--compressor [level]",
-      "Enable schema compression. Levels: light, normal, extreme, maximum. Use --lazy to enable lazy loading (schema on demand)",
-      "off",
+    .addOption(
+      new Option("--compressor [level]", "Legacy compatibility: override the automatic compact interface").hideHelp(),
     )
-    .option("--lazy", "Enable lazy loading: tools/list omits schemas, use mcp__get_schema on demand")
-    .option("--lazy-budget <n>", "Max tools with full schema in lazy mode (default 8)", "8")
+    .addOption(new Option("--lazy", "Legacy compatibility: enable lazy schema loading").hideHelp())
+    .addOption(new Option("--lazy-budget <n>", "Legacy compatibility: lazy schema budget").default("8").hideHelp())
     .action((options: { compressor?: string; lazy?: boolean; lazyBudget?: string }) => {
       const cwd = process.cwd();
       const mcpConfigPath = ConfigLoader.discoverMCPConfig(cwd);
@@ -207,9 +212,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const guardConfig = ConfigLoader.generateGuardConfig(mcpConfigPath);
 
       // Apply compressor setting
-      if (options.compressor && options.compressor !== "off") {
-        const level = options.compressor as "light" | "normal" | "extreme" | "maximum";
-        guardConfig.compressor = { enabled: true, level };
+      if (options.compressor) {
+        if (options.compressor === "off") {
+          guardConfig.compressor = { enabled: false, level: "off" };
+        } else {
+          const level = options.compressor as "light" | "normal" | "extreme" | "maximum";
+          guardConfig.compressor = { enabled: true, level };
+        }
       }
 
       // Apply lazy loading
@@ -240,10 +249,10 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         `   Audit: ${auditOut}${auditOut === "file" ? ` (${auditPath}, maxSize: ${auditMax}, maxFiles: ${auditFiles}${auditGzip})` : ""}`,
       );
 
-      if (options.compressor && options.compressor !== "off") {
-        const levelNames: Record<string, string> = { light: "~83%", normal: "~86%", extreme: "~72%", maximum: "~77%" };
-        const savingsNote = levelNames[options.compressor] ?? "~83%";
-        console.log(`   Schema compression: ${options.compressor} (estimated ${savingsNote} reduction)`);
+      if (usesSecureProjection(guardConfig.compressor)) {
+        console.log(`   Model interface: ${FIND_TOOL}, ${CALL_TOOL}, ${READ_RESULT}`);
+      } else {
+        console.log(`   Legacy compressor: ${guardConfig.compressor.level}`);
       }
     });
 
@@ -263,7 +272,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       // Use config.audit with defaults; forward ALL rotation/memory options
       const auditCfg = config.audit ?? { output: "file" as const, filePath: "mcp-slim-guard-audit.log" };
-      const audit = new AuditLogger(buildAuditOptions(auditCfg, cwd));
+      const configuredAuditOptions = buildAuditOptions(auditCfg, cwd);
+      const auditOptions: AuditLoggerOptions =
+        !options.http && configuredAuditOptions.output === "stdout"
+          ? { ...configuredAuditOptions, output: "stderr" }
+          : configuredAuditOptions;
+      const audit = new AuditLogger(auditOptions);
       let serverManager = new ServerManager(config.servers);
       const policies = createPolicies(config);
       const pipeline = new PolicyPipeline(policies);
@@ -278,17 +292,18 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       await proxy.start(transport);
 
-      console.log("🛡️ mcp-slim-guard started");
+      const runtimeLog = options.http ? console.log : console.error;
+      runtimeLog("🛡️ mcp-slim-guard started");
 
       const serverCount = Object.keys(config.servers).length;
       // Get tools for schema stats (serverManager already started by proxy.start)
       try {
         const startTools = serverManager.getTools();
         if (startTools && startTools.length > 0 && config.compressor?.enabled && config.compressor.level !== "off") {
-          const compressed = generateTools(startTools, config.compressor, config.tools.allow, config.tools.deny);
+          const compressed = projectToolsForDisplay(startTools, config);
           const stats = computeSchemaStats(startTools, compressed);
           const estTokens = (chars: number) => Math.ceil(chars / 4);
-          console.log(
+          runtimeLog(
             `   ${serverCount} servers, ${stats.totalTools} tools (${estTokens(stats.compressedChars)} est. tokens, ${stats.reductionPct}% saved)`,
           );
         }
@@ -323,17 +338,23 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             }
           })();
         });
-        httpServer.listen(port, () => {
-          console.log(`   HTTP transport: http://localhost:${port}/mcp`);
-          console.log("   Use this URL in your MCP client config");
+        httpServer.listen(port, "127.0.0.1", () => {
+          runtimeLog(`   HTTP transport: http://127.0.0.1:${port}/mcp`);
+          runtimeLog("   Use this URL in your MCP client config");
         });
       } else {
-        console.log("   Listening on STDIO transport");
+        runtimeLog("   Listening on STDIO transport");
       }
-      console.log(
-        `   Audit log: ${auditCfg.output === "file" ? (auditCfg.filePath ?? path.join(cwd, "mcp-guard-audit.log")) : "stdout"}`,
+      runtimeLog(
+        `   Audit log: ${
+          auditCfg.output === "file"
+            ? (auditCfg.filePath ?? path.join(cwd, "mcp-guard-audit.log"))
+            : options.http
+              ? "stdout"
+              : "stderr"
+        }`,
       );
-      console.log("   Send SIGHUP to reload config (kill -HUP <pid>)");
+      runtimeLog("   Send SIGHUP to reload config (kill -HUP <pid>)");
 
       // SIGHUP → hot reload mcp-slim-guard.yml (rebuilds pipeline + audit + serverManager)
       process.on("SIGHUP", () => {
@@ -353,9 +374,14 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             const newPipeline = new PolicyPipeline(newPolicies);
             // Rebuild audit logger — forward ALL rotation/memory options
             const newAuditCfg = newConfig.audit ?? { output: "file" as const, filePath: "mcp-slim-guard-audit.log" };
-            const newAudit = new AuditLogger(buildAuditOptions(newAuditCfg, cwd));
+            const configuredNewAuditOptions = buildAuditOptions(newAuditCfg, cwd);
+            const newAuditOptions: AuditLoggerOptions =
+              !options.http && configuredNewAuditOptions.output === "stdout"
+                ? { ...configuredNewAuditOptions, output: "stderr" }
+                : configuredNewAuditOptions;
+            const newAudit = new AuditLogger(newAuditOptions);
             proxy.reload(newConfig, newPipeline, newAudit, serverManager);
-            console.log("✅ [reload] Config reloaded — new policies + servers + audit active");
+            runtimeLog("✅ [reload] Config reloaded — new policies + servers + audit active");
           } catch (err) {
             console.error("⚠️ [reload] Failed:", err instanceof Error ? err.message : String(err));
           }
@@ -389,12 +415,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       console.log(`   SSRF: ${config.ssrf.mode}`);
       console.log(`   Rate limit: ${config.rate_limit.default}`);
       console.log(`   Injection detection: ${config.injection_detection.enabled ? "enabled" : "disabled"}`);
-      if (config.compressor?.enabled && config.compressor.level !== "off") {
-        const ratios: Record<string, number> = { light: 83, normal: 86, extreme: 72, maximum: 77 };
-        const pct = ratios[config.compressor.level] ?? 83;
-        console.log(`   Compressor: ${config.compressor.level} (estimated ${pct}% token savings)`);
+      if (usesSecureProjection(config.compressor)) {
+        console.log(`   Model interface: ${FIND_TOOL}, ${CALL_TOOL}, ${READ_RESULT}`);
+      } else if (config.compressor?.enabled && config.compressor.level !== "off") {
+        console.log(`   Legacy compressor: ${config.compressor.level}`);
       } else {
-        console.log(`   Compressor: off (use 'mcp-slim-guard init --compressor light' to enable)`);
+        console.log("   Compact interface: disabled by legacy config");
       }
       const auditOut = config.audit?.output ?? "file";
       const auditPath = config.audit?.filePath ?? "mcp-slim-guard-audit.log";
@@ -449,7 +475,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           const stats = computeSchemaStats(
             tools,
             config.compressor?.enabled && config.compressor.level !== "off"
-              ? generateTools(tools, config.compressor, config.tools.allow, config.tools.deny)
+              ? projectToolsForDisplay(tools, config)
               : tools,
           );
           const estTokens = (chars: number) => Math.ceil(chars / 4);
@@ -497,7 +523,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       // Compressor status
-      if (config.compressor?.enabled && config.compressor.level !== "off") {
+      if (usesSecureProjection(config.compressor)) {
+        console.log(`  📦 Model interface: ${FIND_TOOL} → ${CALL_TOOL} → ${READ_RESULT}`);
+      } else if (config.compressor?.enabled && config.compressor.level !== "off") {
         const lazyTag = config.compressor.lazy_loading ? " +lazy" : "";
         const mode =
           config.compressor.level === "extreme" || config.compressor.level === "maximum"
@@ -630,7 +658,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       // Schema stats (only when compressor is enabled)
       if (config.compressor?.enabled && config.compressor.level !== "off" && allToolsRaw.length > 0) {
-        const compressedTools = generateTools(allToolsRaw, config.compressor, config.tools.allow, config.tools.deny);
+        const compressedTools = projectToolsForDisplay(allToolsRaw, config);
         const schemaStats = computeSchemaStats(allToolsRaw, compressedTools);
         displaySchemaStats(schemaStats);
       }

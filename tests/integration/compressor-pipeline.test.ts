@@ -1,9 +1,9 @@
 /**
  * Integration tests for mcp-guard compressor pipeline.
  *
- * Tests the compressor wrapper tools (mcp__list_tools, mcp__get_tool_schema,
- * mcp__invoke_tool) through the full GuardProxy pipeline with a real
- * mock-server subprocess.
+ * Tests the fixed find_tool/call_tool/read_result product surface plus legacy
+ * mcp__* compatibility aliases through the full GuardProxy pipeline with a
+ * real mock-server subprocess.
  *
  * Covers:
  * - tools/list returns wrapper tools
@@ -97,22 +97,70 @@ describe("Compressor Pipeline", () => {
   vi.setConfig({ testTimeout: 15000 });
 
   // -----------------------------------------------------------------------
-  // 1. tools/list returns wrapper tools (compressor light level)
+  // 1. tools/list returns the one fixed product surface
   // -----------------------------------------------------------------------
-  it("tools/list returns 3 wrapper tools when compressor=light", async () => {
+  it("tools/list returns the fixed three tools when compressor=light", async () => {
     const ctx = await buildProxy(makeConfig());
     try {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
       const names = tools.map((t) => t.name);
 
-      expect(names).toEqual(["mcp__list_tools", "mcp__get_tool_schema", "mcp__invoke_tool"]);
+      expect(names).toEqual(["find_tool", "call_tool", "read_result"]);
       expect(tools).toHaveLength(3);
 
       // Each wrapper must have an inputSchema
       for (const t of tools) {
         expect(t.inputSchema).toBeDefined();
       }
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  it("find_tool issues a catalog-bound reference that call_tool can invoke", async () => {
+    const ctx = await buildProxy(makeConfig());
+    try {
+      const found = await ctx.client.callTool({
+        name: "find_tool",
+        arguments: { query: "echo message" },
+      });
+      const foundContent = found.content[0] as { type: string; text?: string };
+      const body = JSON.parse(foundContent.text ?? "{}") as {
+        matches: Array<{ tool_ref: string; name: string; input_schema: Record<string, unknown> }>;
+      };
+      expect(body.matches[0].name).toBe("mock_echo");
+      expect(body.matches[0].input_schema).toHaveProperty("required");
+
+      const called = await ctx.client.callTool({
+        name: "call_tool",
+        arguments: {
+          tool_ref: body.matches[0].tool_ref,
+          arguments: { message: "fixed surface" },
+        },
+      });
+      const calledContent = called.content[0] as { type: string; text?: string };
+      expect(JSON.parse(calledContent.text ?? "{}")).toEqual({ echoed: "fixed surface" });
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  it("find_tool never discloses a denied tool", async () => {
+    const config = makeConfig({
+      tools: { allow: ["mock_*"], deny: ["mock_add"] },
+    });
+    const ctx = await buildProxy(config);
+    try {
+      const found = await ctx.client.callTool({
+        name: "find_tool",
+        arguments: { query: "add numbers" },
+      });
+      const foundContent = found.content[0] as { type: string; text?: string };
+      const body = JSON.parse(foundContent.text ?? "{}") as {
+        matches: Array<{ name: string }>;
+      };
+      expect(body.matches.map((match) => match.name)).not.toContain("mock_add");
     } finally {
       await destroyProxy(ctx);
     }

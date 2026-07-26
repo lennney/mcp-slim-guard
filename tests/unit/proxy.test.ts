@@ -66,6 +66,7 @@ vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
 // ---------------------------------------------------------------------------
 
 import { GuardProxy } from "../../src/proxy.js";
+import { FIND_TOOL } from "../../src/secure-projection.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -206,6 +207,38 @@ describe("GuardProxy", () => {
 
     expect(result).toEqual({ tools: mockTools });
     expect(serverManager.getTools).toHaveBeenCalledTimes(1);
+  });
+
+  it("secure projection omits catalog names that do not resolve uniquely", async () => {
+    const config: GuardConfig = {
+      ...makeMinimalConfig(),
+      tools: { allow: ["*"], deny: [] },
+      compressor: { enabled: true, level: "light", lazy_loading: false },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([
+      {
+        name: "foo_bar_baz",
+        description: "An ambiguous flattened route",
+        inputSchema: { type: "object" as const },
+      },
+    ]);
+    serverManager.resolveTool.mockReturnValue(null);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const result = await callHandler({
+      method: "tools/call",
+      params: { name: FIND_TOOL, arguments: { query: "ambiguous" } },
+    });
+    const content = result.content[0];
+    expect(content.type).toBe("text");
+    expect(JSON.parse(content.text).matches).toEqual([]);
+    expect(serverManager.callTool).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------

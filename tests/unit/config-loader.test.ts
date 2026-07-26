@@ -79,6 +79,11 @@ describe("ConfigLoader", () => {
       expect(config.tools.deny).toContain("*_delete_*");
       expect(config.ssrf.mode).toBe("block");
       expect(config.rate_limit.default).toBe("60/min");
+      expect(config.compressor).toMatchObject({
+        enabled: true,
+        level: "light",
+        lazy_loading: false,
+      });
     });
 
     it("handles empty servers", () => {

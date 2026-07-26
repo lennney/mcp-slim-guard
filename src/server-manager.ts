@@ -11,7 +11,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "./config-types.js";
 
 /**
@@ -113,47 +113,24 @@ export class ServerManager {
   /**
    * Resolve a prefixed tool name to its server and original tool name.
    *
-   * Tries splitting on each underscore position (left to right) and returns
-   * the first match where the server exists and has the corresponding tool.
-   * This handles edge cases where server names or tool names contain underscores.
+   * Resolves only an exact tool discovered from the upstream catalog. This
+   * deliberately rejects guessed names and ambiguous server/tool prefix
+   * combinations instead of forwarding them to an upstream server.
    *
    * @param prefixedName - The prefixed tool name (e.g. "github_search_repositories")
    * @returns The resolved server name and original tool name, or null if not found
    */
   resolveTool(prefixedName: string): { serverName: string; originalToolName: string } | null {
-    if (!prefixedName || !prefixedName.includes("_")) {
-      return null;
-    }
-
-    // Find all underscore positions
-    const positions: number[] = [];
-    let idx = prefixedName.indexOf("_");
-    while (idx !== -1) {
-      positions.push(idx);
-      idx = prefixedName.indexOf("_", idx + 1);
-    }
-
-    // Try each split position (left to right)
-    for (const pos of positions) {
-      const candidateServerName = prefixedName.substring(0, pos);
-      const candidateToolName = prefixedName.substring(pos + 1);
-
-      if (!candidateServerName || !candidateToolName) {
-        continue;
-      }
-
-      // Check only that the server exists — policy (whitelist/deny) is enforced
-      // later in the pipeline. If the upstream doesn't have the tool, the
-      // callTool → upstream will return the native error.
-      if (this.connections.has(candidateServerName)) {
-        return {
-          serverName: candidateServerName,
-          originalToolName: candidateToolName,
-        };
+    const matches: Array<{ serverName: string; originalToolName: string }> = [];
+    for (const [serverName, connection] of this.connections) {
+      for (const tool of connection.tools) {
+        if (`${serverName}_${tool.name}` === prefixedName) {
+          matches.push({ serverName, originalToolName: tool.name });
+        }
       }
     }
 
-    return null;
+    return matches.length === 1 ? matches[0] : null;
   }
 
   /**
@@ -165,11 +142,7 @@ export class ServerManager {
    * @returns The tool call result from the upstream server
    * @throws If the server is not connected or the upstream call fails
    */
-  async callTool(
-    serverName: string,
-    toolName: string,
-    args: Record<string, unknown>,
-  ): Promise<{ content: Array<{ type: string; text?: string }> }> {
+  async callTool(serverName: string, toolName: string, args: Record<string, unknown>): Promise<CallToolResult> {
     const conn = this.connections.get(serverName);
     if (!conn) {
       throw new Error(`Unknown upstream server: "${serverName}"`);
@@ -187,9 +160,10 @@ export class ServerManager {
       CallToolResultSchema,
     );
 
-    return {
-      content: result.content as Array<{ type: string; text?: string }>,
-    };
+    // Client.callTool's TypeScript return also includes task-based compatibility
+    // results. This runtime uses the standard immediate CallToolResult contract,
+    // so validate and narrow it before crossing the ServerManager interface.
+    return CallToolResultSchema.parse(result);
   }
 
   /**

@@ -14,7 +14,7 @@
  */
 
 import type { CompressorConfig, CompressionLevel } from "./config-types.js";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import micromatch from "micromatch";
 
 const { isMatch } = micromatch;
@@ -277,16 +277,8 @@ export async function handleWrapperTool(
   toolName: string,
   args: Record<string, unknown>,
   fullTools: Tool[],
-  serverCall: (
-    resolvedToolName: string,
-    resolvedArgs: Record<string, unknown>,
-  ) => Promise<{
-    content: Array<{ type: string; text?: string }>;
-  }>,
-): Promise<{
-  content: Array<{ type: string; text?: string }>;
-  isError?: boolean;
-} | null> {
+  serverCall: (resolvedToolName: string, resolvedArgs: Record<string, unknown>) => Promise<CallToolResult>,
+): Promise<CallToolResult | null> {
   // Only handle our wrapper tools
   if (!toolName.startsWith(PREFIX)) return null;
 

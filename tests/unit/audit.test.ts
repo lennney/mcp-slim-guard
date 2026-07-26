@@ -29,7 +29,7 @@ describe("AuditLogger", () => {
   let logger: AuditLogger;
 
   beforeEach(() => {
-    logger = new AuditLogger();
+    logger = new AuditLogger({ level: "silent" });
   });
 
   it("logs allowed action with action='allowed'", () => {
@@ -113,6 +113,36 @@ describe("AuditLogger", () => {
     expect(logger.getEntries()[2].arguments).toEqual({ a: null, b: "str" });
   });
 
+  it("redacts credential-like fields recursively", () => {
+    logger.log(
+      ctx({
+        arguments: {
+          token: "top-secret",
+          nested: {
+            api_key: "key-value",
+            safe: "visible",
+            headers: { Authorization: "Bearer secret" },
+          },
+          entries: [{ password: "p@ss" }, { value: 1 }],
+        },
+      }),
+      allowed(),
+      [],
+      "s1",
+      1,
+    );
+
+    expect(logger.getEntries()[0].arguments).toEqual({
+      token: "[REDACTED]",
+      nested: {
+        api_key: "[REDACTED]",
+        safe: "visible",
+        headers: { Authorization: "[REDACTED]" },
+      },
+      entries: [{ password: "[REDACTED]" }, { value: 1 }],
+    });
+  });
+
   it("handles multiple sequential logs correctly", () => {
     const items = [
       { toolName: "tool_1", action: "allowed" as const },
@@ -178,6 +208,7 @@ describe("AuditLogger", () => {
     for (let i = 0; i < 10; i++) {
       const id = logger.newSession();
       expect(ids.has(id)).toBe(false);
+      expect(id).toMatch(/^s\d+_[a-f0-9]{32}$/);
       ids.add(id);
     }
   });

@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "node:path";
 
 // ── Mock all CLI dependencies ──────────────────────────────────────────
 // NOTE: vi.mock() is hoisted to top. Factories execute when module loads.
@@ -193,14 +194,15 @@ describe("CLI", () => {
   // ── start ────────────────────────────────────────────────────────
 
   describe("start", () => {
-    it("loads config and starts proxy → prints started message", async () => {
+    it("loads config and keeps human status messages off protocol stdout", async () => {
       MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
 
       await main(["node", "cli.js", "start"]);
 
       expect(MockConfigLoader.ConfigLoader.findAndLoad).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
-      expect(consoleLogSpy).toHaveBeenCalledWith("   Listening on STDIO transport");
+      expect(consoleLogSpy).not.toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
+      expect(consoleErrorSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
+      expect(consoleErrorSpy).toHaveBeenCalledWith("   Listening on STDIO transport");
       // GuardProxy constructor was called
       expect(vi.mocked(GuardProxy)).toHaveBeenCalled();
       // proxy.start was called on the returned instance
@@ -310,7 +312,7 @@ describe("buildAuditOptions", () => {
   it("falls back to default filePath and omits unset options", () => {
     const opts = buildAuditOptions({ output: "file" }, "/tmp");
     expect(opts.output).toBe("file");
-    expect(opts.filePath).toBe("/tmp/mcp-slim-guard-audit.log");
+    expect(opts.filePath).toBe(path.join("/tmp", "mcp-slim-guard-audit.log"));
     expect(opts.maxSize).toBeUndefined();
   });
 

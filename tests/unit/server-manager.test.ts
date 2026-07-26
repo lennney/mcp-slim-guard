@@ -65,7 +65,9 @@ vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
 }));
 
 vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
-  CallToolResultSchema: {},
+  CallToolResultSchema: {
+    parse: (value: unknown) => value,
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -176,17 +178,15 @@ describe("ServerManager", () => {
     expect(result!.originalToolName).toBe("list_stuff");
   });
 
-  // 5. resolveTool() resolves any tool on a known server (policy checks later)
-  it("resolveTool should resolve any tool on known server, return null for unknown server", async () => {
+  // 5. resolveTool() only accepts an exact catalog entry
+  it("resolveTool should reject guessed tools and unknown servers", async () => {
     const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "exists" }] });
 
-    // Any tool on known server resolves (policy enforces later)
-    const resolved = manager.resolveTool("srv_nonexistent");
-    expect(resolved).not.toBeNull();
-    expect(resolved!.serverName).toBe("srv");
-    expect(resolved!.originalToolName).toBe("nonexistent");
-
-    // Unknown server returns null
+    expect(manager.resolveTool("srv_exists")).toEqual({
+      serverName: "srv",
+      originalToolName: "exists",
+    });
+    expect(manager.resolveTool("srv_nonexistent")).toBeNull();
     expect(manager.resolveTool("unknown_server_tool")).toBeNull();
     expect(manager.resolveTool("no_underscore")).toBeNull();
     expect(manager.resolveTool("")).toBeNull();
@@ -228,6 +228,19 @@ describe("ServerManager", () => {
       },
       expect.anything(),
     );
+  });
+
+  it("callTool preserves the complete upstream result", async () => {
+    const manager = await makeServerManager({ srv: serverCfg() }, { srv: [{ name: "read" }] });
+    const upstreamResult = {
+      content: [{ type: "text", text: "failed safely" }],
+      structuredContent: { code: "E_UPSTREAM", retryable: false },
+      isError: true,
+      _meta: { traceId: "trace-123" },
+    };
+    mockClientInstances[0].callTool.mockResolvedValue(upstreamResult);
+
+    await expect(manager.callTool("srv", "read", {})).resolves.toEqual(upstreamResult);
   });
 
   // 7. stop() closes all connections
@@ -310,6 +323,18 @@ describe("ServerManager", () => {
     expect(result).not.toBeNull();
     expect(result!.serverName).toBe("my_server");
     expect(result!.originalToolName).toBe("my_tool");
+  });
+
+  it("resolveTool rejects ambiguous prefixed names", async () => {
+    const manager = await makeServerManager(
+      { foo: serverCfg(), foo_bar: serverCfg() },
+      {
+        foo: [{ name: "bar_baz" }],
+        foo_bar: [{ name: "baz" }],
+      },
+    );
+
+    expect(manager.resolveTool("foo_bar_baz")).toBeNull();
   });
 
   // 10a. callTool throws for unknown server

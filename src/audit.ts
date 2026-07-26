@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
+import { randomBytes } from "node:crypto";
 import type { PolicyContext, PolicyResult, AuditEntry } from "./types.js";
 
 /** 决策步骤 — 一个策略的评估结果 */
@@ -31,8 +32,8 @@ export interface DecisionStep {
 
 /** 构造选项 */
 export interface AuditLoggerOptions {
-  /** 输出目标（默认 stdout） */
-  output?: "stdout" | "file";
+  /** 输出目标（默认 stdout；stdio runtime 使用 stderr 避免污染协议） */
+  output?: "stdout" | "stderr" | "file";
   /** 文件路径 */
   filePath?: string;
   /** pino 日志级别（默认 info） */
@@ -264,6 +265,30 @@ class RotatingFileStream extends Writable {
 /** 默认内存中保留的审计条目上限 */
 const DEFAULT_MAX_MEMORY_ENTRIES = 10000;
 
+const SENSITIVE_KEY = /authorization|api[-_]?key|token|password|passwd|secret|cookie|credential/i;
+
+/**
+ * Recursively clone audit values while redacting common credential fields.
+ * Circular or otherwise non-serializable values are handled by the caller.
+ */
+function redactAuditValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return "[Circular]";
+    seen.add(value);
+    return value.map((entry) => redactAuditValue(entry, seen));
+  }
+  if (value && typeof value === "object") {
+    if (seen.has(value)) return "[Circular]";
+    seen.add(value);
+    const redacted: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      redacted[key] = SENSITIVE_KEY.test(key) ? "[REDACTED]" : redactAuditValue(entry, seen);
+    }
+    return redacted;
+  }
+  return value;
+}
+
 export class AuditLogger {
   private entries: AuditEntry[] = [];
   private logger: pino.Logger;
@@ -282,6 +307,8 @@ export class AuditLogger {
 
       this.rotator = new RotatingFileStream(filePath, maxSize, maxFiles, compress);
       this.logger = pino({ level }, this.rotator as unknown as Writable);
+    } else if (output === "stderr") {
+      this.logger = pino({ level }, pino.destination({ dest: 2, sync: false }));
     } else {
       this.logger = pino({ level });
     }
@@ -289,13 +316,11 @@ export class AuditLogger {
 
   /**
    * 生成新的会话 ID。
-   * 格式: `s<counter>_<timestamp36>_<random6>`
+   * 格式: `s<counter>_<random128bit>`
    */
   newSession(): string {
     this.sessionCounter++;
-    const ts = Date.now().toString(36);
-    const rand = Math.random().toString(36).slice(2, 8);
-    return `s${this.sessionCounter}_${ts}_${rand}`;
+    return `s${this.sessionCounter}_${randomBytes(16).toString("hex")}`;
   }
 
   /**
@@ -319,7 +344,7 @@ export class AuditLogger {
     // 防循环引用
     let safeArgs: Record<string, unknown>;
     try {
-      safeArgs = JSON.parse(JSON.stringify(ctx.arguments));
+      safeArgs = redactAuditValue(ctx.arguments) as Record<string, unknown>;
     } catch {
       safeArgs = { _error: "arguments contained non-serializable values" };
     }

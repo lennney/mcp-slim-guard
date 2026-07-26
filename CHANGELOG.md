@@ -15,6 +15,37 @@ tags:
 
 > **版本说明**: 内部开发版本为 0.1.0→0.4.0（均未发布到 npm），首次公开发布为 **0.1.0**（2026-07-22）。
 
+## [Unreleased]
+
+### Added
+
+- 固定的 `find_tool`、`call_tool`、`read_result` 三工具产品面。
+- `SecureProjectionKernel` 及 package root 导出。
+- 授权后 catalog 搜索、精确 schema、catalog-bound tool reference。
+- 单次捕获、TTL/容量受限的可恢复大结果交付。
+- Windows Node 22 CI。
+- 权威架构文档与兼容中间层执行 Plan。
+
+### Changed
+
+- 新生成配置默认使用固定三工具 interface；旧压缩档位保留迁移兼容但不再主推。
+- 工具解析只接受真实 catalog 的唯一精确匹配。
+- stdio 人类状态和 stdout 审计输出改走 stderr。
+- session ID 和 result reference 使用加密随机数。
+- README 移除未绑定当前证据的压缩率和准确率宣传。
+
+### Fixed
+
+- Windows 下 mock server 直接执行判断导致的集成测试级联失败。
+- CLI 测试中的 POSIX 路径硬编码。
+- Windows 下 Prettier glob 被单引号当作文件名、换行符检查不兼容的问题。
+- 上游调用结果丢失 `isError`、`structuredContent`、`_meta` 等字段。
+
+### Security
+
+- 审计参数递归脱敏常见 token、password、secret、authorization 等字段。
+- 拒绝猜测、陈旧或歧义的工具引用。
+
 ## [0.1.0] — 2026-07-22
 
 **First public release (npm)** — 包含 Phase 1 + Phase 2 P0 全部功能。

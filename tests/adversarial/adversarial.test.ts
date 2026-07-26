@@ -1075,7 +1075,7 @@ describe("ConfigLoader — Robustness", () => {
 // ============================================================
 describe("AuditLogger — Stress", () => {
   it("logs 10000 entries rapidly without data loss", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     for (let i = 0; i < 10000; i++) {
       logger.log(
@@ -1132,7 +1132,7 @@ describe("AuditLogger — Stress", () => {
   });
 
   it("clear() + re-log maintains correct counts", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     for (let i = 0; i < 5000; i++) {
       logger.log(ctx(`tool_${i}`), { allowed: true });
@@ -1149,7 +1149,7 @@ describe("AuditLogger — Stress", () => {
   });
 
   it("handles getEntries() being called during logging", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     // Log some, snapshot, log more, verify snapshot is immutable
     logger.log(ctx("a"), { allowed: true });
@@ -1267,7 +1267,7 @@ describe("WhitelistPolicy — Cross-tool Param Bypass", () => {
 // ============================================================
 describe("AuditLogger — Circular Reference Defense", () => {
   it("does not crash when arguments contain circular references", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     // Create circular reference
     const circ: Record<string, unknown> = { name: "test" };
@@ -1287,7 +1287,8 @@ describe("AuditLogger — Circular Reference Defense", () => {
     const entries = logger.getEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].arguments).toEqual({
-      _error: "arguments contained non-serializable values",
+      name: "test",
+      self: "[Circular]",
     });
   });
 });

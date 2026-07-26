@@ -25,6 +25,12 @@ interface CatalogEntry {
 
 export type ProjectionInvoker = (toolName: string, args: Record<string, unknown>) => Promise<CallToolResult>;
 
+export interface ResultDeliveryStore {
+  capture(result: CallToolResult): CallToolResult;
+  read(args: Record<string, unknown>): CallToolResult;
+  clear(): void;
+}
+
 function errorResult(message: string): CallToolResult {
   return {
     content: [{ type: "text", text: message }],
@@ -144,9 +150,10 @@ export class SecureProjectionKernel {
   private catalogDigest = "";
   private entriesByRef = new Map<string, CatalogEntry>();
   private orderedEntries: CatalogEntry[] = [];
-  private results = new ResultCapsuleStore();
+  private results: ResultDeliveryStore;
 
-  constructor(tools: Tool[]) {
+  constructor(tools: Tool[], results: ResultDeliveryStore = new ResultCapsuleStore()) {
+    this.results = results;
     this.replaceCatalog(tools);
   }
 
@@ -196,12 +203,14 @@ export class SecureProjectionKernel {
       .filter((candidate) => candidate.score > 0)
       .sort((a, b) => b.score - a.score || a.entry.tool.name.localeCompare(b.entry.tool.name))
       .slice(0, MAX_MATCHES)
-      .map(({ entry }) => ({
-        tool_ref: entry.ref,
-        name: entry.tool.name,
-        description: entry.tool.description ?? "",
-        input_schema: entry.tool.inputSchema,
-      }));
+      .map(({ entry }) => {
+        const { inputSchema, ...toolMetadata } = entry.tool;
+        return {
+          ...toolMetadata,
+          tool_ref: entry.ref,
+          input_schema: inputSchema,
+        };
+      });
 
     return jsonResult({
       catalog_digest: this.catalogDigest,
@@ -224,7 +233,12 @@ export class SecureProjectionKernel {
       return errorResult("Unknown or stale tool_ref. Call find_tool again.");
     }
 
-    return this.results.capture(await invoke(entry.tool.name, callArgs));
+    const upstreamResult = await invoke(entry.tool.name, callArgs);
+    try {
+      return this.results.capture(upstreamResult);
+    } catch {
+      return upstreamResult;
+    }
   }
 
   private readResult(args: Record<string, unknown>): CallToolResult {

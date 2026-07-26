@@ -4,6 +4,7 @@ import {
   CALL_TOOL,
   FIND_TOOL,
   READ_RESULT,
+  type ResultDeliveryStore,
   SecureProjectionKernel,
   usesSecureProjection,
 } from "../../src/secure-projection.js";
@@ -11,6 +12,7 @@ import {
 const tools: Tool[] = [
   {
     name: "github_search_repositories",
+    title: "Search repositories",
     description: "Search GitHub repositories by query",
     inputSchema: {
       type: "object",
@@ -18,7 +20,16 @@ const tools: Tool[] = [
       required: ["query"],
       additionalProperties: false,
     },
-  },
+    outputSchema: {
+      type: "object",
+      properties: { count: { type: "number" } },
+      required: ["count"],
+    },
+    annotations: { readOnlyHint: true },
+    _meta: { provider: "github" },
+    "x-slim-guard-fixture": { preserve: true },
+    tool_ref: "untrusted-upstream-value",
+  } as Tool,
   {
     name: "files_read_document",
     description: "读取本地文档内容",
@@ -58,7 +69,7 @@ describe("SecureProjectionKernel", () => {
     expect(kernel.listTools().map((tool) => tool.name)).toEqual([FIND_TOOL, CALL_TOOL, READ_RESULT]);
   });
 
-  it("finds at most three matches and returns exact schemas", async () => {
+  it("finds at most three matches and preserves complete MCP tool metadata", async () => {
     const kernel = new SecureProjectionKernel(tools);
     const result = await kernel.call(FIND_TOOL, { query: "github" }, vi.fn());
     const body = parseText(result);
@@ -70,6 +81,16 @@ describe("SecureProjectionKernel", () => {
     expect(matches.find((match) => match.name === "github_search_repositories")?.input_schema).toEqual(
       tools[0].inputSchema,
     );
+    expect(matches[0]).toMatchObject({
+      title: "Search repositories",
+      outputSchema: (tools[0] as Tool & Record<string, unknown>).outputSchema,
+      annotations: { readOnlyHint: true },
+      _meta: { provider: "github" },
+      "x-slim-guard-fixture": { preserve: true },
+    });
+    expect(matches[0]).not.toHaveProperty("inputSchema");
+    expect(matches[0].tool_ref).not.toBe("untrusted-upstream-value");
+    expect(matches[0].tool_ref).toMatch(/^tool_[a-f0-9]{16}_\d+$/);
   });
 
   it("searches Unicode descriptions without a model dependency", async () => {
@@ -105,6 +126,34 @@ describe("SecureProjectionKernel", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("returns the exact upstream result when result delivery fails without changing arguments or retrying", async () => {
+    const delivery: ResultDeliveryStore = {
+      capture: vi.fn(() => {
+        throw new Error("projection unavailable");
+      }),
+      read: vi.fn(() => ({ content: [{ type: "text", text: "unused" }] })),
+      clear: vi.fn(),
+    };
+    const kernel = new SecureProjectionKernel(tools, delivery);
+    const find = parseText(await kernel.call(FIND_TOOL, { query: "search repositories" }, vi.fn()));
+    const match = (find.matches as Array<Record<string, unknown>>)[0];
+    const exactArguments = { query: "mcp", nested: { preserve: true } };
+    const upstreamResult: CallToolResult = {
+      content: [{ type: "text", text: "upstream-ok" }],
+      structuredContent: { marker: "once-only" },
+      _meta: { traceId: "trace-1" },
+    };
+    const invoke = vi.fn().mockResolvedValue(upstreamResult);
+
+    const result = await kernel.call(CALL_TOOL, { tool_ref: match.tool_ref, arguments: exactArguments }, invoke);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0]?.[1]).toBe(exactArguments);
+    expect(delivery.capture).toHaveBeenCalledTimes(1);
+    expect(delivery.capture).toHaveBeenCalledWith(upstreamResult);
+    expect(result).toBe(upstreamResult);
+  });
+
   it("captures a large result once and retrieves bounded chunks without re-invoking", async () => {
     const kernel = new SecureProjectionKernel(tools);
     const find = parseText(await kernel.call(FIND_TOOL, { query: "search" }, vi.fn()));
@@ -121,8 +170,8 @@ describe("SecureProjectionKernel", () => {
     expect(callResult.structuredContent).not.toHaveProperty("preview");
     expect(callResult._meta?.["io.github.lennney/slim-guard"]).not.toHaveProperty("preview");
 
-    const chunks: string[] = [capsule.preview as string];
-    let cursor = capsule.next_cursor as number;
+    const chunks: string[] = [];
+    let cursor = capsule.replay_cursor as number;
     let finalCursor = cursor;
     for (let page = 0; page < 10; page++) {
       finalCursor = cursor;
@@ -133,8 +182,11 @@ describe("SecureProjectionKernel", () => {
       cursor = metadata.next_cursor as number;
     }
 
-    expect(JSON.parse(chunks.join(""))).toEqual({
+    expect({
       content: [{ type: "text", text: largeText }],
+      ...((capsule.result_shape as Record<string, unknown> | undefined) ?? {}),
+    }).toEqual({
+      content: [{ type: "text", text: chunks.join("") }],
       isError: false,
     });
     const retryFinal = await kernel.call(READ_RESULT, { result_ref: capsule.result_ref, cursor: finalCursor }, invoke);

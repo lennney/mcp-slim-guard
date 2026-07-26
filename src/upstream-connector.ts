@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "./config-types.js";
 import { resolveUpstreamServer } from "./upstream-config.js";
@@ -59,6 +59,26 @@ interface OpenedClient {
   transportKind: UpstreamTransportKind;
 }
 
+const MetadataPreservingListToolsResultSchema = {
+  safeParse(value: unknown) {
+    const validated = ListToolsResultSchema.safeParse(value);
+    if (!validated.success) return validated;
+
+    const raw = value as { tools: Array<Record<string, unknown>> } & Record<string, unknown>;
+    return {
+      success: true as const,
+      data: {
+        ...raw,
+        ...validated.data,
+        tools: validated.data.tools.map((tool, index) => ({
+          ...raw.tools[index],
+          ...tool,
+        })),
+      },
+    };
+  },
+} as unknown as typeof ListToolsResultSchema;
+
 async function openClient(
   transportKind: UpstreamTransportKind,
   transport: StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport,
@@ -79,7 +99,17 @@ async function openClient(
 
 async function discoverTools(opened: OpenedClient): Promise<ConnectedUpstream> {
   try {
-    const { tools } = await opened.client.listTools();
+    // The SDK validates standard Tool fields but its default Zod object drops
+    // unknown top-level metadata. Validate with the official schema, then
+    // merge the validated fields over the original wire object so an MCP
+    // extension survives catalog projection.
+    const { tools } = await opened.client.request(
+      {
+        method: "tools/list",
+        params: {},
+      },
+      MetadataPreservingListToolsResultSchema,
+    );
     return new McpSdkConnectedUpstream(opened.client, tools, opened.transportKind);
   } catch (error) {
     try {

@@ -13,6 +13,7 @@ const sdk = vi.hoisted(() => {
     clients: [] as Array<{
       connect: ReturnType<typeof vi.fn>;
       listTools: ReturnType<typeof vi.fn>;
+      request: ReturnType<typeof vi.fn>;
       callTool: ReturnType<typeof vi.fn>;
       close: ReturnType<typeof vi.fn>;
     }>,
@@ -34,6 +35,20 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
       listTools: plan.listToolsError
         ? vi.fn().mockRejectedValue(plan.listToolsError)
         : vi.fn().mockResolvedValue({ tools: plan.tools ?? [] }),
+      request: plan.listToolsError
+        ? vi.fn().mockRejectedValue(plan.listToolsError)
+        : vi
+            .fn()
+            .mockImplementation(
+              (
+                _request: unknown,
+                schema: { safeParse(value: unknown): { success: boolean; data?: unknown; error?: unknown } },
+              ) => {
+                const parsed = schema.safeParse({ tools: plan.tools ?? [] });
+                if (!parsed.success) throw parsed.error;
+                return Promise.resolve(parsed.data);
+              },
+            ),
       callTool: vi.fn().mockResolvedValue(
         plan.callResult ?? {
           content: [{ type: "text", text: "ok" }],
@@ -90,7 +105,16 @@ describe("McpSdkUpstreamConnector", () => {
     process.env.SLIM_GUARD_TEST_RUNTIME = "node";
     sdk.plans = [
       {
-        tools: [{ name: "echo", inputSchema: { type: "object" } }],
+        tools: [
+          {
+            name: "echo",
+            title: "Echo",
+            inputSchema: { type: "object" },
+            outputSchema: { type: "object" },
+            annotations: { readOnlyHint: true },
+            "x-test-extension": { preserved: true },
+          },
+        ],
         callResult: {
           content: [{ type: "text", text: "complete" }],
           structuredContent: { ok: true },
@@ -109,6 +133,13 @@ describe("McpSdkUpstreamConnector", () => {
 
     expect(session.transportKind).toBe("stdio");
     expect(session.tools.map((entry) => entry.name)).toEqual(["echo"]);
+    expect(session.tools[0]).toMatchObject({
+      title: "Echo",
+      outputSchema: { type: "object" },
+      annotations: { readOnlyHint: true },
+      "x-test-extension": { preserved: true },
+    });
+    expect(sdk.clients[0].request).toHaveBeenCalledWith({ method: "tools/list", params: {} }, expect.anything());
     expect(sdk.transports).toEqual([
       {
         kind: "stdio",

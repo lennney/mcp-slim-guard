@@ -103,7 +103,7 @@ function resolveCompetitor() {
   };
 }
 
-function slimGuardConfig(temporaryDirectory) {
+function slimGuardConfig(temporaryDirectory, auditPath) {
   return {
     version: 1,
     tools: { allow: ["fixture_*"], deny: [] },
@@ -125,13 +125,15 @@ function slimGuardConfig(temporaryDirectory) {
         command: process.execPath,
         args: [fixtureServer],
         cwd: repositoryRoot,
-        env: {},
+        env: {
+          SLIM_GUARD_FIXTURE_AUDIT_PATH: auditPath,
+        },
       },
     },
   };
 }
 
-async function connectProfile(profile, competitor, temporaryDirectory) {
+async function connectProfile(profile, competitor, temporaryDirectory, auditPath) {
   let parameters;
   if (profile === "baseline") {
     parameters = {
@@ -148,7 +150,7 @@ async function connectProfile(profile, competitor, temporaryDirectory) {
   } else {
     fs.writeFileSync(
       path.join(temporaryDirectory, "mcp-slim-guard.yml"),
-      JSON.stringify(slimGuardConfig(temporaryDirectory), null, 2),
+      JSON.stringify(slimGuardConfig(temporaryDirectory, auditPath), null, 2),
       "utf8",
     );
     parameters = {
@@ -160,7 +162,10 @@ async function connectProfile(profile, competitor, temporaryDirectory) {
 
   const transport = new StdioClientTransport({
     ...parameters,
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      SLIM_GUARD_FIXTURE_AUDIT_PATH: auditPath,
+    },
     stderr: "pipe",
   });
   let stderr = "";
@@ -215,43 +220,112 @@ async function runSlimGuardTask(client, task, events) {
     tool_ref: match.tool_ref,
     arguments: task.arguments,
   });
-  if (containsExpected(delivered, task.expected)) return delivered;
-
   const capsule = parseText(delivered);
-  if (!capsule.result_ref) return delivered;
+  if (!capsule.result_ref) {
+    return {
+      finalResult: delivered,
+      exactRecovery: false,
+      recoveredContentSha256: null,
+    };
+  }
 
-  let cursor = capsule.next_cursor;
+  let finalResult = delivered;
+  let cursor = containsExpected(delivered, task.expected) ? null : capsule.next_cursor;
+  if (cursor !== null) {
+    while (cursor !== null) {
+      const page = await callAndRecord(client, events, "retrieval", "read_result", {
+        result_ref: capsule.result_ref,
+        cursor,
+      });
+      if (containsExpected(page, task.expected)) {
+        finalResult = page;
+        break;
+      }
+      cursor = page.structuredContent?.next_cursor;
+    }
+  }
+
+  const chunks = [];
+  cursor = capsule.replay_cursor;
   while (cursor !== null) {
-    const page = await callAndRecord(client, events, "retrieval", "read_result", {
+    const page = await callAndRecord(client, events, "recovery", "read_result", {
       result_ref: capsule.result_ref,
       cursor,
     });
-    if (containsExpected(page, task.expected)) return page;
+    const block = page.content?.[0];
+    if (!block || block.type !== "text") {
+      throw new Error(`Slim Guard returned a non-text recovery page for ${task.id}`);
+    }
+    chunks.push(block.text);
     cursor = page.structuredContent?.next_cursor;
   }
-  return delivered;
+  const payload = chunks.join("");
+  const reconstructed =
+    capsule.encoding === "single-text-v1"
+      ? {
+          content: [{ type: "text", text: payload }],
+          ...(capsule.result_shape ?? {}),
+        }
+      : JSON.parse(payload);
+  if (!containsExpected(reconstructed, task.expected)) {
+    throw new Error(`Slim Guard exact recovery lost the expected result for ${task.id}`);
+  }
+  return {
+    finalResult,
+    exactRecovery: true,
+    recoveredContentSha256: createHash("sha256").update(JSON.stringify(reconstructed.content)).digest("hex"),
+  };
+}
+
+function auditEntries(auditPath) {
+  if (!fs.existsSync(auditPath)) return [];
+  return fs
+    .readFileSync(auditPath, "utf8")
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 async function runProfile(profile, competitor) {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), `slim-guard-bench-${profile}-`));
-  const connection = await connectProfile(profile, competitor, temporaryDirectory);
+  const auditPath = path.join(temporaryDirectory, "fixture-invocations.jsonl");
+  const connection = await connectProfile(profile, competitor, temporaryDirectory, auditPath);
   const results = [];
 
   try {
     for (const task of TASKS) {
       const events = [];
+      const upstreamCallsBefore = auditEntries(auditPath).length;
       const toolsResponse = await connection.client.listTools();
+      const advertisedTools = toolsResponse.tools.map((tool) => tool.name).sort();
+      if (
+        profile === "slim-guard" &&
+        JSON.stringify(advertisedTools) !== JSON.stringify(["call_tool", "find_tool", "read_result"])
+      ) {
+        throw new Error(`Slim Guard exposed an unexpected tool surface: ${advertisedTools.join(", ")}`);
+      }
       recordEvent(events, "tools/list", { method: "tools/list" }, toolsResponse);
 
       let finalResult;
+      let exactRecovery = false;
+      let recoveredContentSha256 = null;
       if (profile === "baseline") {
         finalResult = await runBaselineTask(connection.client, task, events);
       } else if (profile === "mcp-compressor") {
         finalResult = await runCompetitorTask(connection.client, task, events);
       } else {
-        finalResult = await runSlimGuardTask(connection.client, task, events);
+        const slimResult = await runSlimGuardTask(connection.client, task, events);
+        finalResult = slimResult.finalResult;
+        exactRecovery = slimResult.exactRecovery;
+        recoveredContentSha256 = slimResult.recoveredContentSha256;
       }
 
+      const upstreamEntries = auditEntries(auditPath).slice(upstreamCallsBefore);
+      if (upstreamEntries.length !== 1 || upstreamEntries[0].tool !== task.tool) {
+        throw new Error(
+          `${profile} made ${upstreamEntries.length} upstream calls for ${task.id}; expected one ${task.tool} call`,
+        );
+      }
       const success = containsExpected(finalResult, task.expected);
       if (!success) {
         throw new Error(
@@ -259,15 +333,28 @@ async function runProfile(profile, competitor) {
         );
       }
       const promptTokens = tokenCount(task.prompt);
+      const taskEventTokens = events
+        .filter((event) => event.kind !== "recovery")
+        .reduce((sum, event) => sum + event.total_tokens, 0);
+      const recoveryVerificationTokens = events
+        .filter((event) => event.kind === "recovery")
+        .reduce((sum, event) => sum + event.total_tokens, 0);
       results.push({
         task_id: task.id,
         language: task.language,
         success,
         prompt_tokens: promptTokens,
         protocol_events: events.length,
+        advertised_tool_count: advertisedTools.length,
+        upstream_calls: upstreamEntries.length,
         retries: 0,
-        event_tokens: events.reduce((sum, event) => sum + event.total_tokens, 0),
-        total_tokens: promptTokens + events.reduce((sum, event) => sum + event.total_tokens, 0),
+        exact_recovery: exactRecovery,
+        result_content_sha256: createHash("sha256").update(JSON.stringify(finalResult.content)).digest("hex"),
+        recovered_content_sha256: recoveredContentSha256,
+        event_tokens: taskEventTokens,
+        recovery_verification_tokens: recoveryVerificationTokens,
+        total_tokens: promptTokens + taskEventTokens,
+        total_with_recovery_verification_tokens: promptTokens + taskEventTokens + recoveryVerificationTokens,
         events,
       });
     }
@@ -284,8 +371,16 @@ function summarize(results) {
     tasks: results.length,
     successful_tasks: results.filter((result) => result.success).length,
     protocol_events: results.reduce((sum, result) => sum + result.protocol_events, 0),
+    upstream_calls: results.reduce((sum, result) => sum + result.upstream_calls, 0),
+    exact_recoveries: results.filter((result) => result.exact_recovery).length,
+    advertised_tool_counts: [...new Set(results.map((result) => result.advertised_tool_count))],
     retries: results.reduce((sum, result) => sum + result.retries, 0),
     total_tokens: results.reduce((sum, result) => sum + result.total_tokens, 0),
+    recovery_verification_tokens: results.reduce((sum, result) => sum + result.recovery_verification_tokens, 0),
+    total_with_recovery_verification_tokens: results.reduce(
+      (sum, result) => sum + result.total_with_recovery_verification_tokens,
+      0,
+    ),
     average_tokens: Math.round(results.reduce((sum, result) => sum + result.total_tokens, 0) / results.length),
   };
 }
@@ -300,6 +395,12 @@ async function main() {
   for (const profile of ["baseline", "mcp-compressor", "slim-guard"]) {
     profiles[profile] = await runProfile(profile, competitor);
   }
+  for (const slimResult of profiles["slim-guard"].filter((result) => result.exact_recovery)) {
+    const baselineResult = profiles.baseline.find((result) => result.task_id === slimResult.task_id);
+    if (!baselineResult || slimResult.recovered_content_sha256 !== baselineResult.result_content_sha256) {
+      throw new Error(`Exact MCP result recovery did not match baseline for ${slimResult.task_id}`);
+    }
+  }
 
   const summary = Object.fromEntries(
     Object.entries(profiles).map(([profile, results]) => [profile, summarize(results)]),
@@ -312,6 +413,10 @@ async function main() {
       tokenizer: "o200k_base",
       accounting: "prompt plus every MCP tools/list and tools/call request and response payload",
       slim_guard_retrieval: "read until the expected task marker is visible or the snapshot ends",
+      exact_recovery:
+        "Every oversized Slim Guard result is replayed from cursor 0 and its recovered content hash is compared with the baseline MCP result.",
+      upstream_call_accounting:
+        "The fixture MCP server appends one project-local audit entry per invocation; every task must produce exactly one upstream call, including tasks using read_result.",
       limitation: "No model selects tools; this capture measures successful-path task cost, not model accuracy.",
     },
     provenance: {

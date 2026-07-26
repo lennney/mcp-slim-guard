@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -8,6 +9,16 @@ const server = new McpServer({
   name: "slim-guard-task-fixture",
   version: "1.0.0",
 });
+
+function withInvocationAudit(toolName, handler) {
+  return async (args) => {
+    const auditPath = process.env.SLIM_GUARD_FIXTURE_AUDIT_PATH;
+    if (auditPath) {
+      fs.appendFileSync(auditPath, `${JSON.stringify({ tool: toolName, arguments: args })}\n`, "utf8");
+    }
+    return handler(args);
+  };
+}
 
 server.registerTool(
   "search_catalog",
@@ -19,7 +30,7 @@ server.registerTool(
       limit: z.number().int().min(1).max(20).default(3).describe("Maximum result count"),
     },
   },
-  async ({ query, locale, limit }) => ({
+  withInvocationAudit("search_catalog", async ({ query, locale, limit }) => ({
     content: [
       {
         type: "text",
@@ -32,7 +43,7 @@ server.registerTool(
         }),
       },
     ],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -45,7 +56,7 @@ server.registerTool(
       detail: z.enum(["summary", "full"]).describe("Requested detail level"),
     },
   },
-  async ({ report_id, locale, detail }) => {
+  withInvocationAudit("generate_report", async ({ report_id, locale, detail }) => {
     const line =
       locale === "zh"
         ? `报告 ${report_id} 的证据行，包含状态、来源、标识符与可恢复上下文。`
@@ -57,7 +68,7 @@ server.registerTool(
     return {
       content: [{ type: "text", text: `${header}\n${body}\n${marker}` }],
     };
-  },
+  }),
 );
 
 server.registerTool(
@@ -69,9 +80,9 @@ server.registerTool(
       include_inventory: z.boolean().default(false).describe("Include inventory"),
     },
   },
-  async ({ product_id, include_inventory }) => ({
+  withInvocationAudit("get_product", async ({ product_id, include_inventory }) => ({
     content: [{ type: "text", text: JSON.stringify({ product_id, include_inventory }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -83,9 +94,9 @@ server.registerTool(
       fields: z.array(z.string()).max(10).optional().describe("Requested profile fields"),
     },
   },
-  async ({ customer_id, fields }) => ({
+  withInvocationAudit("lookup_customer", async ({ customer_id, fields }) => ({
     content: [{ type: "text", text: JSON.stringify({ customer_id, fields: fields ?? [] }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -98,9 +109,9 @@ server.registerTool(
       limit: z.number().int().min(1).max(100).default(20).describe("Maximum results"),
     },
   },
-  async ({ customer_id, status, limit }) => ({
+  withInvocationAudit("list_orders", async ({ customer_id, status, limit }) => ({
     content: [{ type: "text", text: JSON.stringify({ customer_id, status, limit, orders: [] }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -112,9 +123,9 @@ server.registerTool(
       include_history: z.boolean().default(false).describe("Include status history"),
     },
   },
-  async ({ order_id, include_history }) => ({
+  withInvocationAudit("get_order", async ({ order_id, include_history }) => ({
     content: [{ type: "text", text: JSON.stringify({ order_id, include_history }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -127,9 +138,9 @@ server.registerTool(
       since: z.string().optional().describe("ISO-8601 lower time bound"),
     },
   },
-  async ({ service, severity, since }) => ({
+  withInvocationAudit("list_incidents", async ({ service, severity, since }) => ({
     content: [{ type: "text", text: JSON.stringify({ service, severity, since, incidents: [] }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -142,9 +153,9 @@ server.registerTool(
       priority: z.enum(["low", "normal", "high", "urgent"]).describe("Ticket priority"),
     },
   },
-  async ({ title, priority }) => ({
+  withInvocationAudit("create_ticket", async ({ title, priority }) => ({
     content: [{ type: "text", text: JSON.stringify({ id: "ticket-fixed", title, priority }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -156,9 +167,9 @@ server.registerTool(
       max_chars: z.number().int().min(1).max(50_000).default(10_000).describe("Character budget"),
     },
   },
-  async ({ path, max_chars }) => ({
+  withInvocationAudit("read_document", async ({ path, max_chars }) => ({
     content: [{ type: "text", text: JSON.stringify({ path, max_chars, text: "fixture document" }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -171,9 +182,9 @@ server.registerTool(
       preserve_formatting: z.boolean().default(true).describe("Preserve formatting"),
     },
   },
-  async ({ text, target_language, preserve_formatting }) => ({
+  withInvocationAudit("translate_text", async ({ text, target_language, preserve_formatting }) => ({
     content: [{ type: "text", text: JSON.stringify({ text, target_language, preserve_formatting }) }],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -194,7 +205,7 @@ server.registerTool(
         .describe("Budget line items"),
     },
   },
-  async ({ currency, items }) => ({
+  withInvocationAudit("calculate_budget", async ({ currency, items }) => ({
     content: [
       {
         type: "text",
@@ -204,7 +215,7 @@ server.registerTool(
         }),
       },
     ],
-  }),
+  })),
 );
 
 server.registerTool(
@@ -218,9 +229,9 @@ server.registerTool(
       timezone: z.string().default("UTC").describe("IANA timezone"),
     },
   },
-  async ({ calendar, start, end, timezone }) => ({
+  withInvocationAudit("list_events", async ({ calendar, start, end, timezone }) => ({
     content: [{ type: "text", text: JSON.stringify({ calendar, start, end, timezone, events: [] }) }],
-  }),
+  })),
 );
 
 await server.connect(new StdioServerTransport());

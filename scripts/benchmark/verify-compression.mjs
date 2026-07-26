@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const completeTaskPath = path.join(root, "docs/evidence/2026-07-26-complete-task-capture.json");
 const projectionPath = path.join(root, "docs/evidence/2026-07-26-content-projection-capture.json");
+const stressPath = path.join(root, "docs/evidence/2026-07-27-automatic-compression-stress.json");
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -23,6 +24,7 @@ function totalWithRecoveryVerification(results) {
 
 const complete = readJson(completeTaskPath);
 const projection = readJson(projectionPath);
+const stress = readJson(stressPath);
 const baseline = complete.profiles.baseline;
 const competitor = complete.profiles["mcp-compressor"];
 const slim = complete.profiles["slim-guard"];
@@ -101,6 +103,21 @@ assert.equal(
   "A deterministic projection exceeded the 10 ms fixture budget",
 );
 
+assert.equal(stress.profile, "automatic-alpha-stress-fixture");
+assert.equal(stress.fixture.authorized_tools, 100);
+assert.equal(stress.fixture.result_rows, 8_000);
+assert.equal(stress.normal_path.advertised_tools, 3);
+assert.equal(stress.normal_path.upstream_calls, 1);
+assert.equal(stress.normal_path.target_visible_in_initial_projection, true);
+assert.equal(
+  stress.normal_path.slim_guard_tokens < stress.normal_path.direct_tokens,
+  true,
+  "The automatic stress path did not reduce model-facing protocol tokens",
+);
+assert.equal(stress.forced_full_recovery.exact_hash_match, true);
+assert.equal(stress.integrity.direct_result_sha256, stress.integrity.recovered_result_sha256);
+assert.equal(stress.integrity.upstream_calls, 1);
+
 console.log(
   JSON.stringify(
     {
@@ -127,6 +144,14 @@ console.log(
       slim_total_tokens: complete.summary["slim-guard"].total_tokens,
       competitor_total_tokens: complete.summary["mcp-compressor"].total_tokens,
       projection_cases: projection.results.length,
+      stress_fixture: {
+        authorized_tools: stress.fixture.authorized_tools,
+        result_rows: stress.fixture.result_rows,
+        direct_tokens: stress.normal_path.direct_tokens,
+        slim_tokens: stress.normal_path.slim_guard_tokens,
+        upstream_calls: stress.integrity.upstream_calls,
+        exact_recovery: stress.forced_full_recovery.exact_hash_match,
+      },
     },
     null,
     2,

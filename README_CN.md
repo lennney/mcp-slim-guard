@@ -92,6 +92,8 @@ PASS: Compress what agents see. Preserve what tools do.
 
 ## 压缩范围
 
+压缩由运行时自动完成。正常产品路径不提供“普通/极端”档位、算法菜单或分片大小选项。
+
 | MCP 上下文                      | Slim Guard 交付                   |
 | ------------------------------- | --------------------------------- |
 | 大型授权工具目录                | 三个 Agent 入口，按需发现工具     |
@@ -110,16 +112,23 @@ PASS: Compress what agents see. Preserve what tools do.
 
 | 冻结协议 fixture | 原始 MCP | `mcp-compressor 0.31.6` | Slim Guard |
 | ---------------- | -------: | ----------------------: | ---------: |
-| 正常路径 Token   |   71,388 |                  54,710 | **18,385** |
+| 正常路径 Token   |   71,388 |                  54,710 | **17,007** |
 | Agent 可见工具   |       12 |                       2 |      **3** |
 | 完成任务         |    24/24 |                   24/24 |  **24/24** |
 | 上游调用         |       24 |                      24 |     **24** |
 
-在这组 fixture 中，Slim Guard 正常路径比原始 MCP 少 74.25%，比
-`mcp-compressor` 少 66.40%。23 个大型结果都能精确重建。
+在这组 fixture 中，Slim Guard 正常路径比原始 MCP 少 76.18%，比
+`mcp-compressor` 少 68.91%。23 个大型结果都能精确重建。
 
-两个大报告强制完整恢复后，Slim Guard 使用 39,879 Token，竞品路径使用
-37,975 Token。5.01% 的额外开销已公开，并保留为优化目标。
+两个大报告强制完整恢复后，Slim Guard 使用 39,899 Token，竞品路径使用
+37,975 Token。5.07% 的额外开销已公开，并保留为优化目标。
+
+### 压力上限，不是默认宣传口径
+
+在一个刻意放大的合成 fixture 中，100 个 Tool 返回 8,000 行结果。同一套自动
+Alpha 路径使用 1,437 个模型可见正常路径 Token，原始 MCP 为 499,556；上游
+只调用一次，首个投影包含完成标记，69 次 `read_result` 后精确恢复一致。这是
+压力测试结果，不是用户可以普遍期待的节省率。
 
 无需模型额度即可复现：
 
@@ -130,7 +139,8 @@ npm run bench:compression:verify
 ```
 
 查看
-[基准方法和 capture](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-alpha-benchmark-bilingual.md)及
+[基准方法和 capture](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-alpha-benchmark-bilingual.md)、
+[自动压缩压力证据](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-27-automatic-compression-stress.md)及
 [三类真实 Server 证据](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-real-mcp-server-smoke.md)。
 
 ## 执行契约

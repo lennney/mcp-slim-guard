@@ -94,6 +94,9 @@ PASS: Compress what agents see. Preserve what tools do.
 
 ## What gets compressed
 
+Compression is automatic. There is no normal/extreme selector, algorithm menu,
+or chunk-size control in the product path.
+
 | MCP context                            | Slim Guard delivery                                   |
 | -------------------------------------- | ----------------------------------------------------- |
 | Large authorized tool catalog          | Three model-facing tools with on-demand discovery     |
@@ -114,18 +117,26 @@ result.
 
 | Frozen protocol fixture | Direct MCP | `mcp-compressor 0.31.6` | Slim Guard |
 | ----------------------- | ---------: | ----------------------: | ---------: |
-| Normal-path tokens      |     71,388 |                  54,710 | **18,385** |
+| Normal-path tokens      |     71,388 |                  54,710 | **17,007** |
 | Agent-facing tools      |         12 |                       2 |      **3** |
 | Tasks completed         |      24/24 |                   24/24 |  **24/24** |
 | Upstream calls          |         24 |                      24 |     **24** |
 
-Slim Guard used 74.25% fewer normal-path tokens than direct MCP and 66.40%
+Slim Guard used 76.18% fewer normal-path tokens than direct MCP and 68.91%
 fewer than `mcp-compressor` in this fixture. All 23 oversized result cases
 reconstructed exactly.
 
-Forced full recovery of the two large reports cost 39,879 tokens, compared
-with 37,975 on the competitor path. The disclosed 5.01% overhead remains an
+Forced full recovery of the two large reports cost 39,899 tokens, compared
+with 37,975 on the competitor path. The disclosed 5.07% overhead remains an
 optimization target.
+
+### Stress ceiling, not the default claim
+
+In an intentionally extreme synthetic fixture with 100 Tools and an 8,000-row
+result, the same automatic Alpha path used 1,437 model-facing normal-path
+tokens versus 499,556 for direct MCP. The Tool ran once, the completion marker
+was visible in the first projection, and exact recovery matched after 69
+`read_result` calls. This is a stress result, not an expected savings rate.
 
 Reproduce the evidence without a model quota:
 
@@ -136,7 +147,9 @@ npm run bench:compression:verify
 ```
 
 Read the
-[benchmark method and captures](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-alpha-benchmark-bilingual.md)
+[benchmark method and captures](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-alpha-benchmark-bilingual.md),
+the
+[automatic stress-fixture evidence](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-27-automatic-compression-stress.md),
 and the
 [three-server compatibility capture](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-real-mcp-server-smoke.md).
 

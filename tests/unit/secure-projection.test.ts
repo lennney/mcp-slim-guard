@@ -49,6 +49,24 @@ const tools: Tool[] = [
     description: "List calendar events",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: "agent_search_free_search_advanced",
+    title: "Advanced web search",
+    description: "Search the web with quality controls and optional filters.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        language: { type: "string", description: "Preferred result language" },
+        include_domains: {
+          type: "array",
+          description: "Only return results from these web domains",
+          items: { type: "string" },
+        },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 function parseText(result: CallToolResult): Record<string, unknown> {
@@ -67,6 +85,43 @@ describe("SecureProjectionKernel", () => {
   it("exposes exactly the three product tools", () => {
     const kernel = new SecureProjectionKernel(tools);
     expect(kernel.listTools().map((tool) => tool.name)).toEqual([FIND_TOOL, CALL_TOOL, READ_RESULT]);
+  });
+
+  it("does not preload the catalog into the fixed three-tool surface", () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const findTool = kernel.listTools().find((tool) => tool.name === FIND_TOOL);
+
+    expect(findTool?.description).not.toContain("agent_search_free_search_advanced");
+    expect(findTool?.description).not.toContain("Advanced web search");
+  });
+
+  it("keeps the zero-match catalog preview within its fixed internal budget", async () => {
+    const largeCatalog = Array.from({ length: 100 }, (_, index): Tool => ({
+      name: `namespace_${index}_tool_with_a_long_descriptive_name`,
+      title: `Tool ${index} ${"summary ".repeat(30)}`,
+      description: "The longer description must not expand the public three-tool surface without a bound.",
+      inputSchema: {
+        type: "object",
+        properties: Object.fromEntries(
+          Array.from({ length: 8 }, (__, propertyIndex) => [
+            `parameter_${propertyIndex}_with_a_long_name`,
+            { type: "string" },
+          ]),
+        ),
+      },
+    }));
+    const kernel = new SecureProjectionKernel(largeCatalog);
+    const result = await kernel.call(FIND_TOOL, { query: "no matching capability" }, vi.fn());
+    const body = parseText(result);
+    const preview = String(body.catalog_preview);
+    const weightedChars = Array.from(preview).reduce(
+      (total, character) => total + (character.codePointAt(0)! <= 0x7f ? 1 : 2),
+      0,
+    );
+
+    expect(weightedChars).toBeLessThanOrEqual(1_600);
+    expect(preview).toContain("more authorized tools");
+    expect(preview).toContain("remaining namespaces");
   });
 
   it("finds at most three matches and preserves complete MCP tool metadata", async () => {
@@ -100,6 +155,52 @@ describe("SecureProjectionKernel", () => {
     const matches = body.matches as Array<Record<string, unknown>>;
 
     expect(matches[0]?.name).toBe("files_read_document");
+  });
+
+  it("uses titles and parameter descriptions to rank natural-language intent", async () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const result = await kernel.call(
+      FIND_TOOL,
+      { query: "高级网页搜索 advanced filters result language web domains" },
+      vi.fn(),
+    );
+    const body = parseText(result);
+    const matches = body.matches as Array<Record<string, unknown>>;
+
+    expect(matches[0]?.name).toBe("agent_search_free_search_advanced");
+  });
+
+  it("does not return weak shared-field matches beside a strong intent match", async () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const result = await kernel.call(FIND_TOOL, { query: "advanced web search domains language" }, vi.fn());
+    const body = parseText(result);
+    const matches = body.matches as Array<Record<string, unknown>>;
+
+    expect(matches.map((match) => match.name)).toEqual(["agent_search_free_search_advanced"]);
+  });
+
+  it("returns the compact catalog preview instead of guessing when no tool matches", async () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const result = await kernel.call(FIND_TOOL, { query: "完全未知的能力" }, vi.fn());
+    const body = parseText(result);
+
+    expect(body.matches).toEqual([]);
+    expect(body.catalog_preview).toContain("agent_search_free_search_advanced");
+    expect(body.retry_hint).toContain("catalog terms");
+    expect(body.retry_hint).toContain("untrusted discovery data");
+  });
+
+  it("recovers an English-only catalog from a Chinese discovery miss without guessing", async () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const first = parseText(await kernel.call(FIND_TOOL, { query: "高级网页搜索" }, vi.fn()));
+
+    expect(first.matches).toEqual([]);
+    expect(first.catalog_preview).toContain("agent_search_free_search_advanced");
+    expect(first.catalog_preview).toContain("Advanced web search");
+
+    const retry = parseText(await kernel.call(FIND_TOOL, { query: "advanced web search" }, vi.fn()));
+    const matches = retry.matches as Array<Record<string, unknown>>;
+    expect(matches[0]?.name).toBe("agent_search_free_search_advanced");
   });
 
   it("invokes only a reference issued by the current catalog", async () => {

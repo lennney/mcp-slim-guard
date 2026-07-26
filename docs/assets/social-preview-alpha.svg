@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
   <title id="title">Slim Guard Alpha social preview</title>
-  <desc id="desc">Context compression for MCP. Frozen benchmark reduces normal-path tokens from 71,388 to 18,385 while completing 24 of 24 tasks with 24 upstream calls.</desc>
+  <desc id="desc">Context compression for MCP. Frozen benchmark reduces normal-path tokens from 71,388 to 17,007 while completing 24 of 24 tasks with 24 upstream calls.</desc>
   <defs>
     <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
       <path d="M64 0H0V64" fill="none" stroke="#1a1d1f" stroke-width="1"/>
@@ -29,7 +29,7 @@
   <text x="94" y="451" fill="#9ca1a4" font-family="Space Mono, Geist Mono, Consolas, monospace" font-size="18">FROZEN BILINGUAL MCP FIXTURE</text>
   <text x="94" y="496" fill="#f2f1ec" font-family="Geist Mono, Consolas, monospace" font-size="38" font-weight="750">71,388</text>
   <text x="267" y="496" fill="#666c6f" font-family="Geist Sans, Segoe UI, sans-serif" font-size="36">→</text>
-  <text x="324" y="496" fill="#ff5a1f" font-family="Geist Mono, Consolas, monospace" font-size="38" font-weight="800">18,385</text>
+  <text x="324" y="496" fill="#ff5a1f" font-family="Geist Mono, Consolas, monospace" font-size="38" font-weight="800">17,007</text>
   <text x="530" y="496" fill="#9ca1a4" font-family="Geist Sans, Segoe UI, sans-serif" font-size="22">tokens</text>
 
   <text x="864" y="444" fill="#ff5a1f" font-family="Geist Sans, Segoe UI, sans-serif" font-size="36" font-weight="600" letter-spacing="-1">24/24 tasks</text>

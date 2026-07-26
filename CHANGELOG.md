@@ -7,6 +7,11 @@ numbers are intentionally omitted.
 
 ### Added
 
+- Field-aware, Unicode-normalized Tool discovery with bounded zero-match
+  catalog guidance and no model or remote retrieval dependency.
+- A reproducible 100-Tool, 8,000-row automatic compression stress fixture,
+  explicitly separated from the normal release benchmark.
+
 - Correlated audit traces for policy, upstream execution, result projection,
   fail-open delivery, and bounded recovery.
 - Runtime lifecycle traces for startup health, atomic reload, graceful
@@ -21,6 +26,11 @@ numbers are intentionally omitted.
   result-payload exclusion, including real stdio shutdown.
 
 ### Fixed
+
+- Weak Tool candidates that only share generic schema vocabulary no longer
+  inflate discovery results beside a strong match.
+- Catalog guidance is returned only after zero matches, so normal `tools/list`
+  calls do not preload or repeatedly pay for catalog text.
 
 - Upstream MCP `isError` results are recorded as `upstream_error` instead of
   being misclassified as policy blocks.

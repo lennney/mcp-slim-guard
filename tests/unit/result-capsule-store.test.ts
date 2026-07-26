@@ -44,6 +44,7 @@ describe("ResultCapsuleStore", () => {
 
   it("passes a bounded result through without changing its MCP fields", () => {
     const store = new ResultCapsuleStore();
+    const observer = vi.fn();
     const result = {
       content: [{ type: "text" as const, text: "ok" }],
       structuredContent: { count: 1 },
@@ -51,7 +52,32 @@ describe("ResultCapsuleStore", () => {
       extension: "preserved",
     };
 
-    expect(store.capture(result)).toBe(result);
+    expect(store.capture(result, observer)).toBe(result);
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: "within_budget",
+      }),
+    );
+  });
+
+  it("keeps capture and recovery available when an observation Adapter throws", () => {
+    const store = new ResultCapsuleStore();
+    const throwingObserver = () => {
+      throw new Error("observer unavailable");
+    };
+    const original: CallToolResult = {
+      content: [{ type: "text", text: "large result\n".repeat(4_000) }],
+    };
+
+    const delivered = store.capture(original, throwingObserver);
+    const capsule = parseText(delivered);
+    expect(capsule.result_ref).toEqual(expect.any(String));
+
+    const recovered = store.read({ result_ref: capsule.result_ref, cursor: 0 }, throwingObserver);
+    expect(recovered.isError).not.toBe(true);
+    expect(textChunk(recovered)).toContain("large result");
   });
 
   it("fails open to the exact upstream result when classification fails", () => {
@@ -69,7 +95,13 @@ describe("ResultCapsuleStore", () => {
       content: [{ type: "text", text: "large result\n".repeat(2_000) }],
     };
 
-    expect(store.capture(original)).toBe(original);
+    const observer = vi.fn();
+    expect(store.capture(original, observer)).toBe(original);
+    expect(observer).toHaveBeenCalledWith({
+      phase: "delivery",
+      outcome: "fail_open",
+      reason: "internal_error",
+    });
   });
 
   it("fails open to the exact upstream result when projection fails", () => {
@@ -127,11 +159,12 @@ describe("ResultCapsuleStore", () => {
 
   it("uses raw single-text recovery with a head-tail projection", () => {
     const store = new ResultCapsuleStore();
+    const observer = vi.fn();
     const original: CallToolResult = {
       content: [{ type: "text", text: `BEGIN\n${"middle\n".repeat(4_000)}END-MARKER` }],
     };
 
-    const delivered = store.capture(original);
+    const delivered = store.capture(original, observer);
     const capsule = parseText(delivered);
     const metadata = delivered._meta?.["io.github.lennney/slim-guard"] as Record<string, unknown>;
 
@@ -141,6 +174,14 @@ describe("ResultCapsuleStore", () => {
       projection: "head-tail-v1",
       replay_cursor: 0,
     });
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "delivery",
+        outcome: "projected",
+        projection: "head-tail-v1",
+        referenceId: expect.stringMatching(/^[a-f0-9]{16}$/),
+      }),
+    );
     expect(capsule.preview).toContain("BEGIN");
     expect(capsule.preview).toContain("END-MARKER");
     expect(capsule.preview).toContain("chars omitted");
@@ -152,6 +193,29 @@ describe("ResultCapsuleStore", () => {
     const payload = recoverPayload(store, capsule);
     expect(payload).toBe(original.content[0].text);
     expect(reconstruct(capsule, payload)).toEqual(original);
+  });
+
+  it("observes bounded recovery without exposing the raw result reference", () => {
+    const store = new ResultCapsuleStore();
+    const capsule = parseText(
+      store.capture({
+        content: [{ type: "text", text: `BEGIN\n${"payload\n".repeat(4_000)}END` }],
+      }),
+    );
+    const observer = vi.fn();
+
+    const result = store.read({ result_ref: capsule.result_ref, cursor: 0 }, observer);
+
+    expect(result.isError).not.toBe(true);
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "recovery",
+        outcome: expect.stringMatching(/^(chunk|complete)$/),
+        referenceId: expect.stringMatching(/^[a-f0-9]{16}$/),
+        cursor: 0,
+      }),
+    );
+    expect(JSON.stringify(observer.mock.calls)).not.toContain(String(capsule.result_ref));
   });
 
   it("keeps known completion fields on the single-text fast path", () => {
@@ -323,19 +387,49 @@ describe("ResultCapsuleStore", () => {
     vi.useFakeTimers();
     const store = new ResultCapsuleStore();
     const refs: string[] = [];
+    const observer = vi.fn();
     for (let index = 0; index < 65; index++) {
       const capsule = parseText(
-        store.capture({
-          content: [{ type: "text", text: `${index}:${"x".repeat(20_000)}` }],
-        }),
+        store.capture(
+          {
+            content: [{ type: "text", text: `${index}:${"x".repeat(20_000)}` }],
+          },
+          index === 64 ? observer : undefined,
+        ),
       );
       refs.push(capsule.result_ref as string);
     }
 
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "delivery",
+        outcome: "projected",
+        evictedReferenceId: expect.stringMatching(/^[a-f0-9]{16}$/),
+      }),
+    );
     expect(store.read({ result_ref: refs[0] }).isError).toBe(true);
     expect(store.read({ result_ref: refs[64] }).isError).not.toBe(true);
 
     vi.advanceTimersByTime(5 * 60 * 1_000 + 1);
-    expect(store.read({ result_ref: refs[64] }).isError).toBe(true);
+    const expiryObserver = vi.fn();
+    expect(store.read({ result_ref: refs[64] }, expiryObserver).isError).toBe(true);
+    expect(expiryObserver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "expired",
+        referenceId: expect.stringMatching(/^[a-f0-9]{16}$/),
+      }),
+    );
+
+    const unknownObserver = vi.fn();
+    expect(store.read({ result_ref: "result_missing" }, unknownObserver).isError).toBe(true);
+    expect(unknownObserver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "unknown_result_ref",
+      }),
+    );
   });
 });

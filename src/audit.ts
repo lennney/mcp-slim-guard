@@ -21,7 +21,7 @@ import {
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
 import { randomBytes } from "node:crypto";
-import type { PolicyContext, PolicyResult, AuditEntry } from "./types.js";
+import type { PolicyContext, PolicyResult, AuditEntry, AuditEventDetails } from "./types.js";
 
 /** 决策步骤 — 一个策略的评估结果 */
 export interface DecisionStep {
@@ -265,7 +265,7 @@ class RotatingFileStream extends Writable {
 /** 默认内存中保留的审计条目上限 */
 const DEFAULT_MAX_MEMORY_ENTRIES = 10000;
 
-const SENSITIVE_KEY = /authorization|api[-_]?key|token|password|passwd|secret|cookie|credential/i;
+const SENSITIVE_KEY = /authorization|api[-_]?key|token|password|passwd|secret|cookie|credential|(tool|result)[-_]?ref/i;
 
 /**
  * Recursively clone audit values while redacting common credential fields.
@@ -295,6 +295,7 @@ export class AuditLogger {
   private sessionCounter = 0;
   private rotator: RotatingFileStream | null = null;
   private maxMemoryEntries: number;
+  private closed = false;
 
   constructor(options: AuditLoggerOptions = {}) {
     const { output = "stdout", filePath, level = "info", maxMemoryEntries = DEFAULT_MAX_MEMORY_ENTRIES } = options;
@@ -323,6 +324,11 @@ export class AuditLogger {
     return `s${this.sessionCounter}_${randomBytes(16).toString("hex")}`;
   }
 
+  /** Generate an opaque ID shared by every audit event for one tools/call. */
+  newTrace(): string {
+    return `t_${randomBytes(16).toString("hex")}`;
+  }
+
   /**
    * 记录一条审计日志。
    *
@@ -340,6 +346,7 @@ export class AuditLogger {
     sessionId = "?",
     requestId = 0,
     durationMs?: number,
+    details: AuditEventDetails = {},
   ): void {
     // 防循环引用
     let safeArgs: Record<string, unknown>;
@@ -347,6 +354,15 @@ export class AuditLogger {
       safeArgs = redactAuditValue(ctx.arguments) as Record<string, unknown>;
     } catch {
       safeArgs = { _error: "arguments contained non-serializable values" };
+    }
+
+    let safeMetadata: Record<string, unknown> | undefined;
+    if (details.metadata) {
+      try {
+        safeMetadata = redactAuditValue(details.metadata) as Record<string, unknown>;
+      } catch {
+        safeMetadata = { _error: "metadata contained non-serializable values" };
+      }
     }
 
     const action = result.allowed ? ("allowed" as const) : ("blocked" as const);
@@ -361,13 +377,24 @@ export class AuditLogger {
       action,
       decisionTrail: trail,
       ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(details.traceId ? { traceId: details.traceId } : {}),
+      ...(details.event ? { event: details.event } : {}),
+      ...(details.outcome
+        ? { outcome: details.outcome }
+        : { outcome: result.allowed ? ("success" as const) : ("blocked" as const) }),
+      ...(safeMetadata ? { metadata: safeMetadata } : {}),
       ...(!result.allowed && (result as Extract<PolicyResult, { allowed: false }>).reason
         ? { reason: (result as Extract<PolicyResult, { allowed: false }>).reason }
         : {}),
     };
 
     this.pushEntry(entry);
-    this.logger.info(entry, "audit entry");
+    try {
+      this.logger.info(entry, "audit entry");
+    } catch {
+      // Audit output is best-effort and must never block tool execution.
+      // The bounded in-memory copy remains available for diagnostics.
+    }
   }
 
   /**
@@ -384,10 +411,16 @@ export class AuditLogger {
       arguments: { count: toolCount, tools: toolNames },
       action: "discovery",
       decisionTrail: [],
+      event: "discovery",
+      outcome: "success",
     };
 
     this.pushEntry(entry);
-    this.logger.info(entry, "audit discovery");
+    try {
+      this.logger.info(entry, "audit discovery");
+    } catch {
+      // Discovery must remain available even when the audit sink fails.
+    }
   }
 
   /** 返回所有已记录的审计条目（副本） */
@@ -399,6 +432,26 @@ export class AuditLogger {
   clear(): void {
     this.entries = [];
   }
+
+  /** Flush and close an owned file sink. Shared stdout/stderr remain open. */
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    const rotator = this.rotator;
+    if (!rotator || rotator.destroyed) return;
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        rotator.off("error", finish);
+        resolve();
+      };
+      rotator.once("error", finish);
+      rotator.end(finish);
+    });
+  }
+
   /** 追加一条审计条目，超出内存上限时丢弃最旧的 */
   private pushEntry(entry: AuditEntry): void {
     this.entries.push(entry);

@@ -10,7 +10,11 @@
 
 import { createHash } from "node:crypto";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
-import { ResultCapsuleStore } from "./result-capsule-store.js";
+import {
+  ResultCapsuleStore,
+  type ResultCapsuleObservation,
+  type ResultCapsuleObserver,
+} from "./result-capsule-store.js";
 
 export const FIND_TOOL = "find_tool";
 export const CALL_TOOL = "call_tool";
@@ -26,9 +30,34 @@ interface CatalogEntry {
 export type ProjectionInvoker = (toolName: string, args: Record<string, unknown>) => Promise<CallToolResult>;
 
 export interface ResultDeliveryStore {
-  capture(result: CallToolResult): CallToolResult;
-  read(args: Record<string, unknown>): CallToolResult;
-  clear(): void;
+  capture(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult;
+  read(args: Record<string, unknown>, observer?: ResultCapsuleObserver): CallToolResult;
+  clear(): number | void;
+}
+
+export type ProjectionCallOutcome =
+  | "success"
+  | "invalid_request"
+  | "upstream_error"
+  | "projected"
+  | "pass_through"
+  | "fail_open"
+  | "chunk"
+  | "complete"
+  | "rejected";
+
+export interface ProjectionCallReport {
+  toolName: string;
+  outcome: ProjectionCallOutcome;
+  upstreamInvoked: boolean;
+  upstreamToolName?: string;
+  upstreamIsError?: boolean;
+  capsule?: ResultCapsuleObservation;
+}
+
+export interface ObservedProjectionCall {
+  result: CallToolResult;
+  report: ProjectionCallReport;
 }
 
 function errorResult(message: string): CallToolResult {
@@ -165,7 +194,7 @@ export class SecureProjectionKernel {
     return toolName === FIND_TOOL || toolName === CALL_TOOL || toolName === READ_RESULT;
   }
 
-  replaceCatalog(tools: Tool[]): void {
+  replaceCatalog(tools: Tool[]): { invalidatedResults: number } {
     const orderedTools = [...tools].sort((a, b) => a.name.localeCompare(b.name));
     this.catalogDigest = createHash("sha256").update(JSON.stringify(orderedTools)).digest("hex");
 
@@ -178,19 +207,65 @@ export class SecureProjectionKernel {
       this.entriesByRef.set(entry.ref, entry);
       return entry;
     });
-    this.results.clear();
+    return { invalidatedResults: this.results.clear() ?? 0 };
+  }
+
+  clear(): { invalidatedResults: number } {
+    this.catalogDigest = "";
+    this.entriesByRef.clear();
+    this.orderedEntries = [];
+    return { invalidatedResults: this.results.clear() ?? 0 };
   }
 
   async call(toolName: string, args: Record<string, unknown>, invoke: ProjectionInvoker): Promise<CallToolResult> {
+    return (await this.callObserved(toolName, args, invoke)).result;
+  }
+
+  async callObserved(
+    toolName: string,
+    args: Record<string, unknown>,
+    invoke: ProjectionInvoker,
+  ): Promise<ObservedProjectionCall> {
     switch (toolName) {
-      case FIND_TOOL:
-        return this.findTool(args);
+      case FIND_TOOL: {
+        const result = this.findTool(args);
+        return {
+          result,
+          report: {
+            toolName,
+            outcome: result.isError ? "invalid_request" : "success",
+            upstreamInvoked: false,
+          },
+        };
+      }
       case CALL_TOOL:
-        return this.callTool(args, invoke);
-      case READ_RESULT:
-        return this.readResult(args);
-      default:
-        return errorResult(`Unknown Slim Guard tool: ${toolName}`);
+        return this.callToolObserved(args, invoke);
+      case READ_RESULT: {
+        let capsule: ResultCapsuleObservation | undefined;
+        const result = this.results.read(args, (observation) => {
+          capsule = observation;
+        });
+        return {
+          result,
+          report: {
+            toolName,
+            outcome: capsule?.phase === "recovery" ? capsule.outcome : result.isError ? "rejected" : "complete",
+            upstreamInvoked: false,
+            ...(capsule ? { capsule } : {}),
+          },
+        };
+      }
+      default: {
+        const result = errorResult(`Unknown Slim Guard tool: ${toolName}`);
+        return {
+          result,
+          report: {
+            toolName,
+            outcome: "invalid_request",
+            upstreamInvoked: false,
+          },
+        };
+      }
     }
   }
 
@@ -218,31 +293,66 @@ export class SecureProjectionKernel {
     });
   }
 
-  private async callTool(args: Record<string, unknown>, invoke: ProjectionInvoker): Promise<CallToolResult> {
+  private async callToolObserved(
+    args: Record<string, unknown>,
+    invoke: ProjectionInvoker,
+  ): Promise<ObservedProjectionCall> {
     const toolRef = typeof args.tool_ref === "string" ? args.tool_ref : "";
     const callArgs =
       args.arguments && typeof args.arguments === "object" && !Array.isArray(args.arguments)
         ? (args.arguments as Record<string, unknown>)
         : null;
 
-    if (!toolRef) return errorResult("Missing required parameter: tool_ref");
-    if (!callArgs) return errorResult("Parameter arguments must be an object");
+    if (!toolRef) {
+      return this.invalidCall("Missing required parameter: tool_ref");
+    }
+    if (!callArgs) {
+      return this.invalidCall("Parameter arguments must be an object");
+    }
 
     const entry = this.entriesByRef.get(toolRef);
     if (!entry) {
-      return errorResult("Unknown or stale tool_ref. Call find_tool again.");
+      return this.invalidCall("Unknown or stale tool_ref. Call find_tool again.");
     }
 
     const upstreamResult = await invoke(entry.tool.name, callArgs);
+    let capsule: ResultCapsuleObservation | undefined;
+    let result: CallToolResult;
     try {
-      return this.results.capture(upstreamResult);
+      result = this.results.capture(upstreamResult, (observation) => {
+        capsule = observation;
+      });
     } catch {
-      return upstreamResult;
+      capsule = {
+        phase: "delivery",
+        outcome: "fail_open",
+        reason: "internal_error",
+      };
+      result = upstreamResult;
     }
+    const deliveryOutcome = capsule?.phase === "delivery" ? capsule.outcome : ("pass_through" as const);
+    return {
+      result,
+      report: {
+        toolName: CALL_TOOL,
+        outcome: upstreamResult.isError ? "upstream_error" : deliveryOutcome,
+        upstreamInvoked: true,
+        upstreamToolName: entry.tool.name,
+        upstreamIsError: upstreamResult.isError === true,
+        ...(capsule ? { capsule } : {}),
+      },
+    };
   }
 
-  private readResult(args: Record<string, unknown>): CallToolResult {
-    return this.results.read(args);
+  private invalidCall(message: string): ObservedProjectionCall {
+    return {
+      result: errorResult(message),
+      report: {
+        toolName: CALL_TOOL,
+        outcome: "invalid_request",
+        upstreamInvoked: false,
+      },
+    };
   }
 }
 

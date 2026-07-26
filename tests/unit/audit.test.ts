@@ -123,6 +123,8 @@ describe("AuditLogger", () => {
             safe: "visible",
             headers: { Authorization: "Bearer secret" },
           },
+          tool_ref: "tool-capability",
+          result_ref: "result-capability",
           entries: [{ password: "p@ss" }, { value: 1 }],
         },
       }),
@@ -139,8 +141,57 @@ describe("AuditLogger", () => {
         safe: "visible",
         headers: { Authorization: "[REDACTED]" },
       },
+      tool_ref: "[REDACTED]",
+      result_ref: "[REDACTED]",
       entries: [{ password: "[REDACTED]" }, { value: 1 }],
     });
+  });
+
+  it("records correlated stage outcomes with redacted metadata", () => {
+    logger.log(ctx(), allowed(), [], "s1", 1, 7, {
+      traceId: "t_test",
+      event: "upstream",
+      outcome: "upstream_error",
+      metadata: {
+        result_ref: "result-capability",
+        referenceId: "safe-digest",
+        isError: true,
+      },
+    });
+
+    expect(logger.getEntries()[0]).toMatchObject({
+      traceId: "t_test",
+      event: "upstream",
+      outcome: "upstream_error",
+      action: "allowed",
+      metadata: {
+        result_ref: "[REDACTED]",
+        referenceId: "safe-digest",
+        isError: true,
+      },
+    });
+  });
+
+  it("does not block execution when the configured audit sink throws", () => {
+    (
+      logger as unknown as {
+        logger: { info(): never };
+      }
+    ).logger = {
+      info() {
+        throw new Error("audit sink unavailable");
+      },
+    };
+
+    expect(() =>
+      logger.log(ctx(), allowed(), [], "s1", 1, 1, {
+        traceId: "t_non_blocking",
+        event: "upstream",
+        outcome: "success",
+      }),
+    ).not.toThrow();
+    expect(() => logger.logDiscovery("s1", 2, "projection", 3, ["find_tool"])).not.toThrow();
+    expect(logger.getEntries()).toHaveLength(2);
   });
 
   it("handles multiple sequential logs correctly", () => {
@@ -168,7 +219,7 @@ describe("AuditLogger", () => {
     }
   });
 
-  it("file output mode creates the file with valid JSON content", () => {
+  it("file output mode creates the file with valid JSON content", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "audit-test-"));
     const filePath = join(tmpDir, "audit.log");
 
@@ -199,6 +250,9 @@ describe("AuditLogger", () => {
       expect(parsed).toHaveProperty("durationMs", 15);
     }
 
+    await expect(fileLogger.close()).resolves.toBeUndefined();
+    await expect(fileLogger.close()).resolves.toBeUndefined();
+
     // Cleanup
     rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -213,11 +267,22 @@ describe("AuditLogger", () => {
     }
   });
 
+  it("newTrace generates opaque unique trace IDs", () => {
+    const first = logger.newTrace();
+    const second = logger.newTrace();
+
+    expect(first).toMatch(/^t_[a-f0-9]{32}$/);
+    expect(second).toMatch(/^t_[a-f0-9]{32}$/);
+    expect(second).not.toBe(first);
+  });
+
   it("logDiscovery records discovery events", () => {
     logger.logDiscovery("s_test", 0, "search", 8, ["search_free_search", "search_free_extract"]);
     const entries = logger.getEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].action).toBe("discovery");
+    expect(entries[0].event).toBe("discovery");
+    expect(entries[0].outcome).toBe("success");
     expect(entries[0].toolName).toBe("tools/list");
     expect(entries[0].arguments).toEqual({ count: 8, tools: ["search_free_search", "search_free_extract"] });
   });

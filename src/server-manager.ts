@@ -20,6 +20,28 @@ interface ServerConnection {
   upstream: ConnectedUpstream;
 }
 
+export interface ConnectedUpstreamLifecycle {
+  serverName: string;
+  transportKind: ConnectedUpstream["transportKind"];
+  toolCount: number;
+}
+
+export interface FailedUpstreamLifecycle {
+  serverName: string;
+  errorType: string;
+}
+
+export interface ServerManagerStartReport {
+  configured: number;
+  connected: ConnectedUpstreamLifecycle[];
+  failed: FailedUpstreamLifecycle[];
+}
+
+export interface ServerManagerStopReport {
+  closed: string[];
+  failed: FailedUpstreamLifecycle[];
+}
+
 /**
  * Manages connections to upstream MCP servers.
  *
@@ -57,7 +79,9 @@ export class ServerManager {
    * Errors are handled gracefully: if a server fails to connect or list tools,
    * a warning is logged and the method continues with the remaining servers.
    */
-  async start(): Promise<void> {
+  async start(): Promise<ServerManagerStartReport> {
+    const connected: ConnectedUpstreamLifecycle[] = [];
+    const failed: FailedUpstreamLifecycle[] = [];
     for (const [serverName, serverConfig] of Object.entries(this.servers)) {
       try {
         const upstream = await this.connector.connect(serverName, serverConfig);
@@ -65,10 +89,25 @@ export class ServerManager {
           serverName,
           upstream,
         });
+        connected.push({
+          serverName,
+          transportKind: upstream.transportKind,
+          toolCount: upstream.tools.length,
+        });
       } catch (error) {
-        console.warn(`[mcp-slim-guard] Failed to connect to server "${serverName}":`, error);
+        failed.push({
+          serverName,
+          errorType: error instanceof Error ? error.name : "UnknownError",
+        });
+        const errorType = error instanceof Error ? error.name : "UnknownError";
+        console.warn(`[mcp-slim-guard] Failed to connect to server "${serverName}" (${errorType})`);
       }
     }
+    return {
+      configured: Object.keys(this.servers).length,
+      connected,
+      failed,
+    };
   }
 
   /**
@@ -177,15 +216,24 @@ export class ServerManager {
    * and clears the connection map. Errors during shutdown are logged
    * as warnings but do not prevent other connections from closing.
    */
-  async stop(): Promise<void> {
+  async stop(): Promise<ServerManagerStopReport> {
+    const closed: string[] = [];
+    const failed: FailedUpstreamLifecycle[] = [];
     for (const [, conn] of this.connections) {
       try {
         await conn.upstream.close();
+        closed.push(conn.serverName);
       } catch (error) {
-        console.warn(`[mcp-slim-guard] Error closing upstream "${conn.serverName}":`, error);
+        failed.push({
+          serverName: conn.serverName,
+          errorType: error instanceof Error ? error.name : "UnknownError",
+        });
+        const errorType = error instanceof Error ? error.name : "UnknownError";
+        console.warn(`[mcp-slim-guard] Error closing upstream "${conn.serverName}" (${errorType})`);
       }
     }
 
     this.connections.clear();
+    return { closed, failed };
   }
 }

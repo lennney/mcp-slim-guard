@@ -8,7 +8,7 @@
  * @module result-capsule-store
  */
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ResultSecurityInspector, type ResultSecurityAssessment } from "./result-security.js";
 
@@ -82,11 +82,63 @@ interface ResultChunkMetadata extends Record<string, unknown> {
   done: boolean;
 }
 
+export type ResultDeliveryReason =
+  "within_budget" | "source_like" | "snapshot_verification_failed" | "delivery_verification_failed" | "internal_error";
+
+export interface ResultDeliveryObservation {
+  phase: "delivery";
+  outcome: "pass_through" | "projected" | "fail_open";
+  reason?: ResultDeliveryReason;
+  referenceId?: string;
+  encoding?: ResultEncoding;
+  contentKind?: ResultContentKind;
+  projection?: ProjectionName;
+  originalChars?: number;
+  payloadChars?: number;
+  previewChars?: number;
+  securityFindings?: number;
+  evictedReferenceId?: string;
+}
+
+export interface ResultRecoveryObservation {
+  phase: "recovery";
+  outcome: "chunk" | "complete" | "rejected";
+  reason?:
+    | "missing_result_ref"
+    | "invalid_cursor"
+    | "unknown_result_ref"
+    | "expired"
+    | "cursor_out_of_range"
+    | "unicode_boundary";
+  referenceId?: string;
+  encoding?: ResultEncoding;
+  contentKind?: ResultContentKind;
+  cursor?: number;
+  nextCursor?: number | null;
+  chunkChars?: number;
+}
+
+export type ResultCapsuleObservation = ResultDeliveryObservation | ResultRecoveryObservation;
+export type ResultCapsuleObserver = (observation: ResultCapsuleObservation) => void;
+
 function errorResult(message: string): CallToolResult {
   return {
     content: [{ type: "text", text: message }],
     isError: true,
   };
+}
+
+function referenceId(resultRef: string): string {
+  return createHash("sha256").update(resultRef).digest("hex").slice(0, 16);
+}
+
+function emit(observer: ResultCapsuleObserver | undefined, observation: ResultCapsuleObservation): void {
+  try {
+    observer?.(observation);
+  } catch {
+    // Observability is best-effort. A broken audit Adapter must never change
+    // result delivery or make read_result unavailable.
+  }
 }
 
 function isHighSurrogate(codeUnit: number): boolean {
@@ -436,18 +488,23 @@ export class ResultCapsuleStore {
     "opaque-result": new OpaqueProjectionStrategy(),
   };
 
-  capture(result: CallToolResult): CallToolResult {
+  capture(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult {
     try {
-      return this.captureVerified(result);
+      return this.captureVerified(result, observer);
     } catch {
       // Result compression is post-invocation delivery optimization. An
       // internal classifier, projection, verification, or storage failure
       // must never turn a successful upstream tool call into a failed call.
+      emit(observer, {
+        phase: "delivery",
+        outcome: "fail_open",
+        reason: "internal_error",
+      });
       return result;
     }
   }
 
-  private captureVerified(result: CallToolResult): CallToolResult {
+  private captureVerified(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult {
     const security = this.security.inspect(result);
     const securedResult =
       security.findings.length === 0
@@ -463,11 +520,41 @@ export class ResultCapsuleStore {
             },
           };
     const serialized = JSON.stringify(securedResult);
-    if (serialized.length <= RESULT_BUDGET_CHARS) return securedResult;
+    if (serialized.length <= RESULT_BUDGET_CHARS) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: "within_budget",
+        originalChars: serialized.length,
+        securityFindings: security.findings.length,
+      });
+      return securedResult;
+    }
 
     const snapshot = createSnapshot(securedResult);
-    if (!verifySnapshot(snapshot, serialized)) return securedResult;
-    if (isSourceLikeSnapshot(snapshot)) return securedResult;
+    if (!verifySnapshot(snapshot, serialized)) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "fail_open",
+        reason: "snapshot_verification_failed",
+        originalChars: serialized.length,
+        securityFindings: security.findings.length,
+      });
+      return securedResult;
+    }
+    if (isSourceLikeSnapshot(snapshot)) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: "source_like",
+        encoding: snapshot.encoding,
+        contentKind: snapshot.contentKind,
+        originalChars: snapshot.originalChars,
+        payloadChars: snapshot.payload.length,
+        securityFindings: security.findings.length,
+      });
+      return securedResult;
+    }
     snapshot.contentKind = this.classifier.classify(securedResult, snapshot);
 
     const projection = this.strategies[snapshot.contentKind].project(snapshot);
@@ -511,24 +598,100 @@ export class ResultCapsuleStore {
     if (snapshot.resultShape?.resultType !== undefined) {
       (delivered as CallToolResult & Record<string, unknown>).resultType = snapshot.resultShape.resultType;
     }
-    if (!verifyCapsuleDelivery(delivered, snapshot, projection, metadata)) return securedResult;
-    this.store(resultRef, snapshot);
+    if (!verifyCapsuleDelivery(delivered, snapshot, projection, metadata)) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "fail_open",
+        reason: "delivery_verification_failed",
+        encoding: snapshot.encoding,
+        contentKind: snapshot.contentKind,
+        projection: projection.name,
+        originalChars: snapshot.originalChars,
+        payloadChars: snapshot.payload.length,
+        previewChars: projection.preview.length,
+        securityFindings: security.findings.length,
+      });
+      return securedResult;
+    }
+    const evictedReferenceId = this.store(resultRef, snapshot);
+    emit(observer, {
+      phase: "delivery",
+      outcome: "projected",
+      referenceId: referenceId(resultRef),
+      encoding: snapshot.encoding,
+      contentKind: snapshot.contentKind,
+      projection: projection.name,
+      originalChars: snapshot.originalChars,
+      payloadChars: snapshot.payload.length,
+      previewChars: projection.preview.length,
+      securityFindings: security.findings.length,
+      ...(evictedReferenceId ? { evictedReferenceId } : {}),
+    });
     return delivered;
   }
 
-  read(args: Record<string, unknown>): CallToolResult {
+  read(args: Record<string, unknown>, observer?: ResultCapsuleObserver): CallToolResult {
     const resultRef = typeof args.result_ref === "string" ? args.result_ref : "";
     const cursor = args.cursor === undefined ? 0 : Number(args.cursor);
-    if (!resultRef) return errorResult("Missing required parameter: result_ref");
-    if (!Number.isInteger(cursor) || cursor < 0) return errorResult("cursor must be a non-negative integer");
+    if (!resultRef) {
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "missing_result_ref",
+      });
+      return errorResult("Missing required parameter: result_ref");
+    }
+    const resultReferenceId = referenceId(resultRef);
+    if (!Number.isInteger(cursor) || cursor < 0) {
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "invalid_cursor",
+        referenceId: resultReferenceId,
+      });
+      return errorResult("cursor must be a non-negative integer");
+    }
 
     const stored = this.results.get(resultRef);
-    if (!stored || stored.expiresAt <= Date.now()) {
-      if (stored) this.delete(resultRef);
+    if (!stored) {
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "unknown_result_ref",
+        referenceId: resultReferenceId,
+      });
       return errorResult("Unknown or expired result_ref.");
     }
-    if (cursor > stored.payload.length) return errorResult("cursor is beyond the captured result.");
-    if (!isSafeBoundary(stored.payload, cursor)) return errorResult("cursor splits a Unicode character.");
+    if (stored.expiresAt <= Date.now()) {
+      this.delete(resultRef);
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "expired",
+        referenceId: resultReferenceId,
+      });
+      return errorResult("Unknown or expired result_ref.");
+    }
+    if (cursor > stored.payload.length) {
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "cursor_out_of_range",
+        referenceId: resultReferenceId,
+        cursor,
+      });
+      return errorResult("cursor is beyond the captured result.");
+    }
+    if (!isSafeBoundary(stored.payload, cursor)) {
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "unicode_boundary",
+        referenceId: resultReferenceId,
+        cursor,
+      });
+      return errorResult("cursor splits a Unicode character.");
+    }
 
     const nextCursor = weightedEnd(stored.payload, cursor, RESULT_CHUNK_WEIGHT, RESULT_CHUNK_MAX_CHARS);
     const done = nextCursor >= stored.payload.length;
@@ -541,6 +704,17 @@ export class ResultCapsuleStore {
       done,
     };
 
+    emit(observer, {
+      phase: "recovery",
+      outcome: done ? "complete" : "chunk",
+      referenceId: resultReferenceId,
+      encoding: stored.encoding,
+      contentKind: stored.contentKind,
+      cursor,
+      nextCursor: done ? null : nextCursor,
+      chunkChars: nextCursor - cursor,
+    });
+
     return {
       content: [
         { type: "text", text: stored.payload.slice(cursor, nextCursor) },
@@ -550,12 +724,15 @@ export class ResultCapsuleStore {
     };
   }
 
-  clear(): void {
+  clear(): number {
+    const cleared = this.results.size;
     this.results.clear();
     this.resultOrder = [];
+    return cleared;
   }
 
-  private store(resultRef: string, snapshot: ResultSnapshot): void {
+  private store(resultRef: string, snapshot: ResultSnapshot): string | undefined {
+    let evictedReferenceId: string | undefined;
     this.results.set(resultRef, {
       ...snapshot,
       expiresAt: Date.now() + RESULT_TTL_MS,
@@ -563,8 +740,12 @@ export class ResultCapsuleStore {
     this.resultOrder.push(resultRef);
     while (this.resultOrder.length > MAX_STORED_RESULTS) {
       const oldest = this.resultOrder.shift();
-      if (oldest) this.results.delete(oldest);
+      if (oldest) {
+        this.results.delete(oldest);
+        evictedReferenceId = referenceId(oldest);
+      }
     }
+    return evictedReferenceId;
   }
 
   private delete(resultRef: string): void {

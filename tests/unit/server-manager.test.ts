@@ -36,15 +36,25 @@ describe("ServerManager", () => {
       local: stdioServer(),
       remote: { type: "http" as const, url: "https://mcp.example.test/mcp" },
     };
-    const { connector } = await startManager(servers, {
+    const connector = new InMemoryUpstreamConnector({
       local: { tools: [tool("echo")] },
       remote: { tools: [tool("search")], transportKind: "streamable-http" },
     });
+    const manager = new ServerManager(servers, connector);
+    const report = await manager.start();
 
     expect(connector.connectCalls).toEqual([
       { serverName: "local", server: servers.local },
       { serverName: "remote", server: servers.remote },
     ]);
+    expect(report).toEqual({
+      configured: 2,
+      connected: [
+        { serverName: "local", transportKind: "stdio", toolCount: 1 },
+        { serverName: "remote", transportKind: "streamable-http", toolCount: 1 },
+      ],
+      failed: [],
+    });
   });
 
   it("returns catalog tools with exact server prefixes", async () => {
@@ -166,21 +176,29 @@ describe("ServerManager", () => {
 
   it("continues when one upstream cannot connect", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { manager } = await startManager(
-      {
-        good: stdioServer(),
-        bad: stdioServer(),
-        also_good: stdioServer(),
-      },
-      {
-        good: { tools: [tool("one")] },
-        bad: { tools: [], connectError: new Error("Connection refused") },
-        also_good: { tools: [tool("two")] },
-      },
-    );
+    const servers = {
+      good: stdioServer(),
+      bad: stdioServer(),
+      also_good: stdioServer(),
+    };
+    const connector = new InMemoryUpstreamConnector({
+      good: { tools: [tool("one")] },
+      bad: { tools: [], connectError: new Error("Connection refused") },
+      also_good: { tools: [tool("two")] },
+    });
+    const manager = new ServerManager(servers, connector);
+    const report = await manager.start();
 
     expect(manager.getTools().map((entry) => entry.name)).toEqual(["good_one", "also_good_two"]);
-    expect(warn).toHaveBeenCalledWith('[mcp-slim-guard] Failed to connect to server "bad":', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith('[mcp-slim-guard] Failed to connect to server "bad" (Error)');
+    expect(report).toEqual({
+      configured: 3,
+      connected: [
+        { serverName: "good", transportKind: "stdio", toolCount: 1 },
+        { serverName: "also_good", transportKind: "stdio", toolCount: 1 },
+      ],
+      failed: [{ serverName: "bad", errorType: "Error" }],
+    });
   });
 
   it("closes all sessions and clears the catalog", async () => {
@@ -192,12 +210,13 @@ describe("ServerManager", () => {
       },
     );
 
-    await manager.stop();
+    const report = await manager.stop();
 
     expect(connector.state("one").closed).toBe(true);
     expect(connector.state("two").closed).toBe(true);
     expect(manager.getTools()).toEqual([]);
     expect(manager.resolveTool("one_a")).toBeNull();
+    expect(report).toEqual({ closed: ["one", "two"], failed: [] });
   });
 
   it("continues shutdown when one session close fails", async () => {
@@ -210,11 +229,15 @@ describe("ServerManager", () => {
       },
     );
 
-    await manager.stop();
+    const report = await manager.stop();
 
     expect(connector.state("broken").closed).toBe(true);
     expect(connector.state("healthy").closed).toBe(true);
     expect(warn).toHaveBeenCalled();
+    expect(report).toEqual({
+      closed: ["healthy"],
+      failed: [{ serverName: "broken", errorType: "Error" }],
+    });
   });
 
   it("discovers only connected upstreams", async () => {

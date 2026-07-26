@@ -169,6 +169,35 @@ Slim Guard preserves:
 - the original result when classification, projection, validation, or storage
   fails.
 
+## Trace one call
+
+Every model-facing tool call receives one opaque `traceId`. The audit stream
+then records the stages that actually ran:
+
+```text
+policy/success -> upstream/success -> projection/projected
+recovery/chunk
+```
+
+An upstream MCP error is recorded as `upstream/upstream_error`, not as a policy
+block. Delivery failures are recorded as `projection/fail_open` when the exact
+upstream result is returned.
+
+```bash
+mcp-slim-guard log --file ./mcp-slim-guard-audit.log
+```
+
+Audit entries do not include result bodies or raw `tool_ref` / `result_ref`
+values. Operational metadata includes bounded fields such as content kind,
+projection strategy, character counts, recovery cursor, and whether the
+upstream was invoked. Runtime warnings print error types instead of complete
+Error objects, so stderr does not bypass this boundary.
+
+The same stream records runtime lifecycle states: `starting`, `ready` (or
+`ready_degraded`), `reloading`, `stopping`, and `stopped`. Reload connects the
+candidate upstream set before swapping it in; stdio disconnect, `SIGINT`, and
+`SIGTERM` share one cleanup path.
+
 ## Compatibility
 
 | Path                       | Current evidence                                      |

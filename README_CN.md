@@ -161,6 +161,30 @@ Slim Guard 保留：
 - 无需重跑上游的精确恢复；
 - 分类、投影、校验或存储失败时的原始结果。
 
+## 追踪一次调用
+
+每次模型侧工具调用都会获得一个不透明的 `traceId`。审计流按实际发生的阶段记录：
+
+```text
+policy/success -> upstream/success -> projection/projected
+recovery/chunk
+```
+
+上游 MCP 返回错误时记录为 `upstream/upstream_error`，不会冒充策略拦截。投影交付
+失败但已返回精确上游结果时，记录为 `projection/fail_open`。
+
+```bash
+mcp-slim-guard log --file ./mcp-slim-guard-audit.log
+```
+
+审计条目不写入结果正文，也不保留原始 `tool_ref` / `result_ref`。运维元数据仅包含
+有界字段，例如内容类型、投影策略、字符数、恢复 cursor，以及是否调用过上游。
+runtime warning 只打印错误类型，不打印完整 Error 对象，避免 stderr 绕过这条边界。
+
+同一条审计流还记录 runtime 生命周期：`starting`、`ready`（或
+`ready_degraded`）、`reloading`、`stopping` 和 `stopped`。reload 会先连接
+候选上游，再进行切换；stdio 断开、`SIGINT` 和 `SIGTERM` 复用同一条清理路径。
+
 ## 兼容性
 
 | 路径                  | 当前证据                                      |

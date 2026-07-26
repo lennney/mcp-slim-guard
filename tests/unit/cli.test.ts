@@ -248,6 +248,31 @@ describe("CLI", () => {
 
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tailing"));
     });
+
+    it("renders trace stage and upstream outcome", async () => {
+      const { existsSync, readFileSync } = await import("node:fs");
+      (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        `${JSON.stringify({
+          timestamp: "2026-07-26T13:22:48.000Z",
+          traceId: "t_1234567890abcdef",
+          requestId: 3,
+          serverName: "agent_search",
+          toolName: "agent_search_free_search_advanced",
+          action: "allowed",
+          event: "upstream",
+          outcome: "upstream_error",
+          durationMs: 4,
+        })}\n`,
+      );
+
+      await main(["node", "cli.js", "log"]);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[t_12345678] #3 agent_search:agent_search_free_search_advanced"),
+      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("upstream/upstream_error (4ms)"));
+    });
   });
 
   // ── uninit ───────────────────────────────────────────────────────

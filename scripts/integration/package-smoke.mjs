@@ -168,6 +168,68 @@ function textJson(result) {
   return JSON.parse(block.text);
 }
 
+function verifyAuditTrace(auditFile, toolRef, resultRef) {
+  const entries = fs
+    .readFileSync(auditFile, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const callDelivery = entries.find(
+    (entry) => entry.toolName === "call_tool" && entry.event === "projection" && entry.outcome === "projected",
+  );
+  if (!callDelivery?.traceId) {
+    throw new Error("Audit log did not record the projected call_tool delivery trace");
+  }
+
+  const callStages = entries.filter((entry) => entry.traceId === callDelivery.traceId);
+  for (const expected of [
+    ["policy", "success"],
+    ["upstream", "success"],
+    ["projection", "projected"],
+  ]) {
+    if (!callStages.some((entry) => entry.event === expected[0] && entry.outcome === expected[1])) {
+      throw new Error(`Audit trace is missing ${expected[0]}/${expected[1]}`);
+    }
+  }
+  if (callStages.some((entry) => entry.action === "blocked")) {
+    throw new Error("Successful package call was misclassified as blocked");
+  }
+
+  const recovery = entries.find(
+    (entry) =>
+      entry.toolName === "read_result" &&
+      entry.event === "recovery" &&
+      (entry.outcome === "chunk" || entry.outcome === "complete"),
+  );
+  if (!recovery?.traceId) {
+    throw new Error("Audit log did not record the read_result recovery trace");
+  }
+
+  const lifecycleStates = entries.filter((entry) => entry.event === "lifecycle").map((entry) => entry.toolName);
+  for (const expected of ["runtime/starting", "runtime/ready", "runtime/stopping", "runtime/stopped"]) {
+    if (!lifecycleStates.includes(expected)) {
+      throw new Error(`Audit log is missing lifecycle state ${expected}`);
+    }
+  }
+
+  const serialized = JSON.stringify(entries);
+  if (serialized.includes(toolRef) || serialized.includes(resultRef)) {
+    throw new Error("Audit log retained a raw tool_ref or result_ref");
+  }
+  if (serialized.includes("PACKAGE_SMOKE:")) {
+    throw new Error("Audit log retained result payload content");
+  }
+
+  return {
+    events: entries.map((entry) => `${entry.event ?? "legacy"}/${entry.outcome ?? entry.action}`),
+    call_trace_stages: callStages.map((entry) => `${entry.event}/${entry.outcome}`),
+    recovery_outcome: recovery.outcome,
+    lifecycle_states: lifecycleStates,
+    raw_references_logged: false,
+    result_payload_logged: false,
+  };
+}
+
 let client;
 try {
   const requestedTarball = process.argv[2];
@@ -188,12 +250,8 @@ try {
   const installedPackage = path.join(installDirectory, "node_modules", "mcp-slim-guard");
   const cli = path.join(installedPackage, "dist", "cli.js");
   if (!fs.existsSync(cli)) throw new Error("Installed tarball does not contain dist/cli.js");
-  const sourceVersion = JSON.parse(
-    fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
-  ).version;
-  const installedVersion = JSON.parse(
-    fs.readFileSync(path.join(installedPackage, "package.json"), "utf8"),
-  ).version;
+  const sourceVersion = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8")).version;
+  const installedVersion = JSON.parse(fs.readFileSync(path.join(installedPackage, "package.json"), "utf8")).version;
   if (installedVersion !== sourceVersion) {
     throw new Error(`Installed version ${installedVersion} does not match source ${sourceVersion}`);
   }
@@ -293,6 +351,7 @@ servers:
 
   await client.close();
   client = undefined;
+  const audit = verifyAuditTrace(path.join(runtimeDirectory, "audit.log"), match.tool_ref, capsule.result_ref);
   runNpm(["uninstall", "--ignore-scripts", "--no-audit", "--no-fund", "mcp-slim-guard"], {
     cwd: installDirectory,
   });
@@ -310,6 +369,7 @@ servers:
       marker,
       projection: capsule.projection,
       upstream_calls: 1,
+      audit,
       codex,
       uninstalled: true,
       passed: true,

@@ -150,8 +150,37 @@ describe("SecureProjectionKernel", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(invoke.mock.calls[0]?.[1]).toBe(exactArguments);
     expect(delivery.capture).toHaveBeenCalledTimes(1);
-    expect(delivery.capture).toHaveBeenCalledWith(upstreamResult);
+    expect(delivery.capture).toHaveBeenCalledWith(upstreamResult, expect.any(Function));
     expect(result).toBe(upstreamResult);
+  });
+
+  it("reports upstream errors as allowed upstream outcomes rather than projection rejection", async () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const find = parseText(await kernel.call(FIND_TOOL, { query: "search repositories" }, vi.fn()));
+    const match = (find.matches as Array<Record<string, unknown>>)[0];
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "UNSUPPORTED_FILTER" }],
+      isError: true,
+    });
+
+    const observed = await kernel.callObserved(
+      CALL_TOOL,
+      { tool_ref: match.tool_ref, arguments: { query: "mcp", time_range: "day" } },
+      invoke,
+    );
+
+    expect(observed.result.isError).toBe(true);
+    expect(observed.report).toMatchObject({
+      outcome: "upstream_error",
+      upstreamInvoked: true,
+      upstreamToolName: "github_search_repositories",
+      upstreamIsError: true,
+      capsule: {
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: "within_budget",
+      },
+    });
   });
 
   it("captures a large result once and retrieves bounded chunks without re-invoking", async () => {
@@ -221,13 +250,19 @@ describe("SecureProjectionKernel", () => {
     const kernel = new SecureProjectionKernel(tools);
     const find = parseText(await kernel.call(FIND_TOOL, { query: "search" }, vi.fn()));
     const oldRef = (find.matches as Array<Record<string, unknown>>)[0].tool_ref;
-    const invoke = vi.fn();
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "x".repeat(25_000) }],
+    });
+    const delivered = parseText(await kernel.call(CALL_TOOL, { tool_ref: oldRef, arguments: {} }, invoke));
 
-    kernel.replaceCatalog([tools[1]]);
+    const lifecycle = kernel.replaceCatalog([tools[1]]);
     const result = await kernel.call(CALL_TOOL, { tool_ref: oldRef, arguments: {} }, invoke);
+    const recovered = await kernel.call(READ_RESULT, { result_ref: delivered.result_ref }, invoke);
 
+    expect(lifecycle).toEqual({ invalidatedResults: 1 });
     expect(result.isError).toBe(true);
-    expect(invoke).not.toHaveBeenCalled();
+    expect(recovered.isError).toBe(true);
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 });
 

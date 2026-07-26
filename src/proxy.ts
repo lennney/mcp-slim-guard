@@ -13,15 +13,51 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import type { GuardConfig } from "./config-types.js";
-import type { PolicyContext, PolicyResult } from "./types.js";
+import type { AuditOutcome, PolicyContext, PolicyResult } from "./types.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PolicyPipeline } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager } from "./server-manager.js";
 import { generateTools, handleWrapperTool, whitelistFilter, PREFIX } from "./compressor.js";
 import { ToolCache } from "./cache.js";
-import { SecureProjectionKernel, usesSecureProjection } from "./secure-projection.js";
+import {
+  CALL_TOOL,
+  FIND_TOOL,
+  READ_RESULT,
+  SecureProjectionKernel,
+  usesSecureProjection,
+  type ObservedProjectionCall,
+  type ProjectionCallReport,
+} from "./secure-projection.js";
 import { VERSION } from "./index.js";
+
+function projectionAuditArguments(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (toolName === CALL_TOOL) {
+    return { tool_ref: args.tool_ref };
+  }
+  if (toolName === READ_RESULT) {
+    return { result_ref: args.result_ref, cursor: args.cursor };
+  }
+  if (toolName === FIND_TOOL) {
+    return { query: args.query };
+  }
+  return {};
+}
+
+function projectionReportMetadata(report: ProjectionCallReport): Record<string, unknown> {
+  return {
+    upstreamInvoked: report.upstreamInvoked,
+    ...(report.upstreamToolName ? { upstreamToolName: report.upstreamToolName } : {}),
+    ...(report.upstreamIsError !== undefined ? { upstreamIsError: report.upstreamIsError } : {}),
+    ...(report.capsule ? { capsule: report.capsule } : {}),
+  };
+}
+
+interface ForwardTraceState {
+  upstreamInvoked: boolean;
+  outcome?: "success" | "blocked" | "invalid_request" | "cache_hit" | "upstream_error" | "transport_error";
+  reason?: string;
+}
 
 /**
  * Core proxy engine that wraps an MCP Server with policy enforcement and
@@ -70,11 +106,15 @@ export class GuardProxy {
    * @param transport - The transport to listen on
    */
   async start(transport: Transport): Promise<void> {
-    await this.serverManager.start();
-
+    const lifecycleStarted = Date.now();
     // Generate new session ID
     this.sessionId = this.audit.newSession();
     this.requestCounter = 0;
+    this.recordLifecycle("starting", "success", {
+      configuredServers: Object.keys(this.config.servers).length,
+    });
+
+    const startReport = await this.serverManager.start();
 
     // Initialize cache if configured
     this.cache = this.config.cache?.enabled ? new ToolCache(this.config.cache) : null;
@@ -83,7 +123,7 @@ export class GuardProxy {
 
     // Full tool list (from upstream, with prefixed names)
     this.fullTools = this.serverManager.getTools();
-    this.refreshProjection();
+    this.projection = this.buildProjection(this.config, this.serverManager, this.fullTools);
 
     // Register tools/list handler — compressor aware
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -98,15 +138,46 @@ export class GuardProxy {
           tools,
         };
       } catch (err) {
-        console.error("[proxy] tools/list handler error:", err);
+        this.audit.log(
+          { toolName: "tools/list", arguments: {}, serverName: "projection" },
+          { allowed: true },
+          [],
+          this.sessionId,
+          ++this.requestCounter,
+          0,
+          {
+            event: "discovery",
+            outcome: "internal_error",
+            metadata: { errorType: err instanceof Error ? err.name : "UnknownError" },
+          },
+        );
+        console.error("[proxy] tools/list handler error:", err instanceof Error ? err.name : "UnknownError");
         return { tools: [] };
       }
     });
 
     // Core tool call logic: resolve → policy → audit → forward
-    const forwardToolCall = async (prefixedName: string, args: Record<string, unknown>): Promise<CallToolResult> => {
+    const forwardToolCall = async (
+      prefixedName: string,
+      args: Record<string, unknown>,
+      traceId: string,
+      traceState?: ForwardTraceState,
+    ): Promise<CallToolResult> => {
       const resolved = this.serverManager.resolveTool(prefixedName);
       if (!resolved) {
+        if (traceState) {
+          traceState.outcome = "invalid_request";
+          traceState.reason = "Unknown or ambiguous tool";
+        }
+        this.audit.log(
+          { toolName: prefixedName, arguments: {}, serverName: "routing" },
+          { allowed: false, reason: "Unknown or ambiguous tool", policy: "routing" },
+          [],
+          this.sessionId,
+          ++this.requestCounter,
+          0,
+          { traceId, event: "routing", outcome: "invalid_request" },
+        );
         return {
           content: [{ type: "text" as const, text: `Unknown tool: ${prefixedName}` }],
           isError: true,
@@ -127,13 +198,33 @@ export class GuardProxy {
       };
 
       const startTime = Date.now();
-      const { result, trail } = await this.pipeline.executeWithTrail(ctx);
+      let result: PolicyResult;
+      let trail: Awaited<ReturnType<PolicyPipeline["executeWithTrail"]>>["trail"];
+      try {
+        ({ result, trail } = await this.pipeline.executeWithTrail(ctx));
+      } catch (error) {
+        this.audit.log(ctx, { allowed: true }, [], this.sessionId, ++this.requestCounter, Date.now() - startTime, {
+          traceId,
+          event: "policy",
+          outcome: "internal_error",
+          metadata: { errorType: error instanceof Error ? error.name : "UnknownError" },
+        });
+        throw error;
+      }
       const durationMs = Date.now() - startTime;
       const reqId = ++this.requestCounter;
 
-      this.audit.log(ctx, result, trail, this.sessionId, reqId, durationMs);
+      this.audit.log(ctx, result, trail, this.sessionId, reqId, durationMs, {
+        traceId,
+        event: "policy",
+        outcome: result.allowed ? "success" : "blocked",
+      });
 
       if (!result.allowed) {
+        if (traceState) {
+          traceState.outcome = "blocked";
+          traceState.reason = result.reason;
+        }
         return {
           content: [
             {
@@ -150,20 +241,71 @@ export class GuardProxy {
       if (this.cache && this.cache.isCacheable(prefixedName)) {
         const cached = this.cache.get(prefixedName, args);
         if (cached) {
+          if (traceState) traceState.outcome = "cache_hit";
           // Audit cache hit
           this.audit.log(
-            ctx,
+            { ...ctx, arguments: {} },
             { allowed: true },
             [{ policy: "cache", result: "pass" }],
             this.sessionId,
             ++this.requestCounter,
             Date.now() - startTime,
+            {
+              traceId,
+              event: "cache",
+              outcome: "cache_hit",
+              metadata: { upstreamInvoked: false },
+            },
           );
           return { ...cached, resultType: "complete" as const };
         }
       }
 
-      const callResult = await this.serverManager.callTool(serverName, originalToolName, args);
+      const upstreamStarted = Date.now();
+      let callResult: CallToolResult;
+      if (traceState) traceState.upstreamInvoked = true;
+      try {
+        callResult = await this.serverManager.callTool(serverName, originalToolName, args);
+      } catch (error) {
+        if (traceState) traceState.outcome = "transport_error";
+        this.audit.log(
+          { ...ctx, arguments: {} },
+          { allowed: true },
+          [],
+          this.sessionId,
+          ++this.requestCounter,
+          Date.now() - upstreamStarted,
+          {
+            traceId,
+            event: "upstream",
+            outcome: "transport_error",
+            metadata: {
+              upstreamInvoked: true,
+              errorType: error instanceof Error ? error.name : "UnknownError",
+            },
+          },
+        );
+        throw error;
+      }
+      if (traceState) traceState.outcome = callResult.isError ? "upstream_error" : "success";
+      this.audit.log(
+        { ...ctx, arguments: {} },
+        { allowed: true },
+        [],
+        this.sessionId,
+        ++this.requestCounter,
+        Date.now() - upstreamStarted,
+        {
+          traceId,
+          event: "upstream",
+          outcome: callResult.isError ? "upstream_error" : "success",
+          metadata: {
+            upstreamInvoked: true,
+            isError: callResult.isError === true,
+            contentBlocks: callResult.content.length,
+          },
+        },
+      );
 
       // Cache write — store result for future calls
       if (this.cache && this.cache.isCacheable(prefixedName)) {
@@ -180,20 +322,75 @@ export class GuardProxy {
       const params = request.params;
       const prefixedName = params.name;
       const args: Record<string, unknown> = params.arguments ?? {};
+      const traceId = this.audit.newTrace();
 
       if (this.projection?.handles(prefixedName)) {
-        const projectionResult = await this.projection.call(prefixedName, args, forwardToolCall);
+        const started = Date.now();
+        const traceState: ForwardTraceState = { upstreamInvoked: false };
+        let observed: ObservedProjectionCall;
+        try {
+          observed = await this.projection.callObserved(prefixedName, args, (targetName, targetArgs) =>
+            forwardToolCall(targetName, targetArgs, traceId, traceState),
+          );
+        } catch (error) {
+          this.audit.log(
+            {
+              toolName: prefixedName,
+              arguments: projectionAuditArguments(prefixedName, args),
+              serverName: "projection",
+            },
+            { allowed: true },
+            [],
+            this.sessionId,
+            ++this.requestCounter,
+            Date.now() - started,
+            {
+              traceId,
+              event: prefixedName === READ_RESULT ? "recovery" : "projection",
+              outcome: traceState.outcome === "transport_error" ? "transport_error" : "internal_error",
+              metadata: {
+                upstreamInvoked: traceState.upstreamInvoked,
+                errorType: error instanceof Error ? error.name : "UnknownError",
+              },
+            },
+          );
+          throw error;
+        }
+        const effectiveOutcome =
+          traceState.outcome === "blocked" || traceState.outcome === "invalid_request"
+            ? traceState.outcome
+            : observed.report.outcome;
+        const rejected =
+          effectiveOutcome === "blocked" || effectiveOutcome === "invalid_request" || effectiveOutcome === "rejected";
         this.audit.log(
-          { toolName: prefixedName, arguments: args, serverName: "projection" },
-          projectionResult.isError
-            ? { allowed: false, reason: "Projection request rejected", policy: "projection" }
+          {
+            toolName: prefixedName,
+            arguments: projectionAuditArguments(prefixedName, args),
+            serverName: "projection",
+          },
+          rejected
+            ? {
+                allowed: false,
+                reason: traceState.reason ?? "Projection request rejected",
+                policy: "projection",
+              }
             : { allowed: true },
           [],
           this.sessionId,
           ++this.requestCounter,
-          0,
+          Date.now() - started,
+          {
+            traceId,
+            event: prefixedName === READ_RESULT ? "recovery" : "projection",
+            outcome: effectiveOutcome,
+            metadata: {
+              ...projectionReportMetadata(observed.report),
+              upstreamInvoked:
+                traceState.outcome === undefined ? observed.report.upstreamInvoked : traceState.upstreamInvoked,
+            },
+          },
         );
-        return projectionResult;
+        return observed.result;
       }
 
       // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
@@ -202,7 +399,7 @@ export class GuardProxy {
         // (pipeline stage 0 logic, applied here for the call path)
         const filteredTools = whitelistFilter(this.config.tools.allow, this.config.tools.deny)(this.fullTools);
         const wrapperResult = await handleWrapperTool(prefixedName, args, filteredTools, (targetName, targetArgs) =>
-          forwardToolCall(targetName, targetArgs),
+          forwardToolCall(targetName, targetArgs, traceId),
         );
         if (wrapperResult) {
           // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
@@ -214,27 +411,87 @@ export class GuardProxy {
             this.sessionId,
             reqId,
             0,
+            { traceId, event: "projection", outcome: "success" },
           );
           return wrapperResult;
         }
       }
 
       // Real tool → security pipeline
-      return forwardToolCall(prefixedName, args);
+      return forwardToolCall(prefixedName, args, traceId);
     });
 
-    await this.server.connect(transport);
+    try {
+      await this.server.connect(transport);
+    } catch (error) {
+      let downstreamCloseErrorType: string | undefined;
+      try {
+        await this.server.close();
+      } catch (closeError) {
+        downstreamCloseErrorType = closeError instanceof Error ? closeError.name : "UnknownError";
+      }
+      const stopReport = await this.serverManager.stop();
+      this.recordLifecycle(
+        "start_failed",
+        "internal_error",
+        {
+          errorType: error instanceof Error ? error.name : "UnknownError",
+          upstreamClosed: stopReport.closed,
+          upstreamCloseFailures: stopReport.failed,
+          ...(downstreamCloseErrorType ? { downstreamCloseErrorType } : {}),
+        },
+        Date.now() - lifecycleStarted,
+      );
+      this.server = null;
+      await this.audit.close();
+      throw error;
+    }
+
+    this.recordLifecycle(
+      startReport.failed.length > 0 ? "ready_degraded" : "ready",
+      startReport.failed.length > 0 ? "degraded" : "success",
+      {
+        configuredServers: startReport.configured,
+        connectedUpstreams: startReport.connected,
+        failedUpstreams: startReport.failed,
+        catalogTools: this.fullTools.length,
+        modelFacingTools: this.projection ? 3 : this.fullTools.length,
+      },
+      Date.now() - lifecycleStarted,
+    );
   }
 
   /**
    * Stop the proxy: close the MCP Server and stop the ServerManager.
    */
   async stop(): Promise<void> {
+    const lifecycleStarted = Date.now();
+    this.recordLifecycle("stopping", "success");
+    let downstreamErrorType: string | undefined;
     if (this.server) {
-      await this.server.close();
+      try {
+        await this.server.close();
+      } catch (error) {
+        downstreamErrorType = error instanceof Error ? error.name : "UnknownError";
+      }
       this.server = null;
     }
-    await this.serverManager.stop();
+    const stopReport = await this.serverManager.stop();
+    this.cache?.clear();
+    const invalidatedResults = this.projection?.clear().invalidatedResults ?? 0;
+    const degraded = downstreamErrorType !== undefined || stopReport.failed.length > 0;
+    this.recordLifecycle(
+      degraded ? "stopped_degraded" : "stopped",
+      degraded ? "degraded" : "success",
+      {
+        upstreamClosed: stopReport.closed,
+        upstreamCloseFailures: stopReport.failed,
+        ...(downstreamErrorType ? { downstreamErrorType } : {}),
+        invalidatedResults,
+      },
+      Date.now() - lifecycleStarted,
+    );
+    await this.audit.close();
   }
 
   /**
@@ -247,36 +504,72 @@ export class GuardProxy {
    * @param newAudit - Optional new audit logger
    * @param newServerManager - Optional new server manager (already started)
    */
-  reload(
+  async reload(
     newConfig: GuardConfig,
     newPipeline: PolicyPipeline,
     newAudit?: AuditLogger,
     newServerManager?: ServerManager,
-  ): void {
+    lifecycleMetadata: Record<string, unknown> = {},
+  ): Promise<void> {
+    const nextServerManager = newServerManager ?? this.serverManager;
+    const nextFullTools = newServerManager ? nextServerManager.getTools() : this.fullTools;
+    // Prepare every fallible derived object before mutating the active runtime.
+    const nextProjection = this.buildProjection(newConfig, nextServerManager, nextFullTools);
+    const nextCache = newConfig.cache?.enabled ? new ToolCache(newConfig.cache) : null;
+
+    const previousAudit = this.audit;
+    const previousProjection = this.projection;
     this.config = newConfig;
     this.pipeline = newPipeline;
-    // Rebuild cache with new config (clears old entries)
-    if (newConfig.cache?.enabled) {
-      this.cache = new ToolCache(newConfig.cache);
-    } else {
-      this.cache = null;
-    }
+    this.cache = nextCache;
     if (newAudit) {
       this.audit = newAudit;
     }
     if (newServerManager) {
-      this.serverManager = newServerManager;
-      // Refresh the cached tool list served by tools/list + compressor discovery
-      this.fullTools = newServerManager.getTools();
+      this.serverManager = nextServerManager;
+      this.fullTools = nextFullTools;
     }
-    this.refreshProjection();
+    this.projection = nextProjection;
+    let invalidatedResults = 0;
+    let invalidationErrorType: string | undefined;
+    try {
+      invalidatedResults = previousProjection?.clear().invalidatedResults ?? 0;
+    } catch (error) {
+      invalidationErrorType = error instanceof Error ? error.name : "UnknownError";
+    }
+    this.recordLifecycle(
+      invalidationErrorType ? "reloaded_degraded" : "reloaded",
+      invalidationErrorType ? "degraded" : "success",
+      {
+        ...lifecycleMetadata,
+        catalogTools: this.fullTools.length,
+        invalidatedResults,
+        ...(invalidationErrorType ? { invalidationErrorType } : {}),
+      },
+    );
+    if (previousAudit !== this.audit) {
+      await previousAudit.close();
+    }
+  }
+
+  recordLifecycle(
+    state: string,
+    outcome: Extract<AuditOutcome, "success" | "degraded" | "internal_error">,
+    metadata: Record<string, unknown> = {},
+    durationMs = 0,
+  ): void {
     this.audit.log(
-      { toolName: "<reload>", arguments: {}, serverName: "system" },
+      { toolName: `runtime/${state}`, arguments: {}, serverName: "system" },
       { allowed: true },
       [],
       this.sessionId,
       ++this.requestCounter,
-      0,
+      durationMs,
+      {
+        event: "lifecycle",
+        outcome,
+        metadata,
+      },
     );
   }
 
@@ -299,25 +592,23 @@ export class GuardProxy {
    * The legacy compressor remains available for old configs and unadvertised
    * mcp__* aliases, but newly generated light configs use this kernel.
    */
-  private refreshProjection(): void {
-    const compressor = this.config.compressor ?? { enabled: false, level: "off" as const };
+  private buildProjection(
+    config: GuardConfig,
+    serverManager: ServerManager,
+    fullTools: Tool[],
+  ): SecureProjectionKernel | null {
+    const compressor = config.compressor ?? { enabled: false, level: "off" as const };
     if (!usesSecureProjection(compressor)) {
-      this.projection = null;
-      return;
+      return null;
     }
 
-    const allow = this.config.tools.allow.filter(Boolean);
-    const deny = this.config.tools.deny.filter(Boolean);
-    const authorizedTools = allow.length === 0 ? [] : whitelistFilter(allow, deny)(this.fullTools);
+    const allow = config.tools.allow.filter(Boolean);
+    const deny = config.tools.deny.filter(Boolean);
+    const authorizedTools = allow.length === 0 ? [] : whitelistFilter(allow, deny)(fullTools);
     // A flattened legacy name can collide when server and tool names both
     // contain underscores. Never advertise a reference that cannot resolve to
     // exactly one catalog route.
-    const visibleTools = authorizedTools.filter((tool) => this.serverManager.resolveTool(tool.name) !== null);
-
-    if (this.projection) {
-      this.projection.replaceCatalog(visibleTools);
-    } else {
-      this.projection = new SecureProjectionKernel(visibleTools);
-    }
+    const visibleTools = authorizedTools.filter((tool) => serverManager.resolveTool(tool.name) !== null);
+    return new SecureProjectionKernel(visibleTools);
   }
 }

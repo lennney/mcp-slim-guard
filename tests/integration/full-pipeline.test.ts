@@ -269,13 +269,15 @@ describe("GuardProxy Full Pipeline", () => {
       });
 
       const entries = ctx.audit.getEntries();
-      expect(entries.length).toBeGreaterThanOrEqual(2);
+      const requestEntries = entries.filter((entry) => entry.event === "policy" || entry.event === "upstream");
+      expect(requestEntries.length).toBeGreaterThanOrEqual(4);
+      expect(entries.some((entry) => entry.toolName === "runtime/ready")).toBe(true);
 
-      const entryNames = entries.map((e) => e.toolName);
+      const entryNames = requestEntries.map((e) => e.toolName);
       expect(entryNames).toContain("mock_echo");
       expect(entryNames).toContain("mock_add");
 
-      for (const entry of entries) {
+      for (const entry of requestEntries) {
         expect(entry.action).toBe("allowed");
         expect(entry.serverName).toBe(SERVER_NAME);
         expect(entry.timestamp).toBeDefined();
@@ -298,9 +300,10 @@ describe("GuardProxy Full Pipeline", () => {
       });
 
       const entries = ctx.audit.getEntries();
-      expect(entries.length).toBeGreaterThanOrEqual(1);
 
-      const entry = entries[0];
+      const entry = entries.find((candidate) => candidate.toolName === "mock_echo" && candidate.event === "policy");
+      expect(entry).toBeDefined();
+      if (!entry) throw new Error("Expected blocked policy audit entry");
       expect(entry.toolName).toBe("mock_echo");
       expect(entry.action).toBe("blocked");
       expect(entry.reason).toBeDefined();

@@ -40,6 +40,46 @@ import {
 } from "./secure-projection.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
+interface AuditDisplayEntry {
+  timestamp?: string;
+  traceId?: string;
+  requestId?: number;
+  toolName?: string;
+  serverName?: string;
+  action?: string;
+  event?: string;
+  outcome?: string;
+  reason?: string;
+  durationMs?: number;
+}
+
+function auditIcon(entry: AuditDisplayEntry): string {
+  if (["upstream_error", "fail_open", "degraded"].includes(entry.outcome ?? "")) return "⚠️";
+  if (entry.outcome === "projected") return "📦";
+  if (entry.event === "recovery" && ["chunk", "complete"].includes(entry.outcome ?? "")) return "📖";
+  if (entry.outcome === "cache_hit") return "♻️";
+  if (entry.event === "discovery") return "🔎";
+  if (
+    entry.action === "blocked" ||
+    ["blocked", "invalid_request", "transport_error", "internal_error", "rejected"].includes(entry.outcome ?? "")
+  ) {
+    return "🚫";
+  }
+  return "✅";
+}
+
+function formatAuditEntry(entry: AuditDisplayEntry, compact = false): string {
+  const timestamp = compact ? entry.timestamp?.slice(11, 19) : entry.timestamp?.slice(0, 19);
+  const location = compact ? entry.toolName : `${entry.serverName ?? "?"}:${entry.toolName ?? "?"}`;
+  const stage = entry.event ?? entry.action ?? "event";
+  const outcome = entry.outcome ? `/${entry.outcome}` : "";
+  const trace = entry.traceId ? ` [${entry.traceId.slice(0, 10)}]` : "";
+  const request = entry.requestId !== undefined ? ` #${entry.requestId}` : "";
+  const duration = entry.durationMs !== undefined ? ` (${entry.durationMs}ms)` : "";
+  const reason = entry.reason ? ` — ${entry.reason}` : "";
+  return `${auditIcon(entry)} [${timestamp ?? "?"}]${trace}${request} ${location ?? "?"} → ${stage}${outcome}${duration}${reason}`;
+}
+
 /**
  * Build a human-readable list of enabled policy names from config.
  */
@@ -311,11 +351,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         // Schema stats unavailable — skip (e.g., mock or server not connected)
       }
 
+      let httpServer: http.Server | undefined;
       if (options.http) {
         const port = parseInt(options.port, 10);
         const httpTransport = transport as StreamableHTTPServerTransport;
         // Create HTTP server to handle incoming requests
-        const httpServer = http.createServer((req, res) => {
+        httpServer = http.createServer((req, res) => {
           // Only handle POST /mcp
           if (req.method !== "POST" || req.url !== "/mcp") {
             res.writeHead(405).end("Method Not Allowed");
@@ -331,7 +372,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             try {
               await (httpTransport as StreamableHTTPServerTransport).handleRequest(req, res, body);
             } catch (err) {
-              console.error("HTTP handler error:", err);
+              console.error("HTTP handler error:", err instanceof Error ? err.name : "UnknownError");
               if (!res.headersSent) {
                 res.writeHead(500).end("Internal Server Error");
               }
@@ -356,20 +397,56 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       );
       runtimeLog("   Send SIGHUP to reload config (kill -HUP <pid>)");
 
+      let reloadInFlight = false;
+      let reloadTask: Promise<void> | undefined;
+      let shuttingDown = false;
+      const monitorFatal = (error: Error, origin: NodeJS.UncaughtExceptionOrigin): void => {
+        proxy.recordLifecycle("fatal_error", "internal_error", {
+          errorType: error.name,
+          origin,
+        });
+      };
+      process.on("uncaughtExceptionMonitor", monitorFatal);
+
       // SIGHUP → hot reload mcp-slim-guard.yml (rebuilds pipeline + audit + serverManager)
       process.on("SIGHUP", () => {
-        void (async () => {
+        if (reloadInFlight || shuttingDown) {
+          proxy.recordLifecycle("reload_skipped", "degraded", {
+            reason: shuttingDown ? "shutdown_in_progress" : "reload_in_progress",
+          });
+          return;
+        }
+        reloadInFlight = true;
+        const task = (async () => {
+          const reloadStarted = Date.now();
+          proxy.recordLifecycle("reloading", "success");
+          let candidateManager: ServerManager | undefined;
+          let candidateAudit: AuditLogger | undefined;
           try {
             const newConfig = ConfigLoader.findAndLoad(cwd);
             if (!newConfig) {
+              proxy.recordLifecycle("reload_failed", "internal_error", {
+                errorType: "ConfigNotFound",
+              });
               console.error("⚠️ [reload] mcp-slim-guard.yml not found — keeping old config");
               return;
             }
-            // Stop old server manager connections
-            await serverManager.stop();
-            // Create new ones
-            serverManager = new ServerManager(newConfig.servers);
-            await serverManager.start();
+            // Connect the candidate runtime before touching the active one.
+            candidateManager = new ServerManager(newConfig.servers);
+            const startReport = await candidateManager.start();
+            if (startReport.configured > 0 && startReport.connected.length === 0) {
+              await candidateManager.stop();
+              candidateManager = undefined;
+              throw new Error("No configured upstream server connected");
+            }
+            if (shuttingDown) {
+              await candidateManager.stop();
+              candidateManager = undefined;
+              proxy.recordLifecycle("reload_skipped", "degraded", {
+                reason: "shutdown_in_progress",
+              });
+              return;
+            }
             const newPolicies = createPolicies(newConfig);
             const newPipeline = new PolicyPipeline(newPolicies);
             // Rebuild audit logger — forward ALL rotation/memory options
@@ -379,14 +456,70 @@ export async function main(argv: string[] = process.argv): Promise<void> {
               !options.http && configuredNewAuditOptions.output === "stdout"
                 ? { ...configuredNewAuditOptions, output: "stderr" }
                 : configuredNewAuditOptions;
-            const newAudit = new AuditLogger(newAuditOptions);
-            proxy.reload(newConfig, newPipeline, newAudit, serverManager);
+            candidateAudit = new AuditLogger(newAuditOptions);
+            const previousManager = serverManager;
+            await proxy.reload(newConfig, newPipeline, candidateAudit, candidateManager, {
+              configuredServers: startReport.configured,
+              connectedUpstreams: startReport.connected,
+              failedUpstreams: startReport.failed,
+              reloadDurationMs: Date.now() - reloadStarted,
+            });
+            candidateAudit = undefined;
+            serverManager = candidateManager;
+            candidateManager = undefined;
+            const stopReport = await previousManager.stop();
+            if (stopReport.failed.length > 0) {
+              proxy.recordLifecycle("reload_cleanup_degraded", "degraded", {
+                upstreamCloseFailures: stopReport.failed,
+              });
+            }
             runtimeLog("✅ [reload] Config reloaded — new policies + servers + audit active");
           } catch (err) {
-            console.error("⚠️ [reload] Failed:", err instanceof Error ? err.message : String(err));
+            await candidateManager?.stop();
+            await candidateAudit?.close();
+            proxy.recordLifecycle("reload_failed", "internal_error", {
+              errorType: err instanceof Error ? err.name : "UnknownError",
+            });
+            console.error("⚠️ [reload] Failed:", err instanceof Error ? err.name : "UnknownError");
+          } finally {
+            reloadInFlight = false;
           }
         })();
+        reloadTask = task;
+        void task.finally(() => {
+          if (reloadTask === task) reloadTask = undefined;
+        });
       });
+
+      type ShutdownTrigger = "SIGINT" | "SIGTERM" | "STDIN_END";
+      const shutdown = async (signal: ShutdownTrigger): Promise<void> => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        runtimeLog(`   ${signal} received — shutting down`);
+        await reloadTask;
+        const activeHttpServer = httpServer;
+        if (activeHttpServer?.listening) {
+          await new Promise<void>((resolve) => {
+            activeHttpServer.close(() => resolve());
+          });
+        }
+        await proxy.stop();
+        process.off("uncaughtExceptionMonitor", monitorFatal);
+      };
+      const requestShutdown = (signal: ShutdownTrigger): void => {
+        void shutdown(signal).catch((error) => {
+          proxy.recordLifecycle("shutdown_failed", "internal_error", {
+            errorType: error instanceof Error ? error.name : "UnknownError",
+          });
+          console.error("⚠️ [shutdown] Failed:", error instanceof Error ? error.name : "UnknownError");
+          process.exitCode = 1;
+        });
+      };
+      process.once("SIGINT", () => requestShutdown("SIGINT"));
+      process.once("SIGTERM", () => requestShutdown("SIGTERM"));
+      if (!options.http) {
+        process.stdin.once("end", () => requestShutdown("STDIN_END"));
+      }
     });
 
   program
@@ -696,11 +829,8 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         const initial = fs.readFileSync(logFile, "utf-8").trim().split("\n").slice(-20);
         for (const line of initial) {
           try {
-            const entry = JSON.parse(line);
-            const icon = entry.action === "blocked" ? "🚫" : "✅";
-            console.log(
-              `${icon} [${entry.timestamp?.slice(11, 19) ?? "?"}] ${entry.toolName}: ${entry.action}${entry.reason ? ` (${entry.reason})` : ""}`,
-            );
+            const entry = JSON.parse(line) as AuditDisplayEntry;
+            console.log(formatAuditEntry(entry, true));
           } catch {
             /* skip non-JSON */
           }
@@ -720,11 +850,8 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             for (const line of newContent.trim().split("\n")) {
               if (!line) continue;
               try {
-                const entry = JSON.parse(line);
-                const icon = entry.action === "blocked" ? "🚫" : "✅";
-                console.log(
-                  `${icon} [${entry.timestamp?.slice(11, 19) ?? "?"}] ${entry.toolName}: ${entry.action}${entry.reason ? ` (${entry.reason})` : ""}`,
-                );
+                const entry = JSON.parse(line) as AuditDisplayEntry;
+                console.log(formatAuditEntry(entry, true));
               } catch {
                 /* skip */
               }
@@ -748,12 +875,8 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         }
         for (const line of lines) {
           try {
-            const entry = JSON.parse(line);
-            const icon = entry.action === "blocked" ? "🚫" : "✅";
-            const dur = entry.durationMs !== undefined ? ` (${entry.durationMs}ms)` : "";
-            console.log(
-              `${icon} [${entry.timestamp?.slice(0, 19) ?? "?"}] ${entry.serverName}:${entry.toolName} → ${entry.action}${dur}${entry.reason ? ` — ${entry.reason}` : ""}`,
-            );
+            const entry = JSON.parse(line) as AuditDisplayEntry;
+            console.log(formatAuditEntry(entry));
           } catch {
             console.log(`  ${line.slice(0, 80)}...`);
           }

@@ -44,7 +44,9 @@ vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
       setRequestHandler: vi.fn((schema: symbol, handler: Function) => {
         mockServerHandlers!.set(schema, handler);
       }),
-      connect: vi.fn().mockResolvedValue(undefined),
+      connect: vi.fn((transport?: { connectError?: Error }) =>
+        transport?.connectError ? Promise.reject(transport.connectError) : Promise.resolve(undefined),
+      ),
       close: vi.fn().mockResolvedValue(undefined),
     };
     mockServerInstances!.push(instance);
@@ -66,7 +68,7 @@ vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
 // ---------------------------------------------------------------------------
 
 import { GuardProxy } from "../../src/proxy.js";
-import { FIND_TOOL } from "../../src/secure-projection.js";
+import { CALL_TOOL, FIND_TOOL } from "../../src/secure-projection.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -106,15 +108,17 @@ function makeMockAudit() {
     getEntries: vi.fn().mockReturnValue([]),
     clear: vi.fn(),
     newSession: vi.fn().mockReturnValue("s_test"),
+    newTrace: vi.fn().mockReturnValue("t_test"),
     logDiscovery: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined),
   };
 }
 
 /** Create a mock ServerManager */
 function makeMockServerManager() {
   return {
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
+    start: vi.fn().mockResolvedValue({ configured: 0, connected: [], failed: [] }),
+    stop: vi.fn().mockResolvedValue({ closed: [], failed: [] }),
     getTools: vi.fn().mockReturnValue([]),
     resolveTool: vi.fn(),
     callTool: vi.fn().mockResolvedValue({
@@ -178,6 +182,74 @@ describe("GuardProxy", () => {
     expect(srv.setRequestHandler).toHaveBeenCalledTimes(2);
     expect(srv.setRequestHandler).toHaveBeenCalledWith(LIST_TOOLS_SCHEMA, expect.any(Function));
     expect(srv.setRequestHandler).toHaveBeenCalledWith(CALL_TOOL_SCHEMA, expect.any(Function));
+  });
+
+  it("records a degraded ready lifecycle without exposing upstream configuration", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      servers: {
+        good: { command: "node", args: ["good.js"], env: {} },
+        bad: { command: "node", args: ["bad.js"], env: { API_TOKEN: "not-for-audit" } },
+      },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.start.mockResolvedValue({
+      configured: 2,
+      connected: [{ serverName: "good", transportKind: "stdio", toolCount: 2 }],
+      failed: [{ serverName: "bad", errorType: "Error" }],
+    });
+    serverManager.getTools.mockReturnValue([
+      { name: "good_one", inputSchema: { type: "object" as const } },
+      { name: "good_two", inputSchema: { type: "object" as const } },
+    ]);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+
+    const lifecycle = audit.log.mock.calls.filter((call) => call[6]?.event === "lifecycle");
+    expect(lifecycle.map((call) => call[0].toolName)).toEqual(["runtime/starting", "runtime/ready_degraded"]);
+    expect(lifecycle.map((call) => call[6]?.outcome)).toEqual(["success", "degraded"]);
+    expect(lifecycle[1]?.[6]?.metadata).toEqual({
+      configuredServers: 2,
+      connectedUpstreams: [{ serverName: "good", transportKind: "stdio", toolCount: 2 }],
+      failedUpstreams: [{ serverName: "bad", errorType: "Error" }],
+      catalogTools: 2,
+      modelFacingTools: 2,
+    });
+    expect(JSON.stringify(lifecycle)).not.toContain("API_TOKEN");
+    expect(JSON.stringify(lifecycle)).not.toContain("bad.js");
+  });
+
+  it("cleans up upstream and downstream resources when downstream startup fails", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.stop.mockResolvedValue({
+      closed: ["fixture"],
+      failed: [],
+    });
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+
+    await expect(proxy.start({ connectError: new TypeError("transport failed") } as never)).rejects.toThrow(
+      "transport failed",
+    );
+
+    expect(mockServerInstances[0].close).toHaveBeenCalledTimes(1);
+    expect(serverManager.stop).toHaveBeenCalledTimes(1);
+    expect(audit.close).toHaveBeenCalledTimes(1);
+    const failed = audit.log.mock.calls.find((call) => call[0].toolName === "runtime/start_failed");
+    expect(failed?.[6]).toEqual({
+      event: "lifecycle",
+      outcome: "internal_error",
+      metadata: {
+        errorType: "TypeError",
+        upstreamClosed: ["fixture"],
+        upstreamCloseFailures: [],
+      },
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -374,15 +446,31 @@ describe("GuardProxy", () => {
       params: { name: "srv_tool1", arguments: { x: 1 } },
     });
 
-    expect(audit.log).toHaveBeenCalledTimes(1);
-    expect(audit.log).toHaveBeenCalledWith(
+    const requestCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_test");
+    expect(requestCalls).toHaveLength(2);
+    expect(requestCalls[0]).toEqual([
       { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv", agentId: "s_test" },
       { allowed: true },
       [], // trail
-      expect.any(String), // sessionId
-      1, // requestId
+      "s_test",
+      expect.any(Number), // requestId
       expect.any(Number), // durationMs
-    );
+      { traceId: "t_test", event: "policy", outcome: "success" },
+    ]);
+    expect(requestCalls[1]).toEqual([
+      { toolName: "srv_tool1", arguments: {}, serverName: "srv", agentId: "s_test" },
+      { allowed: true },
+      [],
+      "s_test",
+      expect.any(Number),
+      expect.any(Number),
+      {
+        traceId: "t_test",
+        event: "upstream",
+        outcome: "success",
+        metadata: { upstreamInvoked: true, isError: false, contentBlocks: 1 },
+      },
+    ]);
   });
 
   it("tools/call handler should audit-log blocked requests", async () => {
@@ -414,15 +502,17 @@ describe("GuardProxy", () => {
       params: { name: "srv_tool1", arguments: { x: 1 } },
     });
 
-    expect(audit.log).toHaveBeenCalledTimes(1);
-    expect(audit.log).toHaveBeenCalledWith(
+    const requestCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_test");
+    expect(requestCalls).toHaveLength(1);
+    expect(requestCalls[0]).toEqual([
       { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv", agentId: "s_test" },
       { allowed: false, reason: "Blocked by whitelist", policy: "whitelist" },
       [{ policy: "whitelist", result: "block", reason: "Blocked by whitelist" }],
-      expect.any(String),
-      1,
+      "s_test",
       expect.any(Number),
-    );
+      expect.any(Number),
+      { traceId: "t_test", event: "policy", outcome: "blocked" },
+    ]);
   });
 
   // -----------------------------------------------------------------------
@@ -503,6 +593,44 @@ describe("GuardProxy", () => {
 
     expect(srv.close).toHaveBeenCalledTimes(1);
     expect(serverManager.stop).toHaveBeenCalledTimes(1);
+    expect(audit.close).toHaveBeenCalledTimes(1);
+    const lifecycle = audit.log.mock.calls.filter((call) => call[6]?.event === "lifecycle");
+    expect(lifecycle.map((call) => call[0].toolName)).toEqual([
+      "runtime/starting",
+      "runtime/ready",
+      "runtime/stopping",
+      "runtime/stopped",
+    ]);
+  });
+
+  it("continues upstream cleanup and records a degraded stop when downstream close fails", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.stop.mockResolvedValue({
+      closed: ["healthy"],
+      failed: [{ serverName: "broken", errorType: "Error" }],
+    });
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    mockServerInstances[0].close.mockRejectedValue(new TypeError("downstream close failed"));
+
+    await expect(proxy.stop()).resolves.toBeUndefined();
+
+    expect(serverManager.stop).toHaveBeenCalledTimes(1);
+    expect(audit.close).toHaveBeenCalledTimes(1);
+    const stopped = audit.log.mock.calls.find((call) => call[0].toolName === "runtime/stopped_degraded");
+    expect(stopped?.[6]).toEqual({
+      event: "lifecycle",
+      outcome: "degraded",
+      metadata: {
+        upstreamClosed: ["healthy"],
+        upstreamCloseFailures: [{ serverName: "broken", errorType: "Error" }],
+        downstreamErrorType: "TypeError",
+        invalidatedResults: 0,
+      },
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -559,9 +687,234 @@ describe("GuardProxy", () => {
       { allowed: true },
       [],
       expect.any(String),
-      1,
       expect.any(Number),
+      expect.any(Number),
+      { traceId: "t_test", event: "policy", outcome: "success" },
     );
+  });
+
+  it("correlates projection, policy, and upstream events without calling an upstream error a block", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      compressor: { enabled: true, level: "light" as const },
+      tools: { allow: ["agent_search_*"], deny: [] },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    audit.newTrace.mockReturnValueOnce("t_find").mockReturnValueOnce("t_call");
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([
+      {
+        name: "agent_search_free_search_advanced",
+        description: "Advanced web search filters",
+        inputSchema: { type: "object" as const },
+      },
+    ]);
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "agent_search",
+      originalToolName: "free_search_advanced",
+    });
+    serverManager.callTool.mockResolvedValue({
+      content: [{ type: "text", text: "UNSUPPORTED_FILTER" }],
+      isError: true,
+    });
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const found = await callHandler({
+      method: "tools/call",
+      params: { name: FIND_TOOL, arguments: { query: "advanced web search" } },
+    });
+    const foundText = found.content[0];
+    if (!foundText || foundText.type !== "text") throw new Error("Expected find_tool JSON");
+    const match = JSON.parse(foundText.text).matches[0] as { tool_ref: string };
+
+    const result = await callHandler({
+      method: "tools/call",
+      params: {
+        name: CALL_TOOL,
+        arguments: {
+          tool_ref: match.tool_ref,
+          arguments: { query: "offline", time_range: "day" },
+        },
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    const traceCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_call");
+    expect(traceCalls).toHaveLength(3);
+    expect(traceCalls.map((call) => call[6]?.event)).toEqual(["policy", "upstream", "projection"]);
+    expect(traceCalls.map((call) => call[6]?.outcome)).toEqual(["success", "upstream_error", "upstream_error"]);
+    expect(traceCalls[2]?.[1]).toEqual({ allowed: true });
+    expect(traceCalls[2]?.[0].arguments).toEqual({ tool_ref: match.tool_ref });
+  });
+
+  it("keeps a projection policy rejection blocked without claiming an upstream invocation", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      compressor: { enabled: true, level: "light" as const },
+      tools: { allow: ["fixture_*"], deny: [] },
+    };
+    const pipeline = makeMockPipeline();
+    pipeline.executeWithTrail.mockResolvedValue({
+      result: { allowed: false, reason: "Rate limit exceeded", policy: "ratelimit" },
+      trail: [{ policy: "ratelimit", result: "block", reason: "Rate limit exceeded" }],
+    });
+    const audit = makeMockAudit();
+    audit.newTrace.mockReturnValueOnce("t_find").mockReturnValueOnce("t_blocked");
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([
+      {
+        name: "fixture_marker",
+        description: "Fixture marker",
+        inputSchema: { type: "object" as const },
+      },
+    ]);
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "fixture",
+      originalToolName: "marker",
+    });
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const found = await callHandler({
+      method: "tools/call",
+      params: { name: FIND_TOOL, arguments: { query: "fixture marker" } },
+    });
+    const foundText = found.content[0];
+    if (!foundText || foundText.type !== "text") throw new Error("Expected find_tool JSON");
+    const match = JSON.parse(foundText.text).matches[0] as { tool_ref: string };
+
+    const result = await callHandler({
+      method: "tools/call",
+      params: {
+        name: CALL_TOOL,
+        arguments: { tool_ref: match.tool_ref, arguments: { value: "blocked" } },
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(serverManager.callTool).not.toHaveBeenCalled();
+    const traceCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_blocked");
+    expect(traceCalls.map((call) => call[6]?.event)).toEqual(["policy", "projection"]);
+    expect(traceCalls.map((call) => call[6]?.outcome)).toEqual(["blocked", "blocked"]);
+    expect(traceCalls[1]?.[1]).toEqual({
+      allowed: false,
+      reason: "Rate limit exceeded",
+      policy: "projection",
+    });
+    expect(traceCalls[1]?.[6]?.metadata.upstreamInvoked).toBe(false);
+  });
+
+  it("adds a terminal projection event when the upstream transport throws", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      compressor: { enabled: true, level: "light" as const },
+      tools: { allow: ["fixture_*"], deny: [] },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    audit.newTrace.mockReturnValueOnce("t_find").mockReturnValueOnce("t_transport");
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([
+      {
+        name: "fixture_marker",
+        description: "Fixture marker",
+        inputSchema: { type: "object" as const },
+      },
+    ]);
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "fixture",
+      originalToolName: "marker",
+    });
+    serverManager.callTool.mockRejectedValue(new Error("Connection closed"));
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const found = await callHandler({
+      method: "tools/call",
+      params: { name: FIND_TOOL, arguments: { query: "fixture marker" } },
+    });
+    const foundText = found.content[0];
+    if (!foundText || foundText.type !== "text") throw new Error("Expected find_tool JSON");
+    const match = JSON.parse(foundText.text).matches[0] as { tool_ref: string };
+
+    await expect(
+      callHandler({
+        method: "tools/call",
+        params: {
+          name: CALL_TOOL,
+          arguments: { tool_ref: match.tool_ref, arguments: { value: "transport" } },
+        },
+      }),
+    ).rejects.toThrow("Connection closed");
+
+    const traceCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_transport");
+    expect(traceCalls.map((call) => call[6]?.event)).toEqual(["policy", "upstream", "projection"]);
+    expect(traceCalls.map((call) => call[6]?.outcome)).toEqual(["success", "transport_error", "transport_error"]);
+    expect(traceCalls[2]?.[1]).toEqual({ allowed: true });
+    expect(traceCalls[2]?.[6]?.metadata).toEqual({
+      upstreamInvoked: true,
+      errorType: "Error",
+    });
+  });
+
+  it("records policy exceptions and a terminal projection internal error", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      compressor: { enabled: true, level: "light" as const },
+      tools: { allow: ["fixture_*"], deny: [] },
+    };
+    const pipeline = makeMockPipeline();
+    pipeline.executeWithTrail.mockRejectedValue(new TypeError("Policy failed"));
+    const audit = makeMockAudit();
+    audit.newTrace.mockReturnValueOnce("t_find").mockReturnValueOnce("t_policy_error");
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([
+      {
+        name: "fixture_marker",
+        description: "Fixture marker",
+        inputSchema: { type: "object" as const },
+      },
+    ]);
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "fixture",
+      originalToolName: "marker",
+    });
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const found = await callHandler({
+      method: "tools/call",
+      params: { name: FIND_TOOL, arguments: { query: "fixture marker" } },
+    });
+    const foundText = found.content[0];
+    if (!foundText || foundText.type !== "text") throw new Error("Expected find_tool JSON");
+    const match = JSON.parse(foundText.text).matches[0] as { tool_ref: string };
+
+    await expect(
+      callHandler({
+        method: "tools/call",
+        params: {
+          name: CALL_TOOL,
+          arguments: { tool_ref: match.tool_ref, arguments: { value: "policy-error" } },
+        },
+      }),
+    ).rejects.toThrow("Policy failed");
+
+    expect(serverManager.callTool).not.toHaveBeenCalled();
+    const traceCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_policy_error");
+    expect(traceCalls.map((call) => call[6]?.event)).toEqual(["policy", "projection"]);
+    expect(traceCalls.map((call) => call[6]?.outcome)).toEqual(["internal_error", "internal_error"]);
+    expect(traceCalls[0]?.[6]?.metadata).toEqual({ errorType: "TypeError" });
+    expect(traceCalls[1]?.[6]?.metadata).toEqual({
+      upstreamInvoked: false,
+      errorType: "TypeError",
+    });
   });
   // -----------------------------------------------------------------------
   // Regression: reload() refreshes the tool list served by tools/list
@@ -592,7 +945,7 @@ describe("GuardProxy", () => {
     const newPipeline = makeMockPipeline();
     const newAudit = makeMockAudit();
 
-    proxy.reload(
+    await proxy.reload(
       { ...config, tools: { allow: ["new_*"], deny: [] } },
       newPipeline as never,
       newAudit as never,
@@ -609,6 +962,35 @@ describe("GuardProxy", () => {
     });
     // The new manager's getTools should have been consulted after reload
     expect(newServerManager.getTools).toHaveBeenCalled();
+    expect(audit.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the active runtime unchanged when reload preparation fails", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([{ name: "old_tool", inputSchema: { type: "object" as const } }]);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
+
+    const candidateManager = makeMockServerManager();
+    candidateManager.getTools.mockImplementation(() => {
+      throw new TypeError("candidate catalog failed");
+    });
+    const candidateAudit = makeMockAudit();
+
+    await expect(
+      proxy.reload(config, makeMockPipeline() as never, candidateAudit as never, candidateManager as never),
+    ).rejects.toThrow("candidate catalog failed");
+
+    expect(await listHandler({})).toEqual({
+      tools: [{ name: "old_tool", inputSchema: { type: "object" } }],
+    });
+    expect(audit.close).not.toHaveBeenCalled();
+    expect(candidateAudit.log).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------

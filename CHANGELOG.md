@@ -5,7 +5,28 @@ numbers are intentionally omitted.
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- Correlated audit traces for policy, upstream execution, result projection,
+  fail-open delivery, and bounded recovery.
+- Runtime lifecycle traces for startup health, atomic reload, graceful
+  shutdown, upstream cleanup, and Capsule invalidation.
+- Runtime warnings now emit bounded error types instead of complete Error
+  objects that could bypass audit redaction.
+- Package smoke assertions for trace completeness, reference redaction, and
+  result-payload exclusion, including real stdio shutdown.
+
+### Fixed
+
+- Upstream MCP `isError` results are recorded as `upstream_error` instead of
+  being misclassified as policy blocks.
+- Raw `tool_ref` and `result_ref` values are recursively redacted from audit
+  arguments and metadata.
+- Audit sink or observation Adapter failures no longer interrupt result
+  delivery or recovery.
+- Reload now connects and validates a candidate upstream set before replacing
+  the active runtime, and shutdown closes upstreams, Capsule state, and audit
+  file handles through one path.
 
 ## [0.1.1-alpha.1] - 2026-07-26
 

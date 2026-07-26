@@ -50,8 +50,12 @@ vi.mock("../../src/audit.js", () => ({
 
 const { ServerManager: MockServerManager } = vi.hoisted(() => {
   const getTools = vi.fn().mockReturnValue([]);
-  const start = vi.fn().mockResolvedValue(undefined);
-  const stop = vi.fn().mockResolvedValue(undefined);
+  const start = vi.fn().mockResolvedValue({
+    configured: 1,
+    connected: [{ serverName: "github", transportKind: "stdio", toolCount: 0 }],
+    failed: [],
+  });
+  const stop = vi.fn().mockResolvedValue({ closed: ["github"], failed: [] });
   return {
     ServerManager: vi.fn().mockImplementation(() => ({ getTools, start, stop })),
   };
@@ -221,10 +225,34 @@ describe("CLI", () => {
 
       await main(["node", "cli.js", "status"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard status");
+      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard configuration");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("github"));
+    });
+  });
+
+  describe("doctor", () => {
+    it("reports a structured upstream connection failure instead of treating zero tools as healthy", async () => {
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+      vi.mocked(MockServerManager).mockImplementationOnce(
+        () =>
+          ({
+            start: vi.fn().mockResolvedValue({
+              configured: 1,
+              connected: [],
+              failed: [{ serverName: "github", errorType: "McpError" }],
+            }),
+            getTools: vi.fn().mockReturnValue([]),
+            stop: vi.fn().mockResolvedValue({ closed: [], failed: [] }),
+          }) as never,
+      );
+
+      await main(["node", "cli.js", "doctor"]);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith("❌ FAIL — McpError");
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("0 server(s) OK, 1 failed"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 

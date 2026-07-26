@@ -524,7 +524,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
   program
     .command("status")
-    .description("Show running status")
+    .description("Show resolved configuration")
     .action(() => {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
@@ -536,7 +536,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       const serverCount = Object.keys(config.servers).length;
 
-      console.log("🛡️ mcp-slim-guard status");
+      console.log("🛡️ mcp-slim-guard configuration");
       console.log(`   Config: mcp-slim-guard.yml`);
       console.log(`   Servers: ${serverCount}`);
       for (const [name, server] of Object.entries(config.servers)) {
@@ -603,11 +603,24 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       for (const name of serverNames) {
         const server = config.servers[name];
         process.stdout.write(`  ${name} ... `);
+        const manager = new ServerManager({ [name]: server });
         try {
-          const manager = new ServerManager({ [name]: server });
-          await manager.start();
+          const startReport = await manager.start();
+          if (startReport.connected.length === 0) {
+            const errorType = startReport.failed[0]?.errorType ?? "NoConnection";
+            await manager.stop();
+            console.log(`❌ FAIL — ${errorType}`);
+            failCount++;
+            continue;
+          }
+
           const tools = manager.getTools();
-          await manager.stop();
+          const stopReport = await manager.stop();
+          if (stopReport.failed.length > 0) {
+            console.log(`❌ FAIL — CloseError`);
+            failCount++;
+            continue;
+          }
 
           const stats = computeSchemaStats(
             tools,
@@ -623,8 +636,8 @@ export async function main(argv: string[] = process.argv): Promise<void> {
           console.log(`✅ OK (${tools.length} tools${tokenInfo}: ${tools.map((t) => t.name).join(", ")})`);
           okCount++;
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.log(`❌ FAIL — ${msg}`);
+          await manager.stop();
+          console.log(`❌ FAIL — ${err instanceof Error ? err.name : "UnknownError"}`);
           failCount++;
         }
       }

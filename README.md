@@ -195,7 +195,8 @@ Error objects, so stderr does not bypass this boundary.
 
 The same stream records runtime lifecycle states: `starting`, `ready` (or
 `ready_degraded`), `reloading`, `stopping`, and `stopped`. Reload connects the
-candidate upstream set before swapping it in; stdio disconnect, `SIGINT`, and
+candidate upstream set and waits for admitted tool calls to finish before
+swapping it in; those calls continue normally. Stdio disconnect, `SIGINT`, and
 `SIGTERM` share one cleanup path.
 
 ## Compatibility

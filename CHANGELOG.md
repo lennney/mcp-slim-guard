@@ -13,6 +13,10 @@ numbers are intentionally omitted.
   shutdown, upstream cleanup, and Capsule invalidation.
 - Runtime warnings now emit bounded error types instead of complete Error
   objects that could bypass audit redaction.
+- Reload and shutdown now drain admitted tool calls before replacing Catalog,
+  Capsule, Audit, or upstream runtime state.
+- `doctor` now treats a structured upstream connection failure as failed
+  instead of reporting an empty catalog as healthy.
 - Package smoke assertions for trace completeness, reference redaction, and
   result-payload exclusion, including real stdio shutdown.
 

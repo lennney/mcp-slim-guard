@@ -79,6 +79,9 @@ export class GuardProxy {
   private cache: ToolCache | null = null;
   /** Fixed three-tool product surface for newly generated light configs. */
   private projection: SecureProjectionKernel | null = null;
+  /** Requests admitted by tools/call; reload and stop wait for the next idle boundary. */
+  private inFlightToolCalls = 0;
+  private idleWaiters = new Set<() => void>();
 
   /**
    * @param config - Guard configuration
@@ -319,27 +322,64 @@ export class GuardProxy {
 
     // Register tools/call handler — compressor aware, all calls go through policy pipeline
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const params = request.params;
-      const prefixedName = params.name;
-      const args: Record<string, unknown> = params.arguments ?? {};
-      const traceId = this.audit.newTrace();
+      this.beginToolCall();
+      try {
+        const params = request.params;
+        const prefixedName = params.name;
+        const args: Record<string, unknown> = params.arguments ?? {};
+        const traceId = this.audit.newTrace();
 
-      if (this.projection?.handles(prefixedName)) {
-        const started = Date.now();
-        const traceState: ForwardTraceState = { upstreamInvoked: false };
-        let observed: ObservedProjectionCall;
-        try {
-          observed = await this.projection.callObserved(prefixedName, args, (targetName, targetArgs) =>
-            forwardToolCall(targetName, targetArgs, traceId, traceState),
-          );
-        } catch (error) {
+        if (this.projection?.handles(prefixedName)) {
+          const started = Date.now();
+          const traceState: ForwardTraceState = { upstreamInvoked: false };
+          let observed: ObservedProjectionCall;
+          try {
+            observed = await this.projection.callObserved(prefixedName, args, (targetName, targetArgs) =>
+              forwardToolCall(targetName, targetArgs, traceId, traceState),
+            );
+          } catch (error) {
+            this.audit.log(
+              {
+                toolName: prefixedName,
+                arguments: projectionAuditArguments(prefixedName, args),
+                serverName: "projection",
+              },
+              { allowed: true },
+              [],
+              this.sessionId,
+              ++this.requestCounter,
+              Date.now() - started,
+              {
+                traceId,
+                event: prefixedName === READ_RESULT ? "recovery" : "projection",
+                outcome: traceState.outcome === "transport_error" ? "transport_error" : "internal_error",
+                metadata: {
+                  upstreamInvoked: traceState.upstreamInvoked,
+                  errorType: error instanceof Error ? error.name : "UnknownError",
+                },
+              },
+            );
+            throw error;
+          }
+          const effectiveOutcome =
+            traceState.outcome === "blocked" || traceState.outcome === "invalid_request"
+              ? traceState.outcome
+              : observed.report.outcome;
+          const rejected =
+            effectiveOutcome === "blocked" || effectiveOutcome === "invalid_request" || effectiveOutcome === "rejected";
           this.audit.log(
             {
               toolName: prefixedName,
               arguments: projectionAuditArguments(prefixedName, args),
               serverName: "projection",
             },
-            { allowed: true },
+            rejected
+              ? {
+                  allowed: false,
+                  reason: traceState.reason ?? "Projection request rejected",
+                  policy: "projection",
+                }
+              : { allowed: true },
             [],
             this.sessionId,
             ++this.requestCounter,
@@ -347,78 +387,46 @@ export class GuardProxy {
             {
               traceId,
               event: prefixedName === READ_RESULT ? "recovery" : "projection",
-              outcome: traceState.outcome === "transport_error" ? "transport_error" : "internal_error",
+              outcome: effectiveOutcome,
               metadata: {
-                upstreamInvoked: traceState.upstreamInvoked,
-                errorType: error instanceof Error ? error.name : "UnknownError",
+                ...projectionReportMetadata(observed.report),
+                upstreamInvoked:
+                  traceState.outcome === undefined ? observed.report.upstreamInvoked : traceState.upstreamInvoked,
               },
             },
           );
-          throw error;
+          return observed.result;
         }
-        const effectiveOutcome =
-          traceState.outcome === "blocked" || traceState.outcome === "invalid_request"
-            ? traceState.outcome
-            : observed.report.outcome;
-        const rejected =
-          effectiveOutcome === "blocked" || effectiveOutcome === "invalid_request" || effectiveOutcome === "rejected";
-        this.audit.log(
-          {
-            toolName: prefixedName,
-            arguments: projectionAuditArguments(prefixedName, args),
-            serverName: "projection",
-          },
-          rejected
-            ? {
-                allowed: false,
-                reason: traceState.reason ?? "Projection request rejected",
-                policy: "projection",
-              }
-            : { allowed: true },
-          [],
-          this.sessionId,
-          ++this.requestCounter,
-          Date.now() - started,
-          {
-            traceId,
-            event: prefixedName === READ_RESULT ? "recovery" : "projection",
-            outcome: effectiveOutcome,
-            metadata: {
-              ...projectionReportMetadata(observed.report),
-              upstreamInvoked:
-                traceState.outcome === undefined ? observed.report.upstreamInvoked : traceState.upstreamInvoked,
-            },
-          },
-        );
-        return observed.result;
-      }
 
-      // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
-      if (prefixedName.startsWith(PREFIX)) {
-        // Whitelist-filter fullTools before passing to handleWrapperTool
-        // (pipeline stage 0 logic, applied here for the call path)
-        const filteredTools = whitelistFilter(this.config.tools.allow, this.config.tools.deny)(this.fullTools);
-        const wrapperResult = await handleWrapperTool(prefixedName, args, filteredTools, (targetName, targetArgs) =>
-          forwardToolCall(targetName, targetArgs, traceId),
-        );
-        if (wrapperResult) {
-          // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
-          const reqId = ++this.requestCounter;
-          this.audit.log(
-            { toolName: prefixedName, arguments: args, serverName: "compressor" },
-            { allowed: true },
-            [],
-            this.sessionId,
-            reqId,
-            0,
-            { traceId, event: "projection", outcome: "success" },
+        // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
+        if (prefixedName.startsWith(PREFIX)) {
+          // Whitelist-filter fullTools before passing to handleWrapperTool
+          // (pipeline stage 0 logic, applied here for the call path)
+          const filteredTools = whitelistFilter(this.config.tools.allow, this.config.tools.deny)(this.fullTools);
+          const wrapperResult = await handleWrapperTool(prefixedName, args, filteredTools, (targetName, targetArgs) =>
+            forwardToolCall(targetName, targetArgs, traceId),
           );
-          return wrapperResult;
+          if (wrapperResult) {
+            // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
+            const reqId = ++this.requestCounter;
+            this.audit.log(
+              { toolName: prefixedName, arguments: args, serverName: "compressor" },
+              { allowed: true },
+              [],
+              this.sessionId,
+              reqId,
+              0,
+              { traceId, event: "projection", outcome: "success" },
+            );
+            return wrapperResult;
+          }
         }
-      }
 
-      // Real tool → security pipeline
-      return forwardToolCall(prefixedName, args, traceId);
+        // Real tool → security pipeline
+        return await forwardToolCall(prefixedName, args, traceId);
+      } finally {
+        this.endToolCall();
+      }
     });
 
     try {
@@ -467,6 +475,7 @@ export class GuardProxy {
   async stop(): Promise<void> {
     const lifecycleStarted = Date.now();
     this.recordLifecycle("stopping", "success");
+    const drainReport = await this.waitForToolCallsIdle();
     let downstreamErrorType: string | undefined;
     if (this.server) {
       try {
@@ -488,6 +497,7 @@ export class GuardProxy {
         upstreamCloseFailures: stopReport.failed,
         ...(downstreamErrorType ? { downstreamErrorType } : {}),
         invalidatedResults,
+        ...drainReport,
       },
       Date.now() - lifecycleStarted,
     );
@@ -516,6 +526,7 @@ export class GuardProxy {
     // Prepare every fallible derived object before mutating the active runtime.
     const nextProjection = this.buildProjection(newConfig, nextServerManager, nextFullTools);
     const nextCache = newConfig.cache?.enabled ? new ToolCache(newConfig.cache) : null;
+    const drainReport = await this.waitForToolCallsIdle();
 
     const previousAudit = this.audit;
     const previousProjection = this.projection;
@@ -544,6 +555,7 @@ export class GuardProxy {
         ...lifecycleMetadata,
         catalogTools: this.fullTools.length,
         invalidatedResults,
+        ...drainReport,
         ...(invalidationErrorType ? { invalidationErrorType } : {}),
       },
     );
@@ -571,6 +583,35 @@ export class GuardProxy {
         metadata,
       },
     );
+  }
+
+  private beginToolCall(): void {
+    this.inFlightToolCalls += 1;
+  }
+
+  private endToolCall(): void {
+    this.inFlightToolCalls -= 1;
+    if (this.inFlightToolCalls !== 0) return;
+    const waiters = [...this.idleWaiters];
+    this.idleWaiters.clear();
+    for (const resolve of waiters) resolve();
+  }
+
+  private async waitForToolCallsIdle(): Promise<{
+    inFlightAtWait: number;
+    drainDurationMs: number;
+  }> {
+    const started = Date.now();
+    const inFlightAtWait = this.inFlightToolCalls;
+    if (inFlightAtWait > 0) {
+      await new Promise<void>((resolve) => {
+        this.idleWaiters.add(resolve);
+      });
+    }
+    return {
+      inFlightAtWait,
+      drainDurationMs: Date.now() - started,
+    };
   }
 
   /**

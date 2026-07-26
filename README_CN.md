@@ -183,7 +183,8 @@ runtime warning 只打印错误类型，不打印完整 Error 对象，避免 st
 
 同一条审计流还记录 runtime 生命周期：`starting`、`ready`（或
 `ready_degraded`）、`reloading`、`stopping` 和 `stopped`。reload 会先连接
-候选上游，再进行切换；stdio 断开、`SIGINT` 和 `SIGTERM` 复用同一条清理路径。
+候选上游，并等待已经接收的工具调用正常完成后再切换；stdio 断开、`SIGINT` 和
+`SIGTERM` 复用同一条清理路径。
 
 ## 兼容性
 

@@ -629,6 +629,8 @@ describe("GuardProxy", () => {
         upstreamCloseFailures: [{ serverName: "broken", errorType: "Error" }],
         downstreamErrorType: "TypeError",
         invalidatedResults: 0,
+        inFlightAtWait: 0,
+        drainDurationMs: 0,
       },
     });
   });
@@ -991,6 +993,87 @@ describe("GuardProxy", () => {
     });
     expect(audit.close).not.toHaveBeenCalled();
     expect(candidateAudit.log).not.toHaveBeenCalled();
+  });
+
+  it("waits for an in-flight tool call before swapping runtime state", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([{ name: "old_tool", inputSchema: { type: "object" as const } }]);
+    serverManager.resolveTool.mockReturnValue({ serverName: "old", originalToolName: "tool" });
+    let finishUpstream!: (value: { content: Array<{ type: "text"; text: string }> }) => void;
+    serverManager.callTool.mockReturnValue(
+      new Promise((resolve) => {
+        finishUpstream = resolve;
+      }),
+    );
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
+    const inFlightCall = callHandler({
+      params: { name: "old_tool", arguments: { value: "held" } },
+    });
+
+    const candidateManager = makeMockServerManager();
+    candidateManager.getTools.mockReturnValue([{ name: "new_tool", inputSchema: { type: "object" as const } }]);
+    const candidateAudit = makeMockAudit();
+    const reload = proxy.reload(
+      config,
+      makeMockPipeline() as never,
+      candidateAudit as never,
+      candidateManager as never,
+    );
+    await Promise.resolve();
+
+    expect(await listHandler({})).toEqual({
+      tools: [{ name: "old_tool", inputSchema: { type: "object" } }],
+    });
+    expect(audit.close).not.toHaveBeenCalled();
+
+    finishUpstream({ content: [{ type: "text", text: "finished" }] });
+    await inFlightCall;
+    await reload;
+
+    expect(await listHandler({})).toEqual({
+      tools: [{ name: "new_tool", inputSchema: { type: "object" } }],
+    });
+    expect(audit.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for an in-flight tool call before closing upstreams", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.resolveTool.mockReturnValue({ serverName: "fixture", originalToolName: "slow" });
+    let finishUpstream!: (value: { content: Array<{ type: "text"; text: string }> }) => void;
+    serverManager.callTool.mockReturnValue(
+      new Promise((resolve) => {
+        finishUpstream = resolve;
+      }),
+    );
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const inFlightCall = callHandler({
+      params: { name: "fixture_slow", arguments: {} },
+    });
+    const stopping = proxy.stop();
+    await Promise.resolve();
+
+    expect(mockServerInstances[0].close).not.toHaveBeenCalled();
+    expect(serverManager.stop).not.toHaveBeenCalled();
+
+    finishUpstream({ content: [{ type: "text", text: "finished" }] });
+    await inFlightCall;
+    await stopping;
+
+    expect(mockServerInstances[0].close).toHaveBeenCalledTimes(1);
+    expect(serverManager.stop).toHaveBeenCalledTimes(1);
   });
 
   // -----------------------------------------------------------------------

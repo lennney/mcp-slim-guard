@@ -67,6 +67,7 @@
     "bench:task": "node scripts/benchmark/complete-task.mjs",
     "bench:schema": "node scripts/benchmark/schema.mjs",
     "bench:accuracy": "node scripts/benchmark/accuracy.mjs",
+    "bench:model-selection": "node scripts/evaluation/model-selection.mjs",
     "bench:latency": "node scripts/benchmark/latency.mjs",
     "prepare": "husky"
   },

@@ -179,8 +179,8 @@ Slim Guard preserves:
 - content block types and order, `isError`, `structuredContent`, `_meta`, and
   unknown result fields;
 - exact recovery without upstream re-execution;
-- the original result when classification, projection, validation, or storage
-  fails.
+- the original result when classification, projection, validation, storage,
+  or the per-result Capsule capacity check fails.
 
 ## Trace one call
 

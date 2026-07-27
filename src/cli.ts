@@ -933,6 +933,15 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
 // Auto-run when executed directly (not when imported in tests)
 const __filename = fileURLToPath(import.meta.url);
-if (process.argv[1] && (process.argv[1] === __filename || path.resolve(process.argv[1]) === __filename)) {
-  main();
+const __entrypoint = process.argv[1];
+if (__entrypoint) {
+  try {
+    // npm installs the bin as a POSIX symlink. Compare canonical paths so the
+    // CLI runs through that symlink as well as when invoked by its real path.
+    const realModulePath = fs.realpathSync(__filename);
+    const realEntrypointPath = fs.realpathSync(path.resolve(__entrypoint));
+    if (realEntrypointPath === realModulePath) main();
+  } catch {
+    // A missing or unreadable argv[1] cannot be this module's entrypoint.
+  }
 }

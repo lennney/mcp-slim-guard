@@ -31,6 +31,7 @@ import * as net from "node:net";
 // ============================================================
 vi.mock("node:dns/promises", () => ({
   resolve4: vi.fn(),
+  resolve6: vi.fn(),
 }));
 import * as dns from "node:dns/promises";
 
@@ -400,6 +401,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(dns.resolve6).mockResolvedValue([]);
   });
 
   // --- IPv6 Loopback ---
@@ -895,7 +897,7 @@ describe("WhitelistPolicy — Edge Cases", () => {
   });
 
   describe("invalid regex pattern in param_restriction", () => {
-    it("invalid regex is caught and the param check is skipped", async () => {
+    it("invalid regex fails closed instead of skipping the restriction", async () => {
       const config: ToolsConfig = {
         allow: ["test_*"],
         deny: [],
@@ -906,10 +908,10 @@ describe("WhitelistPolicy — Edge Cases", () => {
         },
       };
       const policy = new WhitelistPolicy(config);
-      // The try/catch in the policy catches the invalid regex error and skips
-      // So the request should be allowed (if no other restriction fails)
+      // An invalid security restriction must not silently become an allow.
       const r = await policy.check(ctx("test_tool", { url: "anything" }));
-      expect(r.allowed).toBe(true);
+      expect(r.allowed).toBe(false);
+      if (r.allowed === false) expect(r.reason).toContain("invalid pattern");
     });
   });
 

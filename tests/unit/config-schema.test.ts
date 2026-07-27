@@ -92,6 +92,39 @@ describe("validateConfigSchema", () => {
     expect(errors).toHaveLength(0);
   });
 
+  it("rejects rate limits that would disable or corrupt enforcement", () => {
+    const negativeWindow = validConfig();
+    (negativeWindow.rate_limit as Record<string, unknown>).default = {
+      window_ms: -1,
+      max_requests: 60,
+    };
+
+    const negativeRequests = validConfig();
+    (negativeRequests.rate_limit as Record<string, unknown>).default = {
+      window_ms: 60_000,
+      max_requests: -1,
+    };
+
+    const negativeNumeric = validConfig();
+    (negativeNumeric.rate_limit as Record<string, unknown>).default = -1;
+
+    expect(validateConfigSchema(negativeWindow).length).toBeGreaterThan(0);
+    expect(validateConfigSchema(negativeRequests).length).toBeGreaterThan(0);
+    expect(validateConfigSchema(negativeNumeric).length).toBeGreaterThan(0);
+  });
+
+  it("rejects an incomplete enabled cache before runtime", () => {
+    const c = validConfig();
+    c.cache = { enabled: true };
+
+    const errors = validateConfigSchema(c);
+
+    expect(errors.some((e) => e.path === "$.cache.ttl")).toBe(true);
+    expect(errors.some((e) => e.path === "$.cache.max_entries")).toBe(true);
+    expect(errors.some((e) => e.path === "$.cache.allow")).toBe(true);
+    expect(errors.some((e) => e.path === "$.cache.deny")).toBe(true);
+  });
+
   it("allows extra top-level fields (YAML anchor aliases)", () => {
     const c = validConfig();
     c.tools_copy = { allow: ["*"], deny: [] };

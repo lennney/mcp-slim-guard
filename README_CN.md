@@ -169,7 +169,7 @@ Slim Guard 保留：
 - content block 类型与顺序、`isError`、`structuredContent`、`_meta`
   和未知字段；
 - 无需重跑上游的精确恢复；
-- 分类、投影、校验或存储失败时的原始结果。
+- 分类、投影、校验、存储或单结果 Capsule 容量检查失败时的原始结果。
 
 ## 追踪一次调用
 

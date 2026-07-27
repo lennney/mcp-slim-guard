@@ -68,7 +68,9 @@ vi.mock("../../src/server-manager.js", () => ({
 // GuardProxy mock — store .start reference so tests can verify it was called
 vi.mock("../../src/proxy.js", () => {
   const start = vi.fn<(transport: unknown) => Promise<void>>().mockResolvedValue(undefined);
-  const GuardProxy = vi.fn().mockImplementation(() => ({ start }));
+  const stop = vi.fn().mockResolvedValue(undefined);
+  const recordLifecycle = vi.fn();
+  const GuardProxy = vi.fn().mockImplementation(() => ({ start, stop, recordLifecycle }));
   return { GuardProxy };
 });
 
@@ -161,6 +163,8 @@ describe("CLI", () => {
     // Re-apply the mock implementation
     vi.mocked(GuardProxy).mockImplementation(() => ({
       start: vi.fn<(transport: unknown) => Promise<void>>().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      recordLifecycle: vi.fn(),
     }));
   });
 

@@ -24,6 +24,9 @@ const PRIVATE_RANGES: Array<{ start: number; end: number }> = [
   { start: ipToInt("127.0.0.0"), end: ipToInt("127.255.255.255") },
   { start: ipToInt("169.254.0.0"), end: ipToInt("169.254.255.255") },
   { start: ipToInt("0.0.0.0"), end: ipToInt("0.255.255.255") },
+  { start: ipToInt("198.18.0.0"), end: ipToInt("198.19.255.255") }, // benchmark networks
+  { start: ipToInt("224.0.0.0"), end: ipToInt("239.255.255.255") }, // multicast
+  { start: ipToInt("240.0.0.0"), end: ipToInt("255.255.255.255") }, // reserved + broadcast
 ];
 
 /** DNS 缓存条目 */
@@ -63,7 +66,18 @@ export class SSRFPolicy implements Policy {
 
     for (const url of urls) {
       try {
-        let hostname = new URL(url).hostname;
+        const parsedUrl = new URL(url);
+        const scheme = parsedUrl.protocol.toLowerCase();
+        if (scheme !== "http:" && scheme !== "https:") {
+          const reason = `SSRF blocked: URL scheme "${parsedUrl.protocol}" is not allowed`;
+          if (isBlock) {
+            return { allowed: false, reason, policy: "ssrf" };
+          }
+          loggedHit ??= reason.replace("blocked", "log");
+          continue;
+        }
+
+        let hostname = parsedUrl.hostname;
 
         // Strip brackets from IPv6 hostnames (URL.hostname includes them)
         if (hostname.startsWith("[") && hostname.endsWith("]")) {
@@ -84,10 +98,19 @@ export class SSRFPolicy implements Policy {
         }
 
         // 2. 域名白名单检查 — 命中则跳过该 URL
-        if (this.isDomainAllowed(hostname)) continue;
+        const domainAllowed = this.isDomainAllowed(hostname);
+        if (domainAllowed && !this.config.block_private_ips) continue;
 
         // 3. DNS 解析 → IP 检查
         const ips = await this.resolveHost(hostname);
+        if (ips.length === 0 && this.config.block_private_ips) {
+          const reason = `SSRF ${isBlock ? "blocked" : "log"}: could not resolve hostname "${hostname}"`;
+          if (isBlock) {
+            return { allowed: false, reason, policy: "ssrf" };
+          }
+          loggedHit ??= reason;
+          continue;
+        }
         for (const ip of ips) {
           if (this.isPrivateIP(ip)) {
             if (isBlock) {
@@ -130,8 +153,13 @@ export class SSRFPolicy implements Policy {
       }
 
       // DNS 解析（带 TTL）
-      const records = await dns.resolve4(hostname, { ttl: true });
+      const [ipv4Records, ipv6Records] = await Promise.all([
+        dns.resolve4(hostname, { ttl: true }).catch(() => []),
+        dns.resolve6(hostname, { ttl: true }).catch(() => []),
+      ]);
+      const records = [...ipv4Records, ...ipv6Records];
       const ips = records.map((r) => r.address);
+      if (records.length === 0) return [];
       // 取最小 TTL（保守策略），至少 10 秒，最多 300 秒
       const ttl = Math.max(
         10,
@@ -228,6 +256,10 @@ function isPrivateIPv6(ip: string): boolean {
 
   // Unique local: fc00::/7
   if (/^fc[0-9a-f]/i.test(normalized) || /^fd[0-9a-f]/i.test(normalized)) return true;
+
+  // Deprecated site-local fec0::/10 and multicast ff00::/8 are not
+  // globally routable egress targets.
+  if (/^fe[c-f][0-9a-f]/i.test(normalized) || /^ff[0-9a-f]{2}/i.test(normalized)) return true;
 
   return false;
 }

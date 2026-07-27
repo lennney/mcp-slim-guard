@@ -18,6 +18,8 @@ const RESULT_CHUNK_WEIGHT = 24_000;
 const RESULT_CHUNK_MAX_CHARS = 24_000;
 const RESULT_TTL_MS = 5 * 60 * 1000;
 const MAX_STORED_RESULTS = 64;
+const MAX_RESULT_PAYLOAD_BYTES = 8 * 1024 * 1024;
+const MAX_STORED_PAYLOAD_BYTES = 16 * 1024 * 1024;
 const CAPSULE_META_KEY = "io.github.lennney/slim-guard";
 
 type ResultContentKind = "plain-text" | "uniform-json" | "log-like" | "opaque-result";
@@ -55,6 +57,7 @@ interface ResultProjectionStrategy {
 
 interface StoredResult extends ResultSnapshot {
   expiresAt: number;
+  payloadBytes: number;
 }
 
 interface ResultCapsuleMetadata extends Record<string, unknown> {
@@ -83,7 +86,12 @@ interface ResultChunkMetadata extends Record<string, unknown> {
 }
 
 export type ResultDeliveryReason =
-  "within_budget" | "source_like" | "snapshot_verification_failed" | "delivery_verification_failed" | "internal_error";
+  | "within_budget"
+  | "source_like"
+  | "capacity_exceeded"
+  | "snapshot_verification_failed"
+  | "delivery_verification_failed"
+  | "internal_error";
 
 export interface ResultDeliveryObservation {
   phase: "delivery";
@@ -479,6 +487,7 @@ function verifyCapsuleDelivery(
 export class ResultCapsuleStore {
   private results = new Map<string, StoredResult>();
   private resultOrder: string[] = [];
+  private storedPayloadBytes = 0;
   private security = new ResultSecurityInspector();
   private classifier: ResultContentClassifier = new DeterministicResultContentClassifier();
   private strategies: Record<ResultContentKind, ResultProjectionStrategy> = {
@@ -547,6 +556,19 @@ export class ResultCapsuleStore {
         phase: "delivery",
         outcome: "pass_through",
         reason: "source_like",
+        encoding: snapshot.encoding,
+        contentKind: snapshot.contentKind,
+        originalChars: snapshot.originalChars,
+        payloadChars: snapshot.payload.length,
+        securityFindings: security.findings.length,
+      });
+      return securedResult;
+    }
+    if (Buffer.byteLength(snapshot.payload, "utf8") > MAX_RESULT_PAYLOAD_BYTES) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "fail_open",
+        reason: "capacity_exceeded",
         encoding: snapshot.encoding,
         contentKind: snapshot.contentKind,
         originalChars: snapshot.originalChars,
@@ -728,27 +750,46 @@ export class ResultCapsuleStore {
     const cleared = this.results.size;
     this.results.clear();
     this.resultOrder = [];
+    this.storedPayloadBytes = 0;
     return cleared;
   }
 
   private store(resultRef: string, snapshot: ResultSnapshot): string | undefined {
+    const now = Date.now();
+    this.pruneExpired(now);
     let evictedReferenceId: string | undefined;
+    const payloadBytes = Buffer.byteLength(snapshot.payload, "utf8");
+    while (
+      this.resultOrder.length > 0 &&
+      (this.resultOrder.length >= MAX_STORED_RESULTS ||
+        this.storedPayloadBytes + payloadBytes > MAX_STORED_PAYLOAD_BYTES)
+    ) {
+      const oldest = this.resultOrder[0];
+      if (!oldest) break;
+      this.delete(oldest);
+      evictedReferenceId = referenceId(oldest);
+    }
     this.results.set(resultRef, {
       ...snapshot,
-      expiresAt: Date.now() + RESULT_TTL_MS,
+      expiresAt: now + RESULT_TTL_MS,
+      payloadBytes,
     });
+    this.storedPayloadBytes += payloadBytes;
     this.resultOrder.push(resultRef);
-    while (this.resultOrder.length > MAX_STORED_RESULTS) {
-      const oldest = this.resultOrder.shift();
-      if (oldest) {
-        this.results.delete(oldest);
-        evictedReferenceId = referenceId(oldest);
-      }
-    }
     return evictedReferenceId;
   }
 
+  private pruneExpired(now: number): void {
+    for (const [resultRef, stored] of this.results) {
+      if (stored.expiresAt <= now) this.delete(resultRef);
+    }
+  }
+
   private delete(resultRef: string): void {
+    const stored = this.results.get(resultRef);
+    if (stored) {
+      this.storedPayloadBytes = Math.max(0, this.storedPayloadBytes - stored.payloadBytes);
+    }
     this.results.delete(resultRef);
     this.resultOrder = this.resultOrder.filter((candidate) => candidate !== resultRef);
   }

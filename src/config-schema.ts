@@ -69,6 +69,7 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
     },
     cache: {
       type: "object",
+      required: ["enabled", "ttl", "max_entries", "allow", "deny"],
       properties: {
         enabled: { type: "boolean" },
         ttl: { type: "number", minimum: 0 },
@@ -108,13 +109,13 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
         default: {
           description: "默认速率限制。支持数字、对象或 '60/min' 格式字符串",
           oneOf: [
-            { type: "number" },
+            { type: "number", minimum: 0 },
             {
               type: "object",
               required: ["window_ms", "max_requests"],
               properties: {
-                window_ms: { type: "number" },
-                max_requests: { type: "number" },
+                window_ms: { type: "number", minimum: 1 },
+                max_requests: { type: "number", minimum: 0 },
               },
               additionalProperties: false,
             },
@@ -126,13 +127,13 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
           description: "按 agent ID 的速率限制覆盖",
           additionalProperties: {
             oneOf: [
-              { type: "number" },
+              { type: "number", minimum: 0 },
               {
                 type: "object",
                 required: ["window_ms", "max_requests"],
                 properties: {
-                  window_ms: { type: "number" },
-                  max_requests: { type: "number" },
+                  window_ms: { type: "number", minimum: 1 },
+                  max_requests: { type: "number", minimum: 0 },
                 },
                 additionalProperties: false,
               },

@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "./config-types.js";
 import { resolveUpstreamServer } from "./upstream-config.js";
@@ -35,19 +35,16 @@ class McpSdkConnectedUpstream implements ConnectedUpstream {
   ) {}
 
   async callTool(toolName: string, args: Record<string, unknown>): Promise<CallToolResult> {
-    const result = await this.client.callTool(
-      {
-        name: toolName,
-        arguments: args,
-        _meta: {
-          protocolVersion: "2025-11-25",
-          clientCapabilities: {},
-        },
-      },
-      CallToolResultSchema,
-    );
+    const result = await this.client.callTool({
+      name: toolName,
+      arguments: args,
+    });
 
-    return CallToolResultSchema.parse(result);
+    // The SDK validates a normal call result using its default compatibility
+    // schema and rejects task-required tools before returning. Its TypeScript
+    // signature also includes task compatibility results, while this adapter
+    // exposes only the normal CallToolResult seam to ServerManager.
+    return result as CallToolResult;
   }
 
   async close(): Promise<void> {

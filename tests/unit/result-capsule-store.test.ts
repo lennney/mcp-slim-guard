@@ -339,6 +339,39 @@ describe("ResultCapsuleStore", () => {
     expect(store.capture(original)).toBe(original);
   });
 
+  it("fails open instead of retaining one oversized snapshot", () => {
+    const store = new ResultCapsuleStore();
+    const original: CallToolResult = {
+      content: [{ type: "text", text: `oversized:${"x".repeat(8 * 1024 * 1024)}` }],
+    };
+    const observer = vi.fn();
+
+    expect(store.capture(original, observer)).toBe(original);
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "delivery",
+        outcome: "fail_open",
+        reason: "capacity_exceeded",
+      }),
+    );
+  });
+
+  it("evicts old snapshots to keep total retained payload bounded", () => {
+    const store = new ResultCapsuleStore();
+    const refs = ["first", "second", "third"].map((label) => {
+      const capsule = parseText(
+        store.capture({
+          content: [{ type: "text", text: `${label}:${"x".repeat(6 * 1024 * 1024)}` }],
+        }),
+      );
+      return capsule.result_ref;
+    });
+
+    expect(store.read({ result_ref: refs[0] }).isError).toBe(true);
+    expect(store.read({ result_ref: refs[1] }).isError).not.toBe(true);
+    expect(store.read({ result_ref: refs[2] }).isError).not.toBe(true);
+  });
+
   it("returns raw adaptive chunks with compact cursor metadata", () => {
     const store = new ResultCapsuleStore();
     const capsule = parseText(
@@ -381,6 +414,31 @@ describe("ResultCapsuleStore", () => {
     store.clear();
 
     expect(store.read({ result_ref: capsule.result_ref }).isError).toBe(true);
+  });
+
+  it("prunes expired snapshots before storing another result", () => {
+    vi.useFakeTimers();
+    const store = new ResultCapsuleStore();
+    const expired = parseText(
+      store.capture({
+        content: [{ type: "text", text: `expired:${"x".repeat(20_000)}` }],
+      }),
+    );
+
+    vi.advanceTimersByTime(5 * 60 * 1_000 + 1);
+    store.capture({
+      content: [{ type: "text", text: `current:${"x".repeat(20_000)}` }],
+    });
+
+    const observer = vi.fn();
+    expect(store.read({ result_ref: expired.result_ref }, observer).isError).toBe(true);
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "unknown_result_ref",
+      }),
+    );
   });
 
   it("expires results and evicts the oldest entry at the fixed capacity", () => {

@@ -31,6 +31,21 @@ numbers are intentionally omitted.
   inflate discovery results beside a strong match.
 - Catalog guidance is returned only after zero matches, so normal `tools/list`
   calls do not preload or repeatedly pay for catalog text.
+- POSIX npm symlink invocation now resolves the real CLI path before deciding
+  whether to auto-run the command.
+- Upstream tool calls no longer send client-only metadata or perform a second
+  result parse across the SDK compatibility seam.
+- SSRF preflight now checks HTTP(S) schemes only, resolves both A and AAAA
+  records, validates allowlisted hosts against private IPs, and fails closed
+  on DNS failure in block mode.
+- SSRF preflight now also rejects IPv4 benchmark, multicast, reserved, and
+  broadcast ranges plus IPv6 site-local and multicast targets.
+- Invalid parameter-restriction regular expressions now fail closed instead
+  of silently disabling the restriction.
+- Partial Cache configuration and negative rate-limit values now fail schema
+  validation instead of crashing a later call or disabling enforcement.
+- Result Capsules now prune expired snapshots before writes, fail open above
+  an 8 MiB single-snapshot limit, and enforce a 16 MiB runtime payload budget.
 
 - Upstream MCP `isError` results are recorded as `upstream_error` instead of
   being misclassified as policy blocks.

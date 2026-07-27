@@ -157,17 +157,10 @@ describe("McpSdkUpstreamConnector", () => {
       structuredContent: { ok: true },
       _meta: { traceId: "trace-1" },
     });
-    expect(sdk.clients[0].callTool).toHaveBeenCalledWith(
-      {
-        name: "echo",
-        arguments: { message: "hello" },
-        _meta: {
-          protocolVersion: "2025-11-25",
-          clientCapabilities: {},
-        },
-      },
-      expect.anything(),
-    );
+    expect(sdk.clients[0].callTool).toHaveBeenCalledWith({
+      name: "echo",
+      arguments: { message: "hello" },
+    });
 
     await session.close();
     expect(sdk.clients[0].close).toHaveBeenCalledTimes(1);

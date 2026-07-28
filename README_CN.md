@@ -13,7 +13,7 @@
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard.svg?label=npm" alt="npm"></a>
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D18-282b2d.svg" alt="Node.js 18 or newer"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
 </p>
 
 <p align="center">
@@ -33,11 +33,23 @@
 
 ## 安装 Alpha
 
-需要 Node.js 18 或更高版本。
+需要 Node.js 20 或更高版本。
+
+安装已发布的预览版：
 
 ```bash
 npm install -g mcp-slim-guard@alpha
+```
 
+发布前，请使用绝对路径安装已验收的 tarball：
+
+```bash
+npm install -g /absolute/path/to/mcp-slim-guard-0.1.1-alpha.1.tgz
+```
+
+然后初始化并校验配置：
+
+```bash
 cd your-project
 mcp-slim-guard init
 mcp-slim-guard validate
@@ -66,6 +78,23 @@ find_tool
 call_tool
 read_result
 ```
+
+已验证支持原生 MCP Tool 发现的宿主可以保留原始 Tool 身份：
+
+```json
+{
+  "mcpServers": {
+    "slim-guard": {
+      "command": "mcp-slim-guard",
+      "args": ["start", "--surface", "native"],
+      "cwd": "/absolute/path/to/your-project"
+    }
+  }
+}
+```
+
+该入口公开授权后的原始 Tool 和 `read_result`。省略 `--surface native` 时，
+Slim Guard 保持 `find_tool`、`call_tool`、`read_result` 三工具兼容入口。
 
 API key 必须使用环境变量。`init` 会拒绝敏感配置字段中的明文值。Codex、VS Code
 及常见 `mcpServers` 宿主的配置见
@@ -207,21 +236,22 @@ runtime warning 只打印错误类型，不打印完整 Error 对象，避免 st
 | Filesystem MCP Server | 大型结构化文本精确恢复                        |
 | Everything MCP Server | 小型 `structuredContent` 原样透传             |
 | ContextForge          | 真实 HTTP bridge 到 Slim Guard stdio 调用通过 |
-| Codex CLI             | 隔离配置接受通过                              |
-| VS Code               | 隔离 `--add-mcp` 接受通过                     |
+| Codex CLI             | 原生 Tool 模型选择、调用和精确恢复通过        |
+| VS Code               | 原生入口和逐 Tool 审批模型检查通过            |
 | 下游 Streamable HTTP  | 实验能力，仅 loopback                         |
 
-Codex 和 VS Code 证据只覆盖配置接受，不宣称模型自主调用。具体边界见
-[宿主证据](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-host-and-gateway-smoke.md)。
+Codex 证据包含一次模型选择调用和一次精确快照恢复。VS Code 证据覆盖本地入口和
+审批模型，不包含 VS Code 模型调用。具体边界见
+[宿主采用检查点](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-28-host-adoption-checkpoint.md)。
 
 ## 当前边界
 
 Slim Guard 适合一次加载很多工具，或经常返回长报告、JSON 和日志的 MCP
 工作流。本地确定性压缩无需另一个模型，并在同一连接中保留恢复路径。
 
-Alpha 使用三个固定入口替代模型侧的原始工具身份。需要为每个上游工具显示独立
-权限确认的宿主可能无法保留该 UI 身份。生产级远程入口、多租户控制面和相关性
-恢复不进入本次发布。
+默认 Alpha 入口使用三个固定 Tool。已验证的宿主可以通过
+`start --surface native` 公开授权后的原始 Tool 和 `read_result`，保留逐 Tool
+身份与审批控制。生产级远程入口、多租户控制面和相关性恢复不进入本次发布。
 
 安全能力提供检查和审计 finding。Slim Guard 不会自动修改可恢复的原始结果。
 

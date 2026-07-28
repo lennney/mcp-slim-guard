@@ -35,9 +35,21 @@ No model or API calls. The result is fixture-bound, not a universal savings rate
 
 Node.js 20 or newer is required.
 
+Install the published preview:
+
 ```bash
 npm install -g mcp-slim-guard@alpha
+```
 
+Before publication, install the accepted tarball by its absolute path:
+
+```bash
+npm install -g /absolute/path/to/mcp-slim-guard-0.1.1-alpha.1.tgz
+```
+
+Then initialize and validate the configuration:
+
+```bash
 cd your-project
 mcp-slim-guard init
 mcp-slim-guard validate

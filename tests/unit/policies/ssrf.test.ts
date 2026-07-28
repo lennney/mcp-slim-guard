@@ -45,6 +45,33 @@ describe("SSRFPolicy", () => {
     }
   });
 
+  it("blocks a private URL written with backslash separators", async () => {
+    const policy = new SSRFPolicy({ ...config, allow_domains: [], block_domains: [] });
+    const url = "http:" + String.fromCharCode(92, 92) + "127.0.0.1" + String.fromCharCode(92);
+
+    expect(new URL(url).hostname).toBe("127.0.0.1");
+    const result = await policy.check(ctx("test", { url }));
+
+    expect(result.allowed).toBe(false);
+    if (result.allowed === false) expect(result.reason).toContain("private IP");
+  });
+
+  it("fails closed instead of recursing indefinitely through deeply nested arguments", async () => {
+    const policy = new SSRFPolicy({ ...config, allow_domains: [], block_domains: [] });
+    const args: Record<string, unknown> = {};
+    let cursor = args;
+    for (let depth = 0; depth <= 64; depth += 1) {
+      const child: Record<string, unknown> = {};
+      cursor.child = child;
+      cursor = child;
+    }
+
+    await expect(policy.check(ctx("test", args))).resolves.toMatchObject({
+      allowed: false,
+      policy: "ssrf",
+    });
+  });
+
   it("blocks private IP via DNS resolution", async () => {
     const resolveMock = vi.mocked(dns.resolve4);
     resolveMock.mockResolvedValue([{ address: "10.0.0.5", ttl: 60 }]);

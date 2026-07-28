@@ -15,6 +15,10 @@ import type { SSRFConfig } from "../config-types.js";
 
 const { isMatch } = micromatch;
 
+/** Bound argument inspection so one malformed MCP request cannot exhaust the stack or event loop. */
+const MAX_URL_SCAN_DEPTH = 64;
+const MAX_URL_SCAN_NODES = 10_000;
+
 // RFC 1918 + RFC 6598 + loopback + link-local
 const PRIVATE_RANGES: Array<{ start: number; end: number }> = [
   { start: ipToInt("10.0.0.0"), end: ipToInt("10.255.255.255") },
@@ -60,7 +64,13 @@ export class SSRFPolicy implements Policy {
     if (!isBlock && !isLog) return { allowed: true };
 
     // 从参数中提取所有 URL
-    const urls = extractURLs(ctx.arguments);
+    const scan = scanURLs(ctx.arguments);
+    if (scan.exceededLimits) {
+      const reason = "SSRF blocked: tool arguments exceed URL inspection limits";
+      if (isBlock) return { allowed: false, reason, policy: "ssrf" };
+      return { allowed: true, reason: reason.replace("blocked", "log") };
+    }
+    const urls = scan.urls;
     // log 模式下收集命中内网的观察结果（首个用于 warn reason）
     let loggedHit: string | null = null;
 
@@ -359,16 +369,40 @@ function normalizeToIPv4(hostname: string): string | null {
  * 仅提取字符串值中的 URL，支持嵌套对象。
  */
 export function extractURLs(args: Record<string, unknown>): string[] {
+  return scanURLs(args).urls;
+}
+
+interface URLScanResult {
+  urls: string[];
+  exceededLimits: boolean;
+}
+
+/**
+ * Iteratively scan JSON-shaped tool arguments. URL parsers such as Node's
+ * normalize backslashes in HTTP URLs, so normalize separators before matching
+ * as well; otherwise `http:\\host` bypasses a `://`-only extractor.
+ */
+function scanURLs(args: Record<string, unknown>): URLScanResult {
   const urls: string[] = [];
-  // Match all supported protocols in one pass
+  const pending: Array<{ value: unknown; depth: number }> = [{ value: args, depth: 0 }];
+  let scannedNodes = 0;
+  // Match all supported protocols in one pass after URL-separator normalization.
   const urlRe = /(?:https?|file|ftp|gopher|dict|ldap|sftp):\/\/[^\s"'<>]+/gi;
-  for (const value of Object.values(args)) {
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    if (++scannedNodes > MAX_URL_SCAN_NODES || current.depth > MAX_URL_SCAN_DEPTH) {
+      return { urls, exceededLimits: true };
+    }
+    const { value } = current;
     if (typeof value === "string") {
-      const matches = value.match(urlRe);
+      const matches = value.replaceAll("\\", "/").match(urlRe);
       if (matches) urls.push(...matches);
+    } else if (Array.isArray(value)) {
+      for (const child of value) pending.push({ value: child, depth: current.depth + 1 });
     } else if (typeof value === "object" && value !== null) {
-      urls.push(...extractURLs(value as Record<string, unknown>));
+      for (const child of Object.values(value)) pending.push({ value: child, depth: current.depth + 1 });
     }
   }
-  return urls;
+  return { urls, exceededLimits: false };
 }

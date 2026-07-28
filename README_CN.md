@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
+  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
 </p>
 
 <p align="center"><strong>MCP 上下文压缩</strong></p>
@@ -14,8 +14,8 @@
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard.svg?label=npm" alt="npm"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
 </p>
 
 <p align="center">
@@ -23,14 +23,14 @@
   <a href="#选择宿主入口">宿主入口</a> ·
   <a href="#验证数据">验证数据</a> ·
   <a href="#兼容性">兼容性</a> ·
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README.md">English</a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/README.md">English</a>
 </p>
 
 Slim Guard 压缩现有 MCP Server 产生的工具目录和调用结果。它位于真实上游调用
 之后、结果进入模型上下文之前。它不会替换工具、修改参数，也不会在恢复时再次
 调用上游。
 
-![Slim Guard 压缩 MCP 上下文](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/mcp-context-flow.svg)
+![Slim Guard 压缩 MCP 上下文](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/mcp-context-flow.svg)
 
 ## 它做什么
 
@@ -83,7 +83,7 @@ mcp-slim-guard validate
 
 `init` 可以导入常见 JSON、Cursor 和 VS Code MCP 配置，但不能导入 Codex
 TOML。只有 Codex 配置的项目必须先根据
-[手工上游模板](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md#codex-cli)
+[手工上游模板](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md#codex-cli)
 创建 `mcp-slim-guard.yml`，再把 Slim Guard 加入 `.codex/config.toml`。
 
 ## 选择宿主入口
@@ -158,7 +158,7 @@ read_result
 ```
 
 命令定位、连接检查和配置边界见
-[宿主接入指南](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md)。
+[宿主接入指南](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md)。
 
 ## 结果如何交付
 
@@ -193,11 +193,11 @@ $ npm run demo:alpha
 PASS: Compress what agents see. Preserve what tools do.
 ```
 
-![Slim Guard 调用流程](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-demo.gif)
+![Slim Guard 调用流程](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-demo.gif)
 
 ## 验证数据
 
-![Slim Guard 冻结 Alpha 基准](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/benchmark-alpha.svg)
+![Slim Guard 冻结 Alpha 基准](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/benchmark-alpha.svg)
 
 | 冻结的 12 工具、24 任务 fixture | 原始 MCP | `mcp-compressor 0.31.6` | Slim Guard |
 | ------------------------------- | -------: | ----------------------: | ---------: |
@@ -299,9 +299,9 @@ npm run smoke:package
 ```
 
 参见
-[架构](https://github.com/lennney/mcp-slim-guard/blob/main/docs/architecture-mcp-slim-guard.md)、
-[路线图](https://github.com/lennney/mcp-slim-guard/blob/main/docs/ROADMAP.md)和
-[已验收的 Host-native 目标](https://github.com/lennney/mcp-slim-guard/blob/main/GOAL.md)。
+[架构](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/architecture-mcp-slim-guard.md)、
+[路线图](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/ROADMAP.md)和
+[已验收的 Host-native 目标](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/GOAL.md)。
 
 ## License
 

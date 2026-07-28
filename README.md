@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
+  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
 </p>
 
 <p align="center"><strong>Context compression for MCP</strong></p>
@@ -14,8 +14,8 @@
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard.svg?label=npm" alt="npm"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <a href="#choose-a-host-surface">Host surfaces</a> ·
   <a href="#proof">Proof</a> ·
   <a href="#compatibility">Compatibility</a> ·
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README_CN.md">中文</a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/README_CN.md">中文</a>
 </p>
 
 Slim Guard compresses the catalogs and results produced by your existing MCP
@@ -31,7 +31,7 @@ Servers. It runs after the real upstream Tool call and before the result enters
 the model context. It does not replace the Tool, change its arguments, or call
 it again during recovery.
 
-![Slim Guard compresses MCP context](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/mcp-context-flow.svg)
+![Slim Guard compresses MCP context](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/mcp-context-flow.svg)
 
 ## What it does
 
@@ -89,7 +89,7 @@ MCP Server entries with one Slim Guard entry. Do not expose both paths.
 
 `init` imports common JSON, Cursor, and VS Code MCP configurations. It does not
 import Codex TOML. A Codex-only project must create `mcp-slim-guard.yml` from
-the [manual upstream template](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md#codex-cli)
+the [manual upstream template](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md#codex-cli)
 before it adds the Slim Guard Server to `.codex/config.toml`.
 
 ## Choose a Host surface
@@ -166,7 +166,7 @@ read_result
 ```
 
 See the
-[Host setup guide](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md)
+[Host setup guide](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md)
 for command lookup, verification, and configuration boundaries.
 
 ## How result delivery works
@@ -204,11 +204,11 @@ $ npm run demo:alpha
 PASS: Compress what agents see. Preserve what tools do.
 ```
 
-![Slim Guard call flow](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-demo.gif)
+![Slim Guard call flow](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-demo.gif)
 
 ## Proof
 
-![Slim Guard frozen Alpha benchmark](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/benchmark-alpha.svg)
+![Slim Guard frozen Alpha benchmark](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/benchmark-alpha.svg)
 
 | Frozen 12-Tool, 24-task fixture | Direct MCP | `mcp-compressor 0.31.6` | Slim Guard |
 | ------------------------------- | ---------: | ----------------------: | ---------: |
@@ -317,10 +317,10 @@ npm run smoke:package
 ```
 
 See the
-[architecture](https://github.com/lennney/mcp-slim-guard/blob/main/docs/architecture-mcp-slim-guard.md),
-[roadmap](https://github.com/lennney/mcp-slim-guard/blob/main/docs/ROADMAP.md),
+[architecture](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/architecture-mcp-slim-guard.md),
+[roadmap](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/ROADMAP.md),
 and
-[accepted Host-native goal](https://github.com/lennney/mcp-slim-guard/blob/main/GOAL.md).
+[accepted Host-native goal](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/GOAL.md).
 
 ## License
 

@@ -240,7 +240,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
       if (!mcpConfigPath) {
         console.error("Error: No MCP configuration file found.");
-        console.error("Expected one of: .mcp.json, mcp.json, claude_desktop_config.json, .cursor/mcp.json");
+        console.error(
+          "Expected one of: .mcp.json, mcp.json, claude_desktop_config.json, .cursor/mcp.json, .vscode/mcp.json",
+        );
         process.exit(1);
         return;
       }

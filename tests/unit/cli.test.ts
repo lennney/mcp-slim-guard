@@ -195,6 +195,7 @@ describe("CLI", () => {
 
       expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalled();
       expect(consoleErrorSpy).toHaveBeenCalledWith("Error: No MCP configuration file found.");
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining(".vscode/mcp.json"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });

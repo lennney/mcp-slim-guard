@@ -212,12 +212,32 @@ describe("CLI", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
       expect(consoleErrorSpy).toHaveBeenCalledWith("   Listening on STDIO transport");
       // GuardProxy constructor was called
-      expect(vi.mocked(GuardProxy)).toHaveBeenCalled();
+      expect(vi.mocked(GuardProxy)).toHaveBeenCalledWith(
+        MOCK_GUARD_CONFIG,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        { surface: "generic" },
+      );
       // proxy.start was called on the returned instance
       const instance = vi.mocked(GuardProxy).mock.results[0]?.value as {
         start: ReturnType<typeof vi.fn>;
       };
       expect(instance.start).toHaveBeenCalled();
+    });
+
+    it("starts the explicit native Tool surface without changing the default", async () => {
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+
+      await main(["node", "cli.js", "start", "--surface", "native"]);
+
+      expect(vi.mocked(GuardProxy)).toHaveBeenCalledWith(
+        MOCK_GUARD_CONFIG,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        { surface: "native" },
+      );
     });
   });
 

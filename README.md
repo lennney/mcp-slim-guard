@@ -13,7 +13,7 @@
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard.svg?label=npm" alt="npm"></a>
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D18-282b2d.svg" alt="Node.js 18 or newer"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@ No model or API calls. The result is fixture-bound, not a universal savings rate
 
 ## Install the Alpha
 
-Node.js 18 or newer is required.
+Node.js 20 or newer is required.
 
 ```bash
 npm install -g mcp-slim-guard@alpha
@@ -66,6 +66,24 @@ find_tool
 call_tool
 read_result
 ```
+
+Hosts with verified native MCP Tool discovery can select the original-Tool
+surface:
+
+```json
+{
+  "mcpServers": {
+    "slim-guard": {
+      "command": "mcp-slim-guard",
+      "args": ["start", "--surface", "native"],
+      "cwd": "/absolute/path/to/your-project"
+    }
+  }
+}
+```
+
+This surface exposes authorized original Tools plus `read_result`. Omitting
+`--surface native` keeps the three-tool generic fallback.
 
 Keep API keys in environment variables. `init` rejects plaintext values in
 sensitive configuration fields. See the
@@ -223,13 +241,14 @@ swapping it in; those calls continue normally. Stdio disconnect, `SIGINT`, and
 | Filesystem MCP Server      | Large structured text result recovered exactly        |
 | Everything MCP Server      | Small `structuredContent` result passed through       |
 | ContextForge               | Real HTTP bridge to Slim Guard stdio call passed      |
-| Codex CLI                  | Isolated configuration acceptance passed              |
-| VS Code                    | Isolated `--add-mcp` acceptance passed                |
+| Codex CLI                  | Native model-selected call and recovery passed        |
+| VS Code                    | Native Interface inspection passed                    |
 | Downstream Streamable HTTP | Experimental and loopback-only                        |
 
-Codex and VS Code evidence covers configuration acceptance, not a
-model-selected call. The
-[host evidence](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-host-and-gateway-smoke.md)
+Codex evidence includes a model-selected call and exact snapshot recovery. VS
+Code evidence covers the local Host Interface and approval model, not a model
+call. The
+[adoption checkpoint](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-28-host-adoption-checkpoint.md)
 records the exact claim boundaries.
 
 ## Current boundary
@@ -238,10 +257,11 @@ Slim Guard fits hosts that load many tools or receive long reports, JSON, and
 logs. Local deterministic compression avoids another model call and keeps
 result recovery under the same MCP connection.
 
-The Alpha replaces original model-facing tool identities with three stable
-entries. Hosts that require a separate permission prompt for each upstream
-tool may lose that UI-level identity. Production remote ingress, multi-tenant
-control planes, and relevance retrieval remain outside this release.
+The default Alpha surface replaces original model-facing Tool identities with
+three stable entries. Verified Hosts can opt into authorized original Tools
+plus `read_result` with `start --surface native`, retaining their per-Tool
+identity and approval controls. Production remote ingress, multi-tenant control
+planes, and relevance retrieval remain outside this release.
 
 Security provides supporting checks and audit findings. Slim Guard does not
 automatically redact the recoverable result.

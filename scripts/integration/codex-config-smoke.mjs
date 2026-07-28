@@ -22,7 +22,7 @@ try {
       "-c",
       `mcp_servers.slim_guard.command=${JSON.stringify(process.execPath)}`,
       "-c",
-      `mcp_servers.slim_guard.args=${JSON.stringify([cli, "start"])}`,
+      `mcp_servers.slim_guard.args=${JSON.stringify([cli, "start", "--surface", "native"])}`,
       "-c",
       `mcp_servers.slim_guard.cwd=${JSON.stringify(cwd)}`,
     ],
@@ -35,11 +35,15 @@ try {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr || `codex mcp list exited ${result.status}`);
   if (!result.stdout.includes("slim_guard")) throw new Error("Codex did not load slim_guard");
+  if (!result.stdout.includes("--surface native")) {
+    throw new Error("Codex did not retain the explicit native surface selection");
+  }
   console.log(
     JSON.stringify({
       host: "Codex CLI",
       mode: "ephemeral CLI configuration parse",
       configured_server: "slim_guard",
+      surface: "native",
       passed: true,
     }),
   );

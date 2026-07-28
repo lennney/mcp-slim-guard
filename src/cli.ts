@@ -297,7 +297,10 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     .description("Start the guard proxy")
     .option("--http", "Use HTTP transport instead of STDIO")
     .option("--port <port>", "HTTP port (default: 3000)", "3000")
-    .action(async (options: { http?: boolean; port: string }) => {
+    .addOption(
+      new Option("--surface <surface>", "Model-facing Tool surface").choices(["generic", "native"]).default("generic"),
+    )
+    .action(async (options: { http?: boolean; port: string; surface: "generic" | "native" }) => {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
@@ -317,7 +320,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       let serverManager = new ServerManager(config.servers);
       const policies = createPolicies(config);
       const pipeline = new PolicyPipeline(policies);
-      const proxy = new GuardProxy(config, pipeline, audit, serverManager);
+      const proxy = new GuardProxy(config, pipeline, audit, serverManager, {
+        surface: options.surface,
+      });
 
       // Choose transport
       const transport = options.http

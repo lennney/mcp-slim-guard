@@ -32,6 +32,7 @@ import {
 } from "./secure-projection.js";
 import { ResultCapsuleStore } from "./result-capsule-store.js";
 import { NativeToolAdapter, type NativeToolRoute } from "./native-tool-adapter.js";
+import { ToolInputValidator } from "./tool-input-validator.js";
 import { VERSION } from "./version.js";
 
 function projectionAuditArguments(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
@@ -135,6 +136,7 @@ export class GuardProxy {
   /** One recovery store shared by whichever public adapter is active. */
   private results = new ResultCapsuleStore();
   private surface: GuardSurface;
+  private readonly inputValidator = new ToolInputValidator();
   /** Requests admitted by tools/call; reload and stop wait for the next idle boundary. */
   private inFlightToolCalls = 0;
   private idleWaiters = new Set<() => void>();
@@ -323,6 +325,30 @@ export class GuardProxy {
         }
 
         const { serverName, originalToolName } = resolved;
+        const validationTool = nativeRoute?.tool ?? this.fullTools.find((tool) => tool.name === prefixedName);
+        if (!validationTool) {
+          throw new McpError(ErrorCode.InternalError, `Catalog schema unavailable for Tool "${prefixedName}"`);
+        }
+        const validation = this.inputValidator.validate(validationTool, args);
+        if (!validation.valid) {
+          if (traceState) {
+            traceState.outcome = "invalid_request";
+            traceState.reason = "Tool arguments do not match inputSchema";
+          }
+          this.recordAudit(
+            { toolName: prefixedName, arguments: {}, serverName },
+            { allowed: false, reason: "Tool arguments do not match inputSchema", policy: "validation" },
+            [],
+            this.sessionId,
+            ++this.requestCounter,
+            0,
+            { traceId, event: "validation", outcome: "invalid_request" },
+          );
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Invalid arguments for Tool "${prefixedName}": ${validation.errorMessage ?? "inputSchema validation failed"}`,
+          );
+        }
         const ctx: PolicyContext = {
           toolName: prefixedName,
           arguments: policyArgs,

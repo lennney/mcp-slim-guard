@@ -98,6 +98,42 @@ async function recoverText(client: Client, delivered: CallToolResult): Promise<s
 }
 
 describe("Host-native MCP Tool surface", () => {
+  it("rejects arguments that violate the advertised input schema before invoking upstream", async () => {
+    const exactTool: Tool = {
+      name: "exact",
+      description: "Requires one exact string payload",
+      inputSchema: {
+        type: "object",
+        properties: {
+          payload: { type: "string" },
+        },
+        required: ["payload"],
+        additionalProperties: false,
+      },
+    };
+    const connector = new InMemoryUpstreamConnector({
+      fixture: {
+        tools: [exactTool],
+        call: async () => ({ content: [{ type: "text", text: "invoked" }] }),
+      },
+    });
+    const runtime = await startNativeRuntime(config(), connector);
+
+    try {
+      for (const invalidArguments of [{}, { payload: 42 }, { payload: "ok", extra: true }]) {
+        await expect(
+          runtime.client.callTool({
+            name: "exact",
+            arguments: invalidArguments,
+          }),
+        ).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+      }
+      expect(connector.state("fixture").calls).toHaveLength(0);
+    } finally {
+      await closeNativeRuntime(runtime);
+    }
+  });
+
   it("keeps native identity, routes once, projects eligible text, and passes structured output through", async () => {
     const searchTool: Tool = {
       name: "search",
@@ -571,6 +607,64 @@ describe("Host-native MCP Tool surface", () => {
 });
 
 describe("Generic compatibility Tool surface", () => {
+  it("rejects catalog-bound arguments that violate the imported input schema before invocation", async () => {
+    const currentConfig: GuardConfig = {
+      ...config(),
+      tools: { allow: ["fixture_*"], deny: [] },
+      compressor: { enabled: true, level: "light" },
+    };
+    const exactTool: Tool = {
+      name: "exact",
+      description: "Requires one exact string payload",
+      inputSchema: {
+        type: "object",
+        properties: { payload: { type: "string" } },
+        required: ["payload"],
+        additionalProperties: false,
+      },
+    };
+    const connector = new InMemoryUpstreamConnector({
+      fixture: {
+        tools: [exactTool],
+        call: async () => ({ content: [{ type: "text", text: "invoked" }] }),
+      },
+    });
+    const manager = new ServerManager(currentConfig.servers, connector);
+    const proxy = new GuardProxy(
+      currentConfig,
+      new PolicyPipeline([new WhitelistPolicy(currentConfig.tools)]),
+      new AuditLogger({ output: "stderr", level: "silent" }),
+      manager,
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "generic-schema-host", version: "1.0.0" }, { capabilities: {} });
+    await proxy.start(serverTransport);
+    await client.connect(clientTransport);
+
+    try {
+      const found = await client.callTool({
+        name: "find_tool",
+        arguments: { query: "exact payload" },
+      });
+      const discovery = JSON.parse((found.content[0] as { type: "text"; text: string }).text) as {
+        matches: Array<{ tool_ref: string }>;
+      };
+      await expect(
+        client.callTool({
+          name: "call_tool",
+          arguments: {
+            tool_ref: discovery.matches[0]?.tool_ref,
+            arguments: {},
+          },
+        }),
+      ).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+      expect(connector.state("fixture").calls).toHaveLength(0);
+    } finally {
+      await client.close().catch(() => {});
+      await proxy.stop().catch(() => {});
+    }
+  });
+
   it("keeps a real Tool reachable when its catalog name occupies the wrapper namespace", async () => {
     const currentConfig: GuardConfig = {
       ...config(),

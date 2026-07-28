@@ -35,7 +35,7 @@ export type PolicyResult =
   { allowed: true; reason?: string } | { allowed: false; reason: string; policy: string };
 
 export type AuditEventKind =
-  "discovery" | "routing" | "policy" | "cache" | "upstream" | "projection" | "recovery" | "lifecycle";
+  "discovery" | "routing" | "validation" | "policy" | "cache" | "upstream" | "projection" | "recovery" | "lifecycle";
 
 export type AuditOutcome =
   | "success"

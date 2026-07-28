@@ -32,6 +32,7 @@ let mockServerInstances: Array<{
   setRequestHandler: ReturnType<typeof vi.fn>;
   connect: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  sendToolListChanged: ReturnType<typeof vi.fn>;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
         transport?.connectError ? Promise.reject(transport.connectError) : Promise.resolve(undefined),
       ),
       close: vi.fn().mockResolvedValue(undefined),
+      sendToolListChanged: vi.fn().mockResolvedValue(undefined),
     };
     mockServerInstances!.push(instance);
     return instance;
@@ -68,7 +70,7 @@ vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
 // ---------------------------------------------------------------------------
 
 import { GuardProxy } from "../../src/proxy.js";
-import { CALL_TOOL, FIND_TOOL } from "../../src/secure-projection.js";
+import { CALL_TOOL, FIND_TOOL, READ_RESULT } from "../../src/secure-projection.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,7 +80,7 @@ import { CALL_TOOL, FIND_TOOL } from "../../src/secure-projection.js";
 function makeMinimalConfig(): GuardConfig {
   return {
     version: 1,
-    tools: { allow: [], deny: [] },
+    tools: { allow: ["*"], deny: [] },
     ssrf: {
       mode: "off",
       block_private_ips: false,
@@ -119,7 +121,21 @@ function makeMockServerManager() {
   return {
     start: vi.fn().mockResolvedValue({ configured: 0, connected: [], failed: [] }),
     stop: vi.fn().mockResolvedValue({ closed: [], failed: [] }),
-    getTools: vi.fn().mockReturnValue([]),
+    getTools: vi
+      .fn()
+      .mockReturnValue(
+        [
+          "github_search",
+          "github_create_repo",
+          "srv_tool1",
+          "srv_write",
+          "my_complex_server_my_tool",
+          "old_tool",
+          "fixture_slow",
+        ].map((name) => ({ name, inputSchema: { type: "object" as const } })),
+      ),
+    getNativeTools: vi.fn().mockReturnValue([]),
+    getLegacyCatalogNames: vi.fn().mockReturnValue([]),
     resolveTool: vi.fn(),
     callTool: vi.fn().mockResolvedValue({
       content: [{ type: "text" as const, text: "ok" }],
@@ -252,6 +268,51 @@ describe("GuardProxy", () => {
     });
   });
 
+  it("rolls back a connected upstream when startup fails before downstream connect", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.stop.mockResolvedValue({
+      closed: ["fixture"],
+      failed: [],
+    });
+    let finishManagerStart!: (report: { configured: number; connected: never[]; failed: never[] }) => void;
+    serverManager.start.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishManagerStart = resolve;
+      }),
+    );
+    serverManager.getTools.mockImplementationOnce(() => {
+      throw new TypeError("catalog construction failed");
+    });
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+
+    const starting = proxy.start({} as never);
+    await vi.waitFor(() => expect(serverManager.start).toHaveBeenCalledTimes(1));
+    const stopping = proxy.stop();
+    finishManagerStart({ configured: 0, connected: [], failed: [] });
+    await expect(starting).rejects.toThrow("catalog construction failed");
+
+    expect(serverManager.start).toHaveBeenCalledTimes(1);
+    expect(serverManager.stop).toHaveBeenCalledTimes(1);
+    expect(mockServerInstances[0].close).toHaveBeenCalledTimes(1);
+    expect(() => proxy.getServer()).toThrow("Server not started");
+    const stopOutcome = await Promise.race([
+      stopping.then(() => "stopped" as const),
+      new Promise<"timed_out">((resolve) => {
+        setTimeout(() => resolve("timed_out"), 100);
+      }),
+    ]);
+    expect(stopOutcome).toBe("stopped");
+
+    serverManager.getTools.mockReturnValue([]);
+    await expect(proxy.start({} as never)).resolves.toBeUndefined();
+    await proxy.stop();
+    expect(serverManager.start).toHaveBeenCalledTimes(2);
+    expect(serverManager.stop).toHaveBeenCalledTimes(2);
+  });
+
   // -----------------------------------------------------------------------
   // 3. tools/list handler returns tools from ServerManager
   // -----------------------------------------------------------------------
@@ -351,8 +412,8 @@ describe("GuardProxy", () => {
     };
     const result = await callHandler!(request);
 
-    // Should return the upstream result with resultType
-    expect(result).toEqual({ ...upstreamResult, resultType: "complete" });
+    // Pass-through must return the exact upstream object without adding fields.
+    expect(result).toBe(upstreamResult);
 
     // Verify resolveTool was called
     expect(serverManager.resolveTool).toHaveBeenCalledWith("github_search");
@@ -368,6 +429,75 @@ describe("GuardProxy", () => {
 
     // Verify callTool was forwarded
     expect(serverManager.callTool).toHaveBeenCalledWith("github", "search", { q: "mcp" });
+  });
+
+  it("routes an advertised catalog Tool whose name matches a reserved wrapper", async () => {
+    const config = {
+      ...makeMinimalConfig(),
+      compressor: { enabled: false, level: "off" as const },
+    };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    const upstreamResult = {
+      content: [{ type: "text" as const, text: "upstream list result" }],
+    };
+    serverManager.getTools.mockReturnValue([
+      {
+        name: "mcp__list_tools",
+        description: "A real upstream Tool",
+        inputSchema: { type: "object" as const },
+      },
+    ]);
+    serverManager.resolveTool.mockImplementation((name: string) =>
+      name === "mcp__list_tools" ? { serverName: "mcp_", originalToolName: "list_tools" } : null,
+    );
+    serverManager.callTool.mockResolvedValue(upstreamResult);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    expect((await listHandler({})).tools.map((tool: { name: string }) => tool.name)).toEqual(["mcp__list_tools"]);
+    await expect(
+      callHandler({
+        params: { name: "mcp__list_tools", arguments: { marker: "real-tool" } },
+      }),
+    ).resolves.toBe(upstreamResult);
+    expect(serverManager.callTool).toHaveBeenCalledOnce();
+    expect(serverManager.callTool).toHaveBeenCalledWith("mcp_", "list_tools", { marker: "real-tool" });
+  });
+
+  it("returns the exact upstream result when audit recording throws after execution", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: ["srv_*"], deny: [] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    const upstreamResult = {
+      content: [{ type: "text" as const, text: "side effect completed" }],
+      extension: { preserve: true },
+    };
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "srv",
+      originalToolName: "write",
+    });
+    serverManager.callTool.mockResolvedValue(upstreamResult);
+    audit.log.mockImplementation((...args: unknown[]) => {
+      const details = args[6] as { event?: string } | undefined;
+      if (details?.event === "upstream") throw new Error("AUDIT_FAILURE_SENTINEL");
+    });
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    await expect(
+      callHandler({
+        params: { name: "srv_write", arguments: { value: "once" } },
+      }),
+    ).resolves.toBe(upstreamResult);
+    expect(serverManager.callTool).toHaveBeenCalledTimes(1);
   });
 
   // -----------------------------------------------------------------------
@@ -449,7 +579,7 @@ describe("GuardProxy", () => {
     const requestCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_test");
     expect(requestCalls).toHaveLength(2);
     expect(requestCalls[0]).toEqual([
-      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv", agentId: "s_test" },
+      { toolName: "srv_tool1", arguments: {}, serverName: "srv", agentId: "s_test" },
       { allowed: true },
       [], // trail
       "s_test",
@@ -505,7 +635,7 @@ describe("GuardProxy", () => {
     const requestCalls = audit.log.mock.calls.filter((call) => call[6]?.traceId === "t_test");
     expect(requestCalls).toHaveLength(1);
     expect(requestCalls[0]).toEqual([
-      { toolName: "srv_tool1", arguments: { x: 1 }, serverName: "srv", agentId: "s_test" },
+      { toolName: "srv_tool1", arguments: {}, serverName: "srv", agentId: "s_test" },
       { allowed: false, reason: "Blocked by whitelist", policy: "whitelist" },
       [{ policy: "whitelist", result: "block", reason: "Blocked by whitelist" }],
       "s_test",
@@ -543,7 +673,6 @@ describe("GuardProxy", () => {
     expect(result).toEqual({
       content: [{ type: "text", text: "Unknown tool: nonexistent_tool" }],
       isError: true,
-      resultType: "complete",
     });
 
     // Pipeline should NOT be called for unknown tools
@@ -678,11 +807,11 @@ describe("GuardProxy", () => {
       agentId: "s_test",
     });
 
-    // Also verify audit received the same context
+    // Audit receives the route identity but never the invocation arguments.
     expect(audit.log).toHaveBeenCalledWith(
       {
         toolName: "my_complex_server_my_tool",
-        arguments: { repo: "org/project", limit: 10 },
+        arguments: {},
         serverName: "my_complex_server",
         agentId: "s_test",
       },
@@ -693,6 +822,34 @@ describe("GuardProxy", () => {
       expect.any(Number),
       { traceId: "t_test", event: "policy", outcome: "success" },
     );
+  });
+
+  it("preserves an omitted arguments field while policy evaluates an empty object", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.resolveTool.mockReturnValue({
+      serverName: "my_complex_server",
+      originalToolName: "my_tool",
+    });
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    await callHandler({
+      method: "tools/call",
+      params: { name: "my_complex_server_my_tool" },
+    });
+
+    expect(pipeline.executeWithTrail).toHaveBeenCalledWith({
+      toolName: "my_complex_server_my_tool",
+      arguments: {},
+      serverName: "my_complex_server",
+      agentId: "s_test",
+    });
+    expect(serverManager.callTool).toHaveBeenCalledWith("my_complex_server", "my_tool", undefined);
   });
 
   it("correlates projection, policy, and upstream events without calling an upstream error a block", async () => {
@@ -749,7 +906,7 @@ describe("GuardProxy", () => {
     expect(traceCalls.map((call) => call[6]?.event)).toEqual(["policy", "upstream", "projection"]);
     expect(traceCalls.map((call) => call[6]?.outcome)).toEqual(["success", "upstream_error", "upstream_error"]);
     expect(traceCalls[2]?.[1]).toEqual({ allowed: true });
-    expect(traceCalls[2]?.[0].arguments).toEqual({ tool_ref: match.tool_ref });
+    expect(traceCalls[2]?.[0].arguments).toEqual({});
   });
 
   it("keeps a projection policy rejection blocked without claiming an upstream invocation", async () => {
@@ -957,14 +1114,13 @@ describe("GuardProxy", () => {
     // tools/list must now reflect the NEW manager's tools, not the stale cache
     const after = await listHandler({});
     expect(after).toEqual({
-      tools: [
-        { name: "new_tool", inputSchema: { type: "object" } },
-        { name: "another_tool", inputSchema: { type: "object" } },
-      ],
+      tools: [{ name: "new_tool", inputSchema: { type: "object" } }],
     });
     // The new manager's getTools should have been consulted after reload
     expect(newServerManager.getTools).toHaveBeenCalled();
+    expect(serverManager.stop).toHaveBeenCalledTimes(1);
     expect(audit.close).toHaveBeenCalledTimes(1);
+    expect(mockServerInstances[0].sendToolListChanged).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the active runtime unchanged when reload preparation fails", async () => {
@@ -993,6 +1149,7 @@ describe("GuardProxy", () => {
     });
     expect(audit.close).not.toHaveBeenCalled();
     expect(candidateAudit.log).not.toHaveBeenCalled();
+    expect(mockServerInstances[0].sendToolListChanged).not.toHaveBeenCalled();
   });
 
   it("waits for an in-flight tool call before swapping runtime state", async () => {
@@ -1016,6 +1173,7 @@ describe("GuardProxy", () => {
     const inFlightCall = callHandler({
       params: { name: "old_tool", arguments: { value: "held" } },
     });
+    await vi.waitFor(() => expect(serverManager.callTool).toHaveBeenCalledTimes(1));
 
     const candidateManager = makeMockServerManager();
     candidateManager.getTools.mockReturnValue([{ name: "new_tool", inputSchema: { type: "object" as const } }]);
@@ -1062,6 +1220,7 @@ describe("GuardProxy", () => {
     const inFlightCall = callHandler({
       params: { name: "fixture_slow", arguments: {} },
     });
+    await vi.waitFor(() => expect(serverManager.callTool).toHaveBeenCalledTimes(1));
     const stopping = proxy.stop();
     await Promise.resolve();
 
@@ -1074,6 +1233,68 @@ describe("GuardProxy", () => {
 
     expect(mockServerInstances[0].close).toHaveBeenCalledTimes(1);
     expect(serverManager.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes stop atomic against concurrent reload and shares one stop completion", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    const candidateManager = makeMockServerManager();
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+
+    const stopping = proxy.stop();
+    expect(proxy.stop()).toBe(stopping);
+    await expect(
+      proxy.reload(config, makeMockPipeline() as never, makeMockAudit() as never, candidateManager as never),
+    ).rejects.toThrow("Cannot reload while runtime is stopping");
+    await stopping;
+
+    expect(mockServerInstances[0].close).toHaveBeenCalledTimes(1);
+    expect(serverManager.stop).toHaveBeenCalledTimes(1);
+    expect(candidateManager.stop).not.toHaveBeenCalled();
+  });
+
+  it("lets an active reload finish before stop closes the replacement generation", async () => {
+    const config = makeMinimalConfig();
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([{ name: "old_tool", inputSchema: { type: "object" as const } }]);
+    serverManager.resolveTool.mockReturnValue({ serverName: "old", originalToolName: "tool" });
+    let finishUpstream!: (value: { content: Array<{ type: "text"; text: string }> }) => void;
+    serverManager.callTool.mockReturnValue(
+      new Promise((resolve) => {
+        finishUpstream = resolve;
+      }),
+    );
+    const candidateManager = makeMockServerManager();
+    candidateManager.getTools.mockReturnValue([{ name: "new_tool", inputSchema: { type: "object" as const } }]);
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const inFlightCall = callHandler({ params: { name: "old_tool", arguments: {} } });
+    await vi.waitFor(() => expect(serverManager.callTool).toHaveBeenCalledTimes(1));
+
+    const reloading = proxy.reload(
+      config,
+      makeMockPipeline() as never,
+      makeMockAudit() as never,
+      candidateManager as never,
+    );
+    const stopping = proxy.stop();
+    expect(serverManager.stop).not.toHaveBeenCalled();
+    expect(candidateManager.stop).not.toHaveBeenCalled();
+
+    finishUpstream({ content: [{ type: "text", text: "finished" }] });
+    await inFlightCall;
+    await reloading;
+    await stopping;
+
+    expect(serverManager.stop).toHaveBeenCalledTimes(1);
+    expect(candidateManager.stop).toHaveBeenCalledTimes(1);
+    expect(mockServerInstances[0].close).toHaveBeenCalledTimes(1);
   });
 
   // -----------------------------------------------------------------------
@@ -1115,7 +1336,7 @@ describe("GuardProxy", () => {
       method: "tools/call",
       params: { name: "github_search", arguments: { q: "mcp" } },
     });
-    expect(result1).toEqual({ ...upstreamResult, resultType: "complete" });
+    expect(result1).toBe(upstreamResult);
     expect(serverManager.callTool).toHaveBeenCalledTimes(1);
 
     // Second call with same args: cache hit, no upstream call
@@ -1123,7 +1344,7 @@ describe("GuardProxy", () => {
       method: "tools/call",
       params: { name: "github_search", arguments: { q: "mcp" } },
     });
-    expect(result2).toEqual({ ...upstreamResult, resultType: "complete" });
+    expect(result2).toEqual(upstreamResult);
     // callTool should still be 1 (not called again)
     expect(serverManager.callTool).toHaveBeenCalledTimes(1);
   });
@@ -1216,5 +1437,279 @@ describe("GuardProxy", () => {
     });
 
     expect(serverManager.callTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("native surface advertises authorized original Tools plus recovery and reuses one upstream call", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: ["fixture_*"], deny: [] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    const structuredTool = {
+      name: "structured",
+      title: "Structured result",
+      description: "Returns structured data",
+      inputSchema: { type: "object" as const, properties: {} },
+      outputSchema: { type: "object" as const, properties: { count: { type: "number" } } },
+      annotations: { readOnlyHint: true },
+      _meta: { provider: "fixture" },
+      "x-native-fixture": { preserve: true },
+    };
+    const nativeRoutes = [
+      {
+        catalogName: "fixture_search",
+        serverName: "fixture",
+        originalToolName: "search",
+        tool: { name: "search", inputSchema: { type: "object" as const, properties: {} } },
+      },
+      {
+        catalogName: "fixture_structured",
+        serverName: "fixture",
+        originalToolName: "structured",
+        tool: structuredTool,
+      },
+    ];
+    serverManager.getTools.mockReturnValue(nativeRoutes.map((route) => ({ ...route.tool, name: route.catalogName })));
+    serverManager.getNativeTools.mockReturnValue(nativeRoutes);
+    const largeText = `${"native result line\n".repeat(1_000)}tail`;
+    serverManager.callTool.mockImplementation(async (_server: string, toolName: string) =>
+      toolName === "search"
+        ? { content: [{ type: "text" as const, text: largeText }] }
+        : {
+            content: [{ type: "text" as const, text: "structured" }],
+            structuredContent: { count: 1 },
+            _meta: { provider: "fixture" },
+            "x-result-fixture": true,
+          },
+    );
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never, {
+      surface: "native",
+    });
+    await proxy.start({} as never);
+
+    const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
+    const listed = await listHandler({});
+    expect(listed.tools.map((tool: { name: string }) => tool.name)).toEqual(["search", "structured", READ_RESULT]);
+    expect(listed.tools[1]).toEqual(structuredTool);
+
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    const forwardedArgs = { query: "mcp" };
+    const projected = await callHandler({
+      method: "tools/call",
+      params: { name: "search", arguments: forwardedArgs },
+    });
+    expect(projected.structuredContent?.result_ref).toMatch(/^result_[a-f0-9]{32}$/);
+    expect(serverManager.callTool).toHaveBeenCalledWith("fixture", "search", forwardedArgs);
+    expect(serverManager.callTool.mock.calls[0]?.[2]).toBe(forwardedArgs);
+
+    const resultRef = projected.structuredContent.result_ref as string;
+    const recovered = await callHandler({
+      method: "tools/call",
+      params: { name: READ_RESULT, arguments: { result_ref: resultRef } },
+    });
+    expect(recovered.content[0]).toEqual({ type: "text", text: largeText.slice(0, recovered.content[0].text.length) });
+    expect(serverManager.callTool).toHaveBeenCalledTimes(1);
+
+    const structured = await callHandler({
+      method: "tools/call",
+      params: { name: "structured", arguments: {} },
+    });
+    expect(structured).toEqual({
+      content: [{ type: "text", text: "structured" }],
+      structuredContent: { count: 1 },
+      _meta: { provider: "fixture" },
+      "x-result-fixture": true,
+    });
+  });
+
+  it("returns the exact upstream result and discards its capsule when the delivery audit sink fails", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: ["fixture_search"], deny: [] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    audit.log.mockImplementation(
+      (...args: unknown[]) => (args[6] as { event?: string } | undefined)?.event !== "projection",
+    );
+    const serverManager = makeMockServerManager();
+    const route = {
+      catalogName: "fixture_search",
+      serverName: "fixture",
+      originalToolName: "search",
+      tool: { name: "search", inputSchema: { type: "object" as const, properties: {} } },
+    };
+    serverManager.getTools.mockReturnValue([{ ...route.tool, name: route.catalogName }]);
+    serverManager.getNativeTools.mockReturnValue([route]);
+    const upstreamResult = {
+      content: [{ type: "text" as const, text: `${"audit failure result\n".repeat(1_000)}tail` }],
+    };
+    serverManager.callTool.mockResolvedValue(upstreamResult);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never, {
+      surface: "native",
+    });
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    const result = await callHandler({
+      method: "tools/call",
+      params: { name: "search", arguments: {} },
+    });
+
+    expect(result).toBe(upstreamResult);
+    expect(serverManager.callTool).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        proxy as unknown as {
+          results: { clear(): number };
+        }
+      ).results.clear(),
+    ).toBe(0);
+  });
+
+  it("returns the exact upstream result without projection when the policy audit sink fails", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: ["fixture_search"], deny: [] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    audit.log.mockImplementation(
+      (...args: unknown[]) => (args[6] as { event?: string } | undefined)?.event !== "policy",
+    );
+    const serverManager = makeMockServerManager();
+    const route = {
+      catalogName: "fixture_search",
+      serverName: "fixture",
+      originalToolName: "search",
+      tool: { name: "search", inputSchema: { type: "object" as const, properties: {} } },
+    };
+    serverManager.getTools.mockReturnValue([{ ...route.tool, name: route.catalogName }]);
+    serverManager.getNativeTools.mockReturnValue([route]);
+    const upstreamResult = {
+      content: [{ type: "text" as const, text: `${"policy audit failure\n".repeat(1_000)}tail` }],
+    };
+    serverManager.callTool.mockResolvedValue(upstreamResult);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never, {
+      surface: "native",
+    });
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    const result = await callHandler({
+      method: "tools/call",
+      params: { name: "search", arguments: {} },
+    });
+
+    expect(result).toBe(upstreamResult);
+    expect(serverManager.callTool).toHaveBeenCalledTimes(1);
+    expect(audit.log.mock.calls.some((call) => call[6]?.event === "projection")).toBe(false);
+    expect(
+      (
+        proxy as unknown as {
+          results: { clear(): number };
+        }
+      ).results.clear(),
+    ).toBe(0);
+  });
+
+  it("native surface rejects an unauthorized or undiscovered direct name before upstream execution", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: ["fixture_search"], deny: [] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    const route = {
+      catalogName: "fixture_search",
+      serverName: "fixture",
+      originalToolName: "search",
+      tool: { name: "search", inputSchema: { type: "object" as const, properties: {} } },
+    };
+    serverManager.getTools.mockReturnValue([{ ...route.tool, name: route.catalogName }]);
+    serverManager.getNativeTools.mockReturnValue([route]);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never, {
+      surface: "native",
+    });
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    const rejected = await callHandler({
+      method: "tools/call",
+      params: { name: "not_advertised", arguments: {} },
+    });
+    expect(rejected).toMatchObject({ isError: true });
+    expect(serverManager.callTool).not.toHaveBeenCalled();
+    expect(pipeline.executeWithTrail).not.toHaveBeenCalled();
+  });
+
+  it("native surface is fail-closed when the allow list is empty", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: [], deny: [] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    serverManager.getTools.mockReturnValue([
+      {
+        name: "fixture_write",
+        description: "must stay hidden",
+        inputSchema: { type: "object" },
+      },
+    ]);
+    serverManager.getNativeTools.mockReturnValue([
+      {
+        catalogName: "fixture_write",
+        serverName: "fixture",
+        originalToolName: "write",
+        tool: { name: "write", inputSchema: { type: "object" } },
+      },
+    ]);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never, {
+      surface: "native",
+    });
+    await proxy.start({} as never);
+    const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    const listed = await listHandler({});
+    expect(listed.tools.map((tool: { name: string }) => tool.name)).toEqual([READ_RESULT]);
+    await expect(
+      callHandler({
+        params: { name: "write", arguments: { value: "must-not-run" } },
+      }),
+    ).resolves.toMatchObject({ isError: true });
+    expect(serverManager.callTool).not.toHaveBeenCalled();
+  });
+
+  it("keeps a legacy deny effective when a collision receives canonical route names", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: ["*"], deny: ["a_b_c"] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    const serverManager = makeMockServerManager();
+    const catalogName = "a_b_c__sg_12345678";
+    serverManager.getTools.mockReturnValue([
+      {
+        name: catalogName,
+        description: "must stay denied",
+        inputSchema: { type: "object" },
+      },
+    ]);
+    serverManager.getNativeTools.mockReturnValue([
+      {
+        catalogName,
+        serverName: "a",
+        originalToolName: "b_c",
+        tool: { name: "b_c", inputSchema: { type: "object" } },
+      },
+    ]);
+    serverManager.getLegacyCatalogNames.mockImplementation((name: string) => (name === catalogName ? ["a_b_c"] : []));
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never, {
+      surface: "native",
+    });
+    await proxy.start({} as never);
+    const listHandler = mockServerHandlers.get(LIST_TOOLS_SCHEMA)!;
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+
+    expect((await listHandler({})).tools.map((tool: { name: string }) => tool.name)).toEqual([READ_RESULT]);
+    await expect(callHandler({ params: { name: "b_c", arguments: {} } })).resolves.toMatchObject({
+      isError: true,
+    });
+    expect(serverManager.callTool).not.toHaveBeenCalled();
   });
 });

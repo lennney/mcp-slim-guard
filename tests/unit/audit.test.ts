@@ -33,7 +33,7 @@ describe("AuditLogger", () => {
   });
 
   it("logs allowed action with action='allowed'", () => {
-    logger.log(ctx(), allowed(), [], "s1", 1);
+    expect(logger.log(ctx(), allowed(), [], "s1", 1)).toBe(true);
     const entries = logger.getEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].action).toBe("allowed");
@@ -50,7 +50,7 @@ describe("AuditLogger", () => {
     const entries = logger.getEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].action).toBe("blocked");
-    expect(entries[0].reason).toBe("custom reason");
+    expect(entries[0].reason).toBe("test_policy blocked request");
   });
 
   it("getEntries returns all logged entries", () => {
@@ -97,23 +97,21 @@ describe("AuditLogger", () => {
     expect(entry.toolName).toBe("search_repos");
   });
 
-  it("captures arguments including edge cases", () => {
+  it("keeps tool arguments content-free for every shape", () => {
     // empty arguments
     logger.log(ctx({ arguments: {} }), allowed(), [], "s1", 1);
     expect(logger.getEntries()[0].arguments).toEqual({});
 
     // nested arguments
     logger.log(ctx({ arguments: { nested: { key: "deep", num: 1 } } }), allowed(), [], "s1", 2);
-    expect(logger.getEntries()[1].arguments).toEqual({
-      nested: { key: "deep", num: 1 },
-    });
+    expect(logger.getEntries()[1].arguments).toEqual({});
 
     // null values
     logger.log(ctx({ arguments: { a: null, b: "str" } }), allowed(), [], "s1", 3);
-    expect(logger.getEntries()[2].arguments).toEqual({ a: null, b: "str" });
+    expect(logger.getEntries()[2].arguments).toEqual({});
   });
 
-  it("redacts credential-like fields recursively", () => {
+  it("omits credential-like and ordinary argument fields alike", () => {
     logger.log(
       ctx({
         arguments: {
@@ -134,17 +132,7 @@ describe("AuditLogger", () => {
       1,
     );
 
-    expect(logger.getEntries()[0].arguments).toEqual({
-      token: "[REDACTED]",
-      nested: {
-        api_key: "[REDACTED]",
-        safe: "visible",
-        headers: { Authorization: "[REDACTED]" },
-      },
-      tool_ref: "[REDACTED]",
-      result_ref: "[REDACTED]",
-      entries: [{ password: "[REDACTED]" }, { value: 1 }],
-    });
+    expect(logger.getEntries()[0].arguments).toEqual({});
   });
 
   it("records correlated stage outcomes with redacted metadata", () => {
@@ -183,15 +171,39 @@ describe("AuditLogger", () => {
       },
     };
 
-    expect(() =>
+    expect(
       logger.log(ctx(), allowed(), [], "s1", 1, 1, {
         traceId: "t_non_blocking",
         event: "upstream",
         outcome: "success",
       }),
-    ).not.toThrow();
+    ).toBe(false);
     expect(() => logger.logDiscovery("s1", 2, "projection", 3, ["find_tool"])).not.toThrow();
     expect(logger.getEntries()).toHaveLength(2);
+  });
+
+  it("excludes complete tool arguments and credential values by default", () => {
+    const credential = "Bearer FAKE_AUDIT_CREDENTIAL_1234567890";
+
+    logger.log(
+      ctx({
+        arguments: {
+          message: credential,
+          project: "private-project-name",
+          nested: { ordinaryKey: "private-value" },
+        },
+      }),
+      allowed(),
+      [],
+      "s1",
+      1,
+    );
+
+    const entry = logger.getEntries()[0];
+    expect(entry.arguments).toEqual({});
+    expect(JSON.stringify(entry)).not.toContain(credential);
+    expect(JSON.stringify(entry)).not.toContain("private-project-name");
+    expect(JSON.stringify(entry)).not.toContain("private-value");
   });
 
   it("handles multiple sequential logs correctly", () => {
@@ -229,7 +241,7 @@ describe("AuditLogger", () => {
       level: "info",
     });
 
-    fileLogger.log(ctx(), allowed(), [], "s1", 1, 15);
+    expect(fileLogger.log(ctx(), allowed(), [], "s1", 1, 15)).toBe(true);
 
     // Flush and close the logger to ensure data is written
     expect(existsSync(filePath)).toBe(true);
@@ -254,6 +266,20 @@ describe("AuditLogger", () => {
     await expect(fileLogger.close()).resolves.toBeUndefined();
 
     // Cleanup
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("reports a closed file destination before log returns", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "audit-closed-test-"));
+    const fileLogger = new AuditLogger({
+      output: "file",
+      filePath: join(tmpDir, "audit.log"),
+      level: "info",
+    });
+
+    await fileLogger.close();
+
+    expect(fileLogger.log(ctx(), allowed(), [], "s1", 1)).toBe(false);
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -291,6 +317,6 @@ describe("AuditLogger", () => {
     const trail = [{ policy: "ssrf", result: "block" as const, reason: "private IP" }];
     logger.log(ctx(), blocked("private IP"), trail, "s1", 1);
     const entry = logger.getEntries()[0];
-    expect(entry.decisionTrail).toEqual(trail);
+    expect(entry.decisionTrail).toEqual([{ policy: "ssrf", result: "block" }]);
   });
 });

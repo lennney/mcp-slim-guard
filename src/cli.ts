@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as yaml from "js-yaml";
 import { ConfigLoader } from "./config-loader.js";
-import { VERSION } from "./index.js";
+import { VERSION } from "./version.js";
 import type { GuardConfig } from "./config-types.js";
 import type { Policy, PolicyResult } from "./types.js";
 import { PolicyPipeline } from "./policies/base.js";
@@ -177,11 +177,7 @@ function projectToolsForDisplay(rawTools: Tool[], config: GuardConfig): Tool[] {
  * Create policy instances from guard config.
  */
 function createPolicies(config: GuardConfig): Policy[] {
-  const policies: Policy[] = [];
-
-  if (config.tools.allow.length > 0 || config.tools.deny.length > 0) {
-    policies.push(new WhitelistPolicy(config.tools));
-  }
+  const policies: Policy[] = [new WhitelistPolicy(config.tools)];
 
   if (config.ssrf.mode !== "off") {
     policies.push(new SSRFPolicy(config.ssrf));
@@ -457,7 +453,6 @@ export async function main(argv: string[] = process.argv): Promise<void> {
                 ? { ...configuredNewAuditOptions, output: "stderr" }
                 : configuredNewAuditOptions;
             candidateAudit = new AuditLogger(newAuditOptions);
-            const previousManager = serverManager;
             await proxy.reload(newConfig, newPipeline, candidateAudit, candidateManager, {
               configuredServers: startReport.configured,
               connectedUpstreams: startReport.connected,
@@ -467,12 +462,6 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             candidateAudit = undefined;
             serverManager = candidateManager;
             candidateManager = undefined;
-            const stopReport = await previousManager.stop();
-            if (stopReport.failed.length > 0) {
-              proxy.recordLifecycle("reload_cleanup_degraded", "degraded", {
-                upstreamCloseFailures: stopReport.failed,
-              });
-            }
             runtimeLog("✅ [reload] Config reloaded — new policies + servers + audit active");
           } catch (err) {
             await candidateManager?.stop();

@@ -9,7 +9,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { ResultSecurityInspector, type ResultSecurityAssessment } from "./result-security.js";
 
 const RESULT_BUDGET_CHARS = 12_000;
@@ -88,6 +88,11 @@ interface ResultChunkMetadata extends Record<string, unknown> {
 export type ResultDeliveryReason =
   | "within_budget"
   | "source_like"
+  | "schema_bound"
+  | "structured_result"
+  | "upstream_error"
+  | "metadata_bound"
+  | "mixed_or_uncertain"
   | "capacity_exceeded"
   | "snapshot_verification_failed"
   | "delivery_verification_failed"
@@ -140,12 +145,12 @@ function referenceId(resultRef: string): string {
   return createHash("sha256").update(resultRef).digest("hex").slice(0, 16);
 }
 
-function emit(observer: ResultCapsuleObserver | undefined, observation: ResultCapsuleObservation): void {
+function emit(observer: ResultCapsuleObserver | undefined, observation: ResultCapsuleObservation): boolean {
   try {
     observer?.(observation);
+    return true;
   } catch {
-    // Observability is best-effort. A broken audit Adapter must never change
-    // result delivery or make read_result unavailable.
+    return false;
   }
 }
 
@@ -223,6 +228,27 @@ function simpleTextPayload(result: CallToolResult): { text: string; resultShape:
   return { text: block.text, resultShape };
 }
 
+/**
+ * Native Tool delivery is deliberately narrower than the generic projection.
+ * A lossy envelope cannot replace an advertised output contract or a result
+ * whose shape the Host may interpret beyond one plain text block.
+ */
+function nativePassThroughReason(result: CallToolResult, tool: Tool): ResultDeliveryReason | null {
+  const toolRecord = tool as Tool & Record<string, unknown>;
+  if (toolRecord.outputSchema !== undefined) return "schema_bound";
+  if (result.isError === true) return "upstream_error";
+  if (result.structuredContent !== undefined) return "structured_result";
+  if (result._meta !== undefined) return "metadata_bound";
+  if (!hasOnlyKeys(result, ["content", "isError", "resultType"])) return "mixed_or_uncertain";
+  if (
+    (result as Record<string, unknown>).resultType !== undefined &&
+    (result as Record<string, unknown>).resultType !== "complete"
+  ) {
+    return "mixed_or_uncertain";
+  }
+  return simpleTextPayload(result) === null ? "mixed_or_uncertain" : null;
+}
+
 function isPrimitive(value: unknown): boolean {
   return value === null || ["string", "number", "boolean"].includes(typeof value);
 }
@@ -255,7 +281,8 @@ function parseUniformArray(value: string): Array<Record<string, unknown>> | null
 }
 
 const LOG_SIGNAL = /(?:^|\s)(?:trace|debug|info|warn(?:ing)?|error|fatal|failed?|exception)(?:\s|:|\]|$)/iu;
-const CODE_SIGNAL = /(?:^|\n)\s*(?:diff --git|@@\s|[+-]{3}\s|(?:export\s+)?(?:class|function|interface)\s|\w+\s*=>)/u;
+const CODE_SIGNAL =
+  /(?:^|\n)\s*(?:diff --git|@@\s|[+-]{3}\s|(?:export\s+)?(?:class|function|interface)\s|(?:async\s+)?def\s+\w+\s*\(|(?:pub\s+)?fn\s+\w+\s*\(|func\s+\w+\s*\(|#include\s*[<"]|(?:public|private|protected)\s+(?:class|interface)\s|\w+\s*=>)/u;
 const ANSI_PATTERN = new RegExp(String.raw`\x1b\[[0-?]*[ -/]*[@-~]`, "gu");
 const ANSI_SIGNAL = new RegExp(String.raw`\x1b\[[0-?]*[ -/]*[@-~]`, "u");
 
@@ -513,22 +540,27 @@ export class ResultCapsuleStore {
     }
   }
 
+  /**
+   * Capture a result for the native Tool surface. Only a verified plain text
+   * result may be projected; schema-bound, structured, mixed, error, source,
+   * and uncertain results stay byte-for-byte on the original path.
+   */
+  captureNative(result: CallToolResult, tool: Tool, observer?: ResultCapsuleObserver): CallToolResult {
+    const passThroughReason = nativePassThroughReason(result, tool);
+    if (passThroughReason) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: passThroughReason,
+      });
+      return result;
+    }
+    return this.capture(result, observer);
+  }
+
   private captureVerified(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult {
     const security = this.security.inspect(result);
-    const securedResult =
-      security.findings.length === 0
-        ? result
-        : {
-            ...result,
-            _meta: {
-              ...result._meta,
-              [CAPSULE_META_KEY]: {
-                ...((result._meta?.[CAPSULE_META_KEY] as Record<string, unknown> | undefined) ?? {}),
-                security,
-              },
-            },
-          };
-    const serialized = JSON.stringify(securedResult);
+    const serialized = JSON.stringify(result);
     if (serialized.length <= RESULT_BUDGET_CHARS) {
       emit(observer, {
         phase: "delivery",
@@ -537,10 +569,10 @@ export class ResultCapsuleStore {
         originalChars: serialized.length,
         securityFindings: security.findings.length,
       });
-      return securedResult;
+      return result;
     }
 
-    const snapshot = createSnapshot(securedResult);
+    const snapshot = createSnapshot(result);
     if (!verifySnapshot(snapshot, serialized)) {
       emit(observer, {
         phase: "delivery",
@@ -549,7 +581,7 @@ export class ResultCapsuleStore {
         originalChars: serialized.length,
         securityFindings: security.findings.length,
       });
-      return securedResult;
+      return result;
     }
     if (isSourceLikeSnapshot(snapshot)) {
       emit(observer, {
@@ -562,7 +594,7 @@ export class ResultCapsuleStore {
         payloadChars: snapshot.payload.length,
         securityFindings: security.findings.length,
       });
-      return securedResult;
+      return result;
     }
     if (Buffer.byteLength(snapshot.payload, "utf8") > MAX_RESULT_PAYLOAD_BYTES) {
       emit(observer, {
@@ -575,9 +607,9 @@ export class ResultCapsuleStore {
         payloadChars: snapshot.payload.length,
         securityFindings: security.findings.length,
       });
-      return securedResult;
+      return result;
     }
-    snapshot.contentKind = this.classifier.classify(securedResult, snapshot);
+    snapshot.contentKind = this.classifier.classify(result, snapshot);
 
     const projection = this.strategies[snapshot.contentKind].project(snapshot);
 
@@ -633,10 +665,10 @@ export class ResultCapsuleStore {
         previewChars: projection.preview.length,
         securityFindings: security.findings.length,
       });
-      return securedResult;
+      return result;
     }
     const evictedReferenceId = this.store(resultRef, snapshot);
-    emit(observer, {
+    const observed = emit(observer, {
       phase: "delivery",
       outcome: "projected",
       referenceId: referenceId(resultRef),
@@ -649,12 +681,16 @@ export class ResultCapsuleStore {
       securityFindings: security.findings.length,
       ...(evictedReferenceId ? { evictedReferenceId } : {}),
     });
+    if (!observed) {
+      this.delete(resultRef);
+      return result;
+    }
     return delivered;
   }
 
   read(args: Record<string, unknown>, observer?: ResultCapsuleObserver): CallToolResult {
     const resultRef = typeof args.result_ref === "string" ? args.result_ref : "";
-    const cursor = args.cursor === undefined ? 0 : Number(args.cursor);
+    const cursor = args.cursor === undefined ? 0 : args.cursor;
     if (!resultRef) {
       emit(observer, {
         phase: "recovery",
@@ -664,7 +700,7 @@ export class ResultCapsuleStore {
       return errorResult("Missing required parameter: result_ref");
     }
     const resultReferenceId = referenceId(resultRef);
-    if (!Number.isInteger(cursor) || cursor < 0) {
+    if (typeof cursor !== "number" || !Number.isInteger(cursor) || cursor < 0) {
       emit(observer, {
         phase: "recovery",
         outcome: "rejected",
@@ -752,6 +788,25 @@ export class ResultCapsuleStore {
     this.resultOrder = [];
     this.storedPayloadBytes = 0;
     return cleared;
+  }
+
+  /** Remove the snapshot behind a projection that was not delivered. */
+  discardProjection(result: CallToolResult): boolean {
+    const metadata = result.structuredContent;
+    const capsuleMetadata = result._meta?.[CAPSULE_META_KEY];
+    if (
+      !metadata ||
+      typeof metadata !== "object" ||
+      !capsuleMetadata ||
+      typeof capsuleMetadata !== "object" ||
+      (capsuleMetadata as Record<string, unknown>).result_ref !== (metadata as Record<string, unknown>).result_ref
+    ) {
+      return false;
+    }
+    const resultRef = (metadata as Record<string, unknown>).result_ref;
+    if (typeof resultRef !== "string" || !this.results.has(resultRef)) return false;
+    this.delete(resultRef);
+    return true;
   }
 
   private store(resultRef: string, snapshot: ResultSnapshot): string | undefined {

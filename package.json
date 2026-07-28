@@ -44,7 +44,7 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "build": "tsc",
@@ -77,11 +77,13 @@
     "smoke:agent-search-audit": "npm run build && node scripts/integration/agent-search-audit-smoke.mjs",
     "smoke:real-servers": "npm run build && node scripts/integration/real-server-smoke.mjs",
     "smoke:package": "npm run build && node scripts/integration/package-smoke.mjs",
+    "smoke:package-native-real": "node scripts/integration/package-native-real-server-smoke.mjs",
+    "snapshot:source": "node scripts/candidate/create-source-snapshot.mjs",
     "bench:latency": "node scripts/benchmark/latency.mjs",
     "prepare": "husky"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.9.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "commander": "^13.1.0",
     "js-yaml": "^4.1.0",
     "micromatch": "^4.0.8",

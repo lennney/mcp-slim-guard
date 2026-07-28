@@ -180,7 +180,7 @@ describe("GuardProxy Full Pipeline", () => {
 
       expect((result as { isError?: boolean }).isError).toBe(true);
       const entry = result.content[0] as { type: string; text?: string };
-      expect(entry.text).toContain("deny");
+      expect(entry.text).toBe("Unknown tool: mock_echo");
     } finally {
       await destroyProxy(ctx);
     }
@@ -301,13 +301,13 @@ describe("GuardProxy Full Pipeline", () => {
 
       const entries = ctx.audit.getEntries();
 
-      const entry = entries.find((candidate) => candidate.toolName === "mock_echo" && candidate.event === "policy");
+      const entry = entries.find((candidate) => candidate.toolName === "mock_echo" && candidate.event === "routing");
       expect(entry).toBeDefined();
-      if (!entry) throw new Error("Expected blocked policy audit entry");
+      if (!entry) throw new Error("Expected blocked routing audit entry");
       expect(entry.toolName).toBe("mock_echo");
       expect(entry.action).toBe("blocked");
-      expect(entry.reason).toBeDefined();
-      expect(entry.serverName).toBe(SERVER_NAME);
+      expect(entry.reason).toBe("routing blocked request");
+      expect(entry.serverName).toBe("routing");
     } finally {
       await destroyProxy(ctx);
     }

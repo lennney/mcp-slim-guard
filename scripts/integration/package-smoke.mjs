@@ -117,31 +117,92 @@ input.on("line", (line) => {
       jsonrpc: "2.0",
       id: request.id,
       result: {
-        tools: [{
-          name: "marker",
-          title: "Package marker",
-          description: "Return the package smoke marker",
-          inputSchema: {
-            type: "object",
-            properties: { value: { type: "string" } },
-            required: ["value"],
-            additionalProperties: false
+        tools: [
+          {
+            name: "marker",
+            title: "Package marker",
+            description: "Return the package smoke marker",
+            inputSchema: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false
+            },
+            outputSchema: {
+              type: "object",
+              properties: { marker: { type: "string" } },
+              required: ["marker"]
+            },
+            annotations: { readOnlyHint: true },
+            "x-package-smoke": { preserved: true },
+            "tool_ref": "untrusted-wire-value"
           },
-          outputSchema: {
-            type: "object",
-            properties: { marker: { type: "string" } },
-            required: ["marker"]
+          {
+            name: "native_large",
+            title: "Native large package result",
+            description: "Return an eligible large plain-text result",
+            inputSchema: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false
+            },
+            annotations: { readOnlyHint: true },
+            _meta: { fixture: "native-package-smoke" }
           },
-          annotations: { readOnlyHint: true },
-          "x-package-smoke": { preserved: true },
-          "tool_ref": "untrusted-wire-value"
-        }]
+          {
+            name: "native_structured",
+            title: "Native structured package result",
+            description: "Return a schema-bound structured result",
+            inputSchema: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false
+            },
+            outputSchema: {
+              type: "object",
+              properties: {
+                marker: { type: "string" },
+                count: { type: "number" }
+              },
+              required: ["marker", "count"],
+              additionalProperties: false
+            }
+          }
+        ]
       }
     });
     return;
   }
   if (request.method === "tools/call") {
     callCount += 1;
+    if (request.params?.name === "native_large") {
+      const marker = "NATIVE_PACKAGE_LARGE:" + request.params?.arguments?.value + ":CALLS:" + callCount;
+      const text = marker + "\n" + "native package payload\n".repeat(3000);
+      send({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: {
+          content: [{ type: "text", text }]
+        }
+      });
+      return;
+    }
+    if (request.params?.name === "native_structured") {
+      const marker = "NATIVE_PACKAGE_STRUCTURED:" + request.params?.arguments?.value + ":CALLS:" + callCount;
+      send({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: {
+          content: [{ type: "text", text: marker }],
+          structuredContent: { marker, count: callCount },
+          _meta: { fixture: "native-package-smoke" },
+          "x-native-package-smoke-result": { preserved: true }
+        }
+      });
+      return;
+    }
     const marker = "PACKAGE_SMOKE:" + request.params?.arguments?.value + ":CALLS:" + callCount;
     const text = marker + "\n" + "deterministic package payload\n".repeat(3000);
     send({
@@ -230,6 +291,85 @@ function verifyAuditTrace(auditFile, toolRef, resultRef) {
   };
 }
 
+function verifyNativeAuditTrace(stderr, resultRef) {
+  const lines = stderr.split(/\r?\n/).filter(Boolean);
+  if (lines.length === 0) throw new Error("Installed native runtime did not emit default audit records to stderr");
+
+  const entries = lines.map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      throw new Error(`Installed native runtime emitted non-JSON stderr: ${line}`);
+    }
+  });
+  const projected = entries.find(
+    (entry) =>
+      entry.toolName === "fixture_native_large" && entry.event === "projection" && entry.outcome === "projected",
+  );
+  if (!projected?.traceId) {
+    throw new Error("Native audit stream did not record the projected direct Tool call");
+  }
+  const projectedStages = entries
+    .filter((entry) => entry.traceId === projected.traceId)
+    .map((entry) => `${entry.event}/${entry.outcome}`);
+  for (const expected of ["policy/success", "upstream/success", "projection/projected"]) {
+    if (!projectedStages.includes(expected)) {
+      throw new Error(`Native audit trace is missing ${expected}`);
+    }
+  }
+
+  const structured = entries.find(
+    (entry) =>
+      entry.toolName === "fixture_native_structured" &&
+      entry.event === "projection" &&
+      entry.outcome === "pass_through",
+  );
+  if (!structured?.traceId) {
+    throw new Error("Native audit stream did not record schema-bound pass-through");
+  }
+  if (
+    !entries.some(
+      (entry) =>
+        entry.toolName === "read_result" &&
+        entry.event === "recovery" &&
+        (entry.outcome === "chunk" || entry.outcome === "complete"),
+    )
+  ) {
+    throw new Error("Native audit stream did not record recovery");
+  }
+
+  const lifecycleStates = entries.filter((entry) => entry.event === "lifecycle").map((entry) => entry.toolName);
+  for (const expected of ["runtime/starting", "runtime/ready", "runtime/stopping", "runtime/stopped"]) {
+    if (!lifecycleStates.includes(expected)) {
+      throw new Error(`Native audit stream is missing lifecycle state ${expected}`);
+    }
+  }
+
+  const serialized = JSON.stringify(entries);
+  for (const forbidden of [
+    "NATIVE_PACKAGE_ARGUMENT_SECRET_74c63b",
+    "NATIVE_PACKAGE_LARGE:",
+    "NATIVE_PACKAGE_STRUCTURED:",
+    resultRef,
+  ]) {
+    if (serialized.includes(forbidden)) {
+      throw new Error(`Native audit stream retained forbidden call data: ${forbidden}`);
+    }
+  }
+
+  return {
+    stream: "stderr",
+    records: entries.length,
+    projected_trace_stages: projectedStages,
+    structured_outcome: structured.outcome,
+    recovery_recorded: true,
+    lifecycle_states: lifecycleStates,
+    arguments_logged: false,
+    result_payload_logged: false,
+    raw_result_reference_logged: false,
+  };
+}
+
 let client;
 try {
   const requestedTarball = process.argv[2];
@@ -254,6 +394,49 @@ try {
   const installedVersion = JSON.parse(fs.readFileSync(path.join(installedPackage, "package.json"), "utf8")).version;
   if (installedVersion !== sourceVersion) {
     throw new Error(`Installed version ${installedVersion} does not match source ${sourceVersion}`);
+  }
+  const rootImportProbe = path.join(installDirectory, "root-import-probe.mjs");
+  fs.writeFileSync(
+    rootImportProbe,
+    `import {
+  AuditLogger,
+  GuardProxy,
+  PolicyPipeline,
+  ServerManager,
+  WhitelistPolicy
+} from "mcp-slim-guard";
+const config = {
+  version: 1,
+  tools: { allow: [], deny: [] },
+  ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] },
+  rate_limit: { default: "" },
+  injection_detection: { enabled: false },
+  compressor: { enabled: false, level: "off" },
+  servers: {}
+};
+const proxy = new GuardProxy(
+  config,
+  new PolicyPipeline([new WhitelistPolicy(config.tools)]),
+  new AuditLogger({ output: "stderr", level: "silent" }),
+  new ServerManager({}),
+  { surface: "native" }
+);
+process.stdout.write(JSON.stringify({
+  constructed: proxy.constructor.name === "GuardProxy",
+  exports: {
+    AuditLogger: typeof AuditLogger,
+    GuardProxy: typeof GuardProxy,
+    PolicyPipeline: typeof PolicyPipeline,
+    ServerManager: typeof ServerManager,
+    WhitelistPolicy: typeof WhitelistPolicy
+  }
+}));
+`,
+    "utf8",
+  );
+  const rootImport = JSON.parse(run(process.execPath, [rootImportProbe], { cwd: installDirectory }).stdout);
+  if (!rootImport.constructed || Object.values(rootImport.exports).some((type) => type !== "function")) {
+    throw new Error("Installed package root cannot construct the documented native runtime");
   }
 
   const runtimeDirectory = path.join(temporaryRoot, "runtime");
@@ -352,6 +535,33 @@ servers:
   await client.close();
   client = undefined;
   const audit = verifyAuditTrace(path.join(runtimeDirectory, "audit.log"), match.tool_ref, capsule.result_ref);
+
+  const nativeConsumerSource = path.join(repositoryRoot, "scripts", "integration", "package-native-consumer.mjs");
+  const nativeConsumer = path.join(installDirectory, "package-native-consumer.mjs");
+  fs.copyFileSync(nativeConsumerSource, nativeConsumer);
+  const nativeRun = run(process.execPath, [nativeConsumer, fixture], { cwd: installDirectory });
+  const nativeStdoutLines = nativeRun.stdout.split(/\r?\n/).filter(Boolean);
+  if (nativeStdoutLines.length !== 1) {
+    throw new Error(
+      `Installed native runtime polluted stdout; expected one consumer result, got ${nativeStdoutLines.length}`,
+    );
+  }
+  if (nativeRun.stdout.includes('"event":"policy"') || nativeRun.stdout.includes('"event":"lifecycle"')) {
+    throw new Error("Installed native runtime wrote audit records to stdout");
+  }
+  const native = JSON.parse(nativeStdoutLines[0]);
+  const nativeResultRef = native._result_ref;
+  if (typeof nativeResultRef !== "string") {
+    throw new Error("Installed native consumer did not expose its recovery reference to the smoke harness");
+  }
+  delete native._result_ref;
+  native.stdout = {
+    consumer_records: nativeStdoutLines.length,
+    audit_records: 0,
+    clean: true,
+  };
+  native.audit = verifyNativeAuditTrace(nativeRun.stderr, nativeResultRef);
+
   runNpm(["uninstall", "--ignore-scripts", "--no-audit", "--no-fund", "mcp-slim-guard"], {
     cwd: installDirectory,
   });
@@ -363,6 +573,7 @@ servers:
       tarball: path.basename(tarball),
       sha256: createHash("sha256").update(fs.readFileSync(tarball)).digest("hex"),
       installed: true,
+      root_import: rootImport,
       transport: "stdio",
       tools: names,
       flow: ["find_tool", "call_tool", "read_result"],
@@ -370,6 +581,7 @@ servers:
       projection: capsule.projection,
       upstream_calls: 1,
       audit,
+      native,
       codex,
       uninstalled: true,
       passed: true,

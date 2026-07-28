@@ -73,6 +73,53 @@ describe("ServerManager", () => {
     ]);
   });
 
+  it("keeps real catalog routes out of the internal wrapper namespace", async () => {
+    const { manager } = await startManager(
+      { mcp_: stdioServer() },
+      {
+        mcp_: { tools: [tool("get_schema")] },
+      },
+    );
+
+    const [catalogTool] = manager.getTools();
+    expect(catalogTool.name).toMatch(/^mcp__get_schema__sg_[a-f0-9]{8}$/);
+    expect(manager.getLegacyCatalogNames(catalogTool.name)).toEqual(["mcp__get_schema"]);
+    expect(manager.resolveTool(catalogTool.name)).toEqual({
+      serverName: "mcp_",
+      originalToolName: "get_schema",
+    });
+    expect(manager.resolveTool("mcp__get_schema")).toBeNull();
+  });
+
+  it("builds native routes with original names when unique and stable names for collisions", async () => {
+    const { manager } = await startManager(
+      { alpha: stdioServer(), beta: stdioServer() },
+      {
+        alpha: { tools: [tool("echo"), tool("read_result")] },
+        beta: { tools: [tool("echo"), tool("search")] },
+      },
+    );
+
+    expect(manager.getNativeTools().map((route) => route.tool.name)).toEqual([
+      "alpha_echo",
+      "alpha_read_result",
+      "beta_echo",
+      "search",
+    ]);
+    expect(manager.getNativeTools().every((route) => route.tool.name !== "read_result")).toBe(true);
+    expect(manager.getNativeTools().map((route) => route.catalogName)).toEqual([
+      "alpha_echo",
+      "alpha_read_result",
+      "beta_echo",
+      "beta_search",
+    ]);
+    expect(manager.getNativeTools()[3]).toMatchObject({
+      serverName: "beta",
+      originalToolName: "search",
+      tool: { name: "search" },
+    });
+  });
+
   it("resolves exact catalog entries with underscores", async () => {
     const { manager } = await startManager(
       { my_server: stdioServer() },
@@ -104,6 +151,23 @@ describe("ServerManager", () => {
     );
 
     expect(manager.resolveTool("foo_bar_baz")).toBeNull();
+    const routes = manager.getNativeTools();
+    expect(routes.map((route) => route.tool.name)).toEqual(["bar_baz", "baz"]);
+    expect(routes.map((route) => route.catalogName)).toEqual([
+      expect.stringMatching(/^foo_bar_baz__sg_[a-f0-9]+$/),
+      expect.stringMatching(/^foo_bar_baz__sg_[a-f0-9]+$/),
+    ]);
+    expect(new Set(routes.map((route) => route.catalogName)).size).toBe(2);
+    expect(manager.getLegacyCatalogNames(routes[0].catalogName)).toEqual(["foo_bar_baz"]);
+    expect(manager.getLegacyCatalogNames(routes[1].catalogName)).toEqual(["foo_bar_baz"]);
+    expect(manager.resolveTool(routes[0].catalogName)).toEqual({
+      serverName: "foo",
+      originalToolName: "bar_baz",
+    });
+    expect(manager.resolveTool(routes[1].catalogName)).toEqual({
+      serverName: "foo_bar",
+      originalToolName: "baz",
+    });
   });
 
   it("routes calls through the connected upstream session", async () => {

@@ -8,9 +8,11 @@
  * @module server-manager
  */
 
+import { createHash } from "node:crypto";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "./config-types.js";
 import { McpSdkUpstreamConnector, type ConnectedUpstream, type UpstreamConnector } from "./upstream-connector.js";
+import type { NativeToolRoute } from "./native-tool-adapter.js";
 
 /**
  * Internal state for a single upstream server connection.
@@ -18,6 +20,21 @@ import { McpSdkUpstreamConnector, type ConnectedUpstream, type UpstreamConnector
 interface ServerConnection {
   serverName: string;
   upstream: ConnectedUpstream;
+}
+
+interface CatalogRoute {
+  catalogName: string;
+  legacyName: string;
+  serverName: string;
+  originalToolName: string;
+  tool: Tool;
+}
+
+const INTERNAL_WRAPPER_PREFIX = "mcp__";
+const NATIVE_RECOVERY_TOOL_NAME = "read_result";
+
+function routeDigest(serverName: string, toolName: string): string {
+  return createHash("sha256").update(serverName).update("\0").update(toolName).digest("hex");
 }
 
 export interface ConnectedUpstreamLifecycle {
@@ -117,19 +134,66 @@ export class ServerManager {
    * The server name is also prepended to the description for identification.
    */
   getTools(): Tool[] {
-    const allTools: Tool[] = [];
+    return this.catalogRoutes().map((route) => ({
+      ...route.tool,
+      name: route.catalogName,
+      description: route.tool.description ? `[${route.serverName}] ${route.tool.description}` : `[${route.serverName}]`,
+    }));
+  }
 
-    for (const [, conn] of this.connections) {
-      for (const tool of conn.upstream.tools) {
-        allTools.push({
-          ...tool,
-          name: `${conn.serverName}_${tool.name}`,
-          description: tool.description ? `[${conn.serverName}] ${tool.description}` : `[${conn.serverName}]`,
-        });
-      }
+  /**
+   * Return native Tool definitions while retaining the exact upstream route.
+   * Original names are preserved when they are globally unique. Collisions
+   * use the existing server-prefixed catalog name plus a deterministic suffix
+   * when needed; an ambiguous name is never silently routed.
+   */
+  getNativeTools(): NativeToolRoute[] {
+    const candidates = this.catalogRoutes();
+    const counts = new Map<string, number>();
+    for (const route of candidates) {
+      counts.set(route.originalToolName, (counts.get(route.originalToolName) ?? 0) + 1);
     }
 
-    return allTools;
+    const uniqueOriginalNames = new Set(
+      candidates
+        .filter(
+          ({ originalToolName }) =>
+            originalToolName !== NATIVE_RECOVERY_TOOL_NAME && counts.get(originalToolName) === 1,
+        )
+        .map(({ originalToolName }) => originalToolName),
+    );
+    // The recovery Tool is owned by Slim Guard and can never be shadowed by
+    // an upstream-native route, including future naming fallbacks.
+    const usedNames = new Set<string>([NATIVE_RECOVERY_TOOL_NAME]);
+
+    return candidates.map((candidate) => {
+      let exposedName = uniqueOriginalNames.has(candidate.originalToolName)
+        ? candidate.originalToolName
+        : candidate.catalogName;
+      const digest = routeDigest(candidate.serverName, candidate.originalToolName);
+      let suffixLength = 8;
+      while (
+        usedNames.has(exposedName) ||
+        (exposedName !== candidate.originalToolName && uniqueOriginalNames.has(exposedName))
+      ) {
+        exposedName = `${candidate.catalogName}__native_${digest.slice(0, suffixLength)}`;
+        if (
+          suffixLength === digest.length &&
+          (usedNames.has(exposedName) ||
+            (exposedName !== candidate.originalToolName && uniqueOriginalNames.has(exposedName)))
+        ) {
+          throw new Error("Unable to create a unique native Tool name");
+        }
+        suffixLength = Math.min(digest.length, suffixLength + 4);
+      }
+      usedNames.add(exposedName);
+      return {
+        catalogName: candidate.catalogName,
+        serverName: candidate.serverName,
+        originalToolName: candidate.originalToolName,
+        tool: exposedName === candidate.tool.name ? candidate.tool : { ...candidate.tool, name: exposedName },
+      };
+    });
   }
 
   /**
@@ -143,16 +207,64 @@ export class ServerManager {
    * @returns The resolved server name and original tool name, or null if not found
    */
   resolveTool(prefixedName: string): { serverName: string; originalToolName: string } | null {
-    const matches: Array<{ serverName: string; originalToolName: string }> = [];
-    for (const [serverName, connection] of this.connections) {
+    const route = this.catalogRoutes().find((candidate) => candidate.catalogName === prefixedName);
+    return route ? { serverName: route.serverName, originalToolName: route.originalToolName } : null;
+  }
+
+  /**
+   * Return legacy flattened names that must still participate in deny checks.
+   * Allow rules bind only to the current canonical catalog name, while a deny
+   * written before a collision appeared must continue to block every route
+   * that previously shared that ambiguous name.
+   */
+  getLegacyCatalogNames(catalogName: string): string[] {
+    const route = this.catalogRoutes().find((candidate) => candidate.catalogName === catalogName);
+    if (!route || route.legacyName === route.catalogName) return [];
+    return [route.legacyName];
+  }
+
+  private catalogRoutes(): CatalogRoute[] {
+    const candidates: CatalogRoute[] = [];
+    const legacyCounts = new Map<string, number>();
+
+    for (const [, connection] of this.connections) {
       for (const tool of connection.upstream.tools) {
-        if (`${serverName}_${tool.name}` === prefixedName) {
-          matches.push({ serverName, originalToolName: tool.name });
-        }
+        const legacyName = `${connection.serverName}_${tool.name}`;
+        candidates.push({
+          catalogName: legacyName,
+          legacyName,
+          serverName: connection.serverName,
+          originalToolName: tool.name,
+          tool,
+        });
+        legacyCounts.set(legacyName, (legacyCounts.get(legacyName) ?? 0) + 1);
       }
     }
 
-    return matches.length === 1 ? matches[0] : null;
+    const reservedLegacyNames = new Set(candidates.map(({ legacyName }) => legacyName));
+    const usedCatalogNames = new Set<string>();
+    return candidates.map((route) => {
+      if (legacyCounts.get(route.legacyName) === 1 && !route.legacyName.startsWith(INTERNAL_WRAPPER_PREFIX)) {
+        usedCatalogNames.add(route.legacyName);
+        return route;
+      }
+
+      const digest = routeDigest(route.serverName, route.originalToolName);
+      let suffixLength = 8;
+      let catalogName = `${route.legacyName}__sg_${digest.slice(0, suffixLength)}`;
+      while (reservedLegacyNames.has(catalogName) || usedCatalogNames.has(catalogName)) {
+        suffixLength = Math.min(digest.length, suffixLength + 4);
+        catalogName = `${route.legacyName}__sg_${digest.slice(0, suffixLength)}`;
+        if (
+          suffixLength === digest.length &&
+          (reservedLegacyNames.has(catalogName) || usedCatalogNames.has(catalogName))
+        ) {
+          throw new Error("Unable to create a unique catalog route");
+        }
+      }
+      usedCatalogNames.add(catalogName);
+      return { ...route, catalogName };
+    });
   }
 
   /**
@@ -160,11 +272,11 @@ export class ServerManager {
    *
    * @param serverName - The upstream server name
    * @param toolName - The original (unprefixed) tool name
-   * @param args - Tool call arguments
+   * @param args - Tool call arguments, omitted when the Host omitted the field
    * @returns The tool call result from the upstream server
    * @throws If the server is not connected or the upstream call fails
    */
-  async callTool(serverName: string, toolName: string, args: Record<string, unknown>): Promise<CallToolResult> {
+  async callTool(serverName: string, toolName: string, args?: Record<string, unknown>): Promise<CallToolResult> {
     const conn = this.connections.get(serverName);
     if (!conn) {
       throw new Error(`Unknown upstream server: "${serverName}"`);

@@ -66,6 +66,8 @@ export interface ProjectionCallReport {
 export interface ObservedProjectionCall {
   result: CallToolResult;
   report: ProjectionCallReport;
+  /** Exact result returned by the upstream invocation, when one occurred. */
+  upstreamResult?: CallToolResult;
 }
 
 function errorResult(message: string): CallToolResult {
@@ -251,6 +253,33 @@ function buildCatalogPreview(tools: Tool[]): string {
   return included.map(({ line }) => line).join("\n");
 }
 
+function readResultTool(native = false): Tool {
+  return {
+    name: READ_RESULT,
+    description: `Read the next bounded chunk of a captured large result. The first text block is the raw chunk; the second carries cursor metadata. Use only when ${native ? "an authorized Tool" : "call_tool"} returns a result_ref.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        result_ref: {
+          type: "string",
+          description: "The unpredictable result_ref returned by a tool call.",
+        },
+        cursor: {
+          type: "integer",
+          minimum: 0,
+          description: "The next_cursor from the previous chunk. Omit for the first chunk.",
+        },
+      },
+      required: ["result_ref"],
+      additionalProperties: false,
+    },
+  };
+}
+
+export function readResultToolDefinition(native = false): Tool {
+  return readResultTool(native);
+}
+
 function projectionTools(): Tool[] {
   return [
     {
@@ -289,26 +318,7 @@ function projectionTools(): Tool[] {
         additionalProperties: false,
       },
     },
-    {
-      name: READ_RESULT,
-      description:
-        "Read the next bounded chunk of a captured large result. The first text block is the raw chunk; the second carries cursor metadata. Use only when call_tool returns a result_ref.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          result_ref: {
-            type: "string",
-            description: "The unpredictable result_ref returned by call_tool.",
-          },
-          cursor: {
-            type: "number",
-            description: "The next_cursor from the previous chunk. Omit for the first chunk.",
-          },
-        },
-        required: ["result_ref"],
-        additionalProperties: false,
-      },
-    },
+    readResultTool(),
   ];
 }
 
@@ -489,6 +499,7 @@ export class SecureProjectionKernel {
     const deliveryOutcome = capsule?.phase === "delivery" ? capsule.outcome : ("pass_through" as const);
     return {
       result,
+      upstreamResult,
       report: {
         toolName: CALL_TOOL,
         outcome: upstreamResult.isError ? "upstream_error" : deliveryOutcome,

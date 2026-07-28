@@ -49,11 +49,22 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
                 return Promise.resolve(parsed.data);
               },
             ),
-      callTool: vi.fn().mockResolvedValue(
-        plan.callResult ?? {
-          content: [{ type: "text", text: "ok" }],
-        },
-      ),
+      callTool: vi
+        .fn()
+        .mockImplementation(
+          (
+            _request: unknown,
+            schema?: { safeParse(value: unknown): { success: boolean; data?: unknown; error?: unknown } },
+          ) => {
+            const raw = plan.callResult ?? {
+              content: [{ type: "text", text: "ok" }],
+            };
+            if (!schema) return Promise.resolve(raw);
+            const parsed = schema.safeParse(raw);
+            if (!parsed.success) throw parsed.error;
+            return Promise.resolve(parsed.data);
+          },
+        ),
       close: vi.fn().mockResolvedValue(undefined),
     };
     sdk.clients.push(client);
@@ -111,14 +122,39 @@ describe("McpSdkUpstreamConnector", () => {
             title: "Echo",
             inputSchema: { type: "object" },
             outputSchema: { type: "object" },
-            annotations: { readOnlyHint: true },
+            annotations: {
+              readOnlyHint: true,
+              "x-annotation-extension": { preserve: "tool-annotation" },
+            },
             "x-test-extension": { preserved: true },
           },
         ],
         callResult: {
-          content: [{ type: "text", text: "complete" }],
+          content: [
+            {
+              type: "text",
+              text: "complete",
+              annotations: {
+                audience: ["assistant"],
+                priority: 0.7,
+                "x-annotation-extension": { preserve: "content-annotation" },
+              },
+              "x-block-extension": { preserve: true },
+            },
+            {
+              type: "resource",
+              resource: {
+                uri: "file:///fixture.txt",
+                mimeType: "text/plain",
+                text: "fixture",
+                "x-resource-extension": { preserve: "nested-resource" },
+              },
+              "x-block-extension": { preserve: "resource-block" },
+            },
+          ],
           structuredContent: { ok: true },
           _meta: { traceId: "trace-1" },
+          "x-result-extension": { preserve: true },
         },
       },
     ];
@@ -136,7 +172,10 @@ describe("McpSdkUpstreamConnector", () => {
     expect(session.tools[0]).toMatchObject({
       title: "Echo",
       outputSchema: { type: "object" },
-      annotations: { readOnlyHint: true },
+      annotations: {
+        readOnlyHint: true,
+        "x-annotation-extension": { preserve: "tool-annotation" },
+      },
       "x-test-extension": { preserved: true },
     });
     expect(sdk.clients[0].request).toHaveBeenCalledWith({ method: "tools/list", params: {} }, expect.anything());
@@ -153,14 +192,42 @@ describe("McpSdkUpstreamConnector", () => {
     ]);
 
     await expect(session.callTool("echo", { message: "hello" })).resolves.toEqual({
-      content: [{ type: "text", text: "complete" }],
+      content: [
+        {
+          type: "text",
+          text: "complete",
+          annotations: {
+            audience: ["assistant"],
+            priority: 0.7,
+            "x-annotation-extension": { preserve: "content-annotation" },
+          },
+          "x-block-extension": { preserve: true },
+        },
+        {
+          type: "resource",
+          resource: {
+            uri: "file:///fixture.txt",
+            mimeType: "text/plain",
+            text: "fixture",
+            "x-resource-extension": { preserve: "nested-resource" },
+          },
+          "x-block-extension": { preserve: "resource-block" },
+        },
+      ],
       structuredContent: { ok: true },
       _meta: { traceId: "trace-1" },
+      "x-result-extension": { preserve: true },
     });
-    expect(sdk.clients[0].callTool).toHaveBeenCalledWith({
-      name: "echo",
-      arguments: { message: "hello" },
-    });
+    expect(sdk.clients[0].callTool).toHaveBeenCalledWith(
+      {
+        name: "echo",
+        arguments: { message: "hello" },
+      },
+      expect.anything(),
+    );
+
+    await session.callTool("echo");
+    expect(sdk.clients[0].callTool).toHaveBeenNthCalledWith(2, { name: "echo" }, expect.anything());
 
     await session.close();
     expect(sdk.clients[0].close).toHaveBeenCalledTimes(1);

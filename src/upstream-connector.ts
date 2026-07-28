@@ -3,11 +3,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { UpstreamServer } from "./config-types.js";
 import { resolveUpstreamServer } from "./upstream-config.js";
-import { VERSION } from "./index.js";
+import { VERSION } from "./version.js";
 
 export type UpstreamTransportKind = "stdio" | "streamable-http" | "sse";
 
@@ -18,7 +18,7 @@ export type UpstreamTransportKind = "stdio" | "streamable-http" | "sse";
 export interface ConnectedUpstream {
   readonly tools: Tool[];
   readonly transportKind: UpstreamTransportKind;
-  callTool(toolName: string, args: Record<string, unknown>): Promise<CallToolResult>;
+  callTool(toolName: string, args?: Record<string, unknown>): Promise<CallToolResult>;
   close(): Promise<void>;
 }
 
@@ -27,6 +27,43 @@ export interface UpstreamConnector {
   connect(serverName: string, server: UpstreamServer): Promise<ConnectedUpstream>;
 }
 
+function isWireRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Restore wire extensions recursively after the SDK has validated and
+ * normalized the standard MCP fields. The validated value is authoritative
+ * wherever both trees contain a standard field; raw-only keys survive at any
+ * object depth.
+ */
+function preserveWireExtensions(raw: unknown, validated: unknown): unknown {
+  if (Array.isArray(validated)) {
+    if (!Array.isArray(raw)) return validated;
+    return validated.map((entry, index) => preserveWireExtensions(raw[index], entry));
+  }
+  if (!isWireRecord(validated)) return validated;
+
+  const rawRecord = isWireRecord(raw) ? raw : {};
+  const merged: Record<string, unknown> = { ...rawRecord };
+  for (const [key, value] of Object.entries(validated)) {
+    merged[key] = preserveWireExtensions(rawRecord[key], value);
+  }
+  return merged;
+}
+
+const MetadataPreservingCallToolResultSchema = {
+  safeParse(value: unknown) {
+    const validated = CallToolResultSchema.safeParse(value);
+    if (!validated.success) return validated;
+
+    return {
+      success: true as const,
+      data: preserveWireExtensions(value, validated.data),
+    };
+  },
+} as unknown as typeof CallToolResultSchema;
+
 class McpSdkConnectedUpstream implements ConnectedUpstream {
   constructor(
     private readonly client: Client,
@@ -34,16 +71,13 @@ class McpSdkConnectedUpstream implements ConnectedUpstream {
     readonly transportKind: UpstreamTransportKind,
   ) {}
 
-  async callTool(toolName: string, args: Record<string, unknown>): Promise<CallToolResult> {
-    const result = await this.client.callTool({
-      name: toolName,
-      arguments: args,
-    });
+  async callTool(toolName: string, args?: Record<string, unknown>): Promise<CallToolResult> {
+    const request: { name: string; arguments?: Record<string, unknown> } = { name: toolName };
+    if (args !== undefined) request.arguments = args;
+    const result = await this.client.callTool(request, MetadataPreservingCallToolResultSchema);
 
-    // The SDK validates a normal call result using its default compatibility
-    // schema and rejects task-required tools before returning. Its TypeScript
-    // signature also includes task compatibility results, while this adapter
-    // exposes only the normal CallToolResult seam to ServerManager.
+    // Validate the standard result while returning raw extension fields that
+    // the SDK's normalizing schema would otherwise strip from content blocks.
     return result as CallToolResult;
   }
 
@@ -62,17 +96,9 @@ const MetadataPreservingListToolsResultSchema = {
     const validated = ListToolsResultSchema.safeParse(value);
     if (!validated.success) return validated;
 
-    const raw = value as { tools: Array<Record<string, unknown>> } & Record<string, unknown>;
     return {
       success: true as const,
-      data: {
-        ...raw,
-        ...validated.data,
-        tools: validated.data.tools.map((tool, index) => ({
-          ...raw.tools[index],
-          ...tool,
-        })),
-      },
+      data: preserveWireExtensions(value, validated.data),
     };
   },
 } as unknown as typeof ListToolsResultSchema;

@@ -5,7 +5,7 @@
  * 支持日志轮转：达到 maxSize 时自动轮转，保留 maxFiles 个历史文件。
  */
 
-import pino from "pino";
+import pino, { type DestinationStream } from "pino";
 import { Writable } from "node:stream";
 import {
   existsSync,
@@ -32,7 +32,7 @@ export interface DecisionStep {
 
 /** 构造选项 */
 export interface AuditLoggerOptions {
-  /** 输出目标（默认 stdout；stdio runtime 使用 stderr 避免污染协议） */
+  /** 输出目标（默认 stderr，避免公开构造污染 stdio MCP 协议） */
   output?: "stdout" | "stderr" | "file";
   /** 文件路径 */
   filePath?: string;
@@ -52,6 +52,15 @@ export interface AuditLoggerOptions {
 const DEFAULT_MAX_SIZE = "10MB";
 /** 默认保留的历史文件数 */
 const DEFAULT_MAX_FILES = 5;
+
+/** Pino destination whose write either completes or throws before log() returns. */
+class SynchronousDescriptorDestination implements DestinationStream {
+  constructor(private readonly descriptor: 1 | 2) {}
+
+  write(message: string): void {
+    writeSync(this.descriptor, message);
+  }
+}
 
 /**
  * 将大小字符串解析为字节数。
@@ -102,13 +111,20 @@ class RotatingFileStream extends Writable {
 
   _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     try {
-      this.checkRotation(chunk.length);
-      writeSync(this.fd, chunk);
-      this.writtenSinceCheck += chunk.length;
+      this.writeSynchronous(chunk);
       callback(null);
     } catch (err) {
       callback(err instanceof Error ? err : new Error(String(err)));
     }
+  }
+
+  /** Write one complete Pino line or throw before returning to the caller. */
+  writeSynchronous(chunk: string | Buffer): void {
+    if (this.fd === -1) throw new Error("Audit file destination is closed");
+    const data = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    this.checkRotation(data.length);
+    writeSync(this.fd, data);
+    this.writtenSinceCheck += data.length;
   }
 
   _final(callback: (error?: Error | null) => void): void {
@@ -258,6 +274,15 @@ class RotatingFileStream extends Writable {
   }
 }
 
+/** Synchronous adapter that keeps Pino away from Writable callback semantics. */
+class SynchronousRotatingDestination implements DestinationStream {
+  constructor(private readonly stream: RotatingFileStream) {}
+
+  write(message: string): void {
+    this.stream.writeSynchronous(message);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // AuditLogger
 // ---------------------------------------------------------------------------
@@ -298,7 +323,7 @@ export class AuditLogger {
   private closed = false;
 
   constructor(options: AuditLoggerOptions = {}) {
-    const { output = "stdout", filePath, level = "info", maxMemoryEntries = DEFAULT_MAX_MEMORY_ENTRIES } = options;
+    const { output = "stderr", filePath, level = "info", maxMemoryEntries = DEFAULT_MAX_MEMORY_ENTRIES } = options;
     this.maxMemoryEntries = maxMemoryEntries;
 
     if (output === "file" && filePath) {
@@ -307,11 +332,9 @@ export class AuditLogger {
       const compress = options.compress ?? false;
 
       this.rotator = new RotatingFileStream(filePath, maxSize, maxFiles, compress);
-      this.logger = pino({ level }, this.rotator as unknown as Writable);
-    } else if (output === "stderr") {
-      this.logger = pino({ level }, pino.destination({ dest: 2, sync: false }));
+      this.logger = pino({ level }, new SynchronousRotatingDestination(this.rotator));
     } else {
-      this.logger = pino({ level });
+      this.logger = pino({ level }, new SynchronousDescriptorDestination(output === "stdout" ? 1 : 2));
     }
   }
 
@@ -342,19 +365,15 @@ export class AuditLogger {
   log(
     ctx: PolicyContext,
     result: PolicyResult,
-    trail: DecisionStep[] = [],
+    trail: DecisionStep[] | number = [],
     sessionId = "?",
     requestId = 0,
     durationMs?: number,
     details: AuditEventDetails = {},
-  ): void {
-    // 防循环引用
-    let safeArgs: Record<string, unknown>;
-    try {
-      safeArgs = redactAuditValue(ctx.arguments) as Record<string, unknown>;
-    } catch {
-      safeArgs = { _error: "arguments contained non-serializable values" };
-    }
+  ): boolean {
+    // Default audit records are content-free. Key-based redaction cannot
+    // safely identify credentials stored under ordinary argument names.
+    const safeArgs: Record<string, unknown> = {};
 
     let safeMetadata: Record<string, unknown> | undefined;
     if (details.metadata) {
@@ -366,6 +385,12 @@ export class AuditLogger {
     }
 
     const action = result.allowed ? ("allowed" as const) : ("blocked" as const);
+    const decisionTrail = Array.isArray(trail) ? trail : [];
+    const effectiveDurationMs = typeof trail === "number" ? trail : durationMs;
+    const safeTrail = decisionTrail.map(({ policy, result: decisionResult }) => ({
+      policy,
+      result: decisionResult,
+    }));
 
     const entry: AuditEntry = {
       timestamp: new Date().toISOString(),
@@ -375,25 +400,28 @@ export class AuditLogger {
       serverName: ctx.serverName,
       arguments: safeArgs,
       action,
-      decisionTrail: trail,
-      ...(durationMs !== undefined ? { durationMs } : {}),
+      decisionTrail: safeTrail,
+      ...(effectiveDurationMs !== undefined ? { durationMs: effectiveDurationMs } : {}),
       ...(details.traceId ? { traceId: details.traceId } : {}),
       ...(details.event ? { event: details.event } : {}),
       ...(details.outcome
         ? { outcome: details.outcome }
         : { outcome: result.allowed ? ("success" as const) : ("blocked" as const) }),
       ...(safeMetadata ? { metadata: safeMetadata } : {}),
-      ...(!result.allowed && (result as Extract<PolicyResult, { allowed: false }>).reason
-        ? { reason: (result as Extract<PolicyResult, { allowed: false }>).reason }
+      ...(!result.allowed
+        ? { reason: `${(result as Extract<PolicyResult, { allowed: false }>).policy} blocked request` }
         : {}),
     };
 
     this.pushEntry(entry);
     try {
       this.logger.info(entry, "audit entry");
+      return true;
     } catch {
       // Audit output is best-effort and must never block tool execution.
-      // The bounded in-memory copy remains available for diagnostics.
+      // Report the synchronous sink failure so post-upstream delivery can
+      // fail open to the exact upstream result.
+      return false;
     }
   }
 

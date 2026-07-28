@@ -1288,10 +1288,7 @@ describe("AuditLogger — Circular Reference Defense", () => {
 
     const entries = logger.getEntries();
     expect(entries).toHaveLength(1);
-    expect(entries[0].arguments).toEqual({
-      name: "test",
-      self: "[Circular]",
-    });
+    expect(entries[0].arguments).toEqual({});
   });
 });
 

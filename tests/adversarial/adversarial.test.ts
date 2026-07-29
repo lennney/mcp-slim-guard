@@ -31,6 +31,7 @@ import * as net from "node:net";
 // ============================================================
 vi.mock("node:dns/promises", () => ({
   resolve4: vi.fn(),
+  resolve6: vi.fn(),
 }));
 import * as dns from "node:dns/promises";
 
@@ -400,6 +401,7 @@ describe("SSRFPolicy — Bypass Vectors", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(dns.resolve6).mockResolvedValue([]);
   });
 
   // --- IPv6 Loopback ---
@@ -895,7 +897,7 @@ describe("WhitelistPolicy — Edge Cases", () => {
   });
 
   describe("invalid regex pattern in param_restriction", () => {
-    it("invalid regex is caught and the param check is skipped", async () => {
+    it("invalid regex fails closed instead of skipping the restriction", async () => {
       const config: ToolsConfig = {
         allow: ["test_*"],
         deny: [],
@@ -906,10 +908,10 @@ describe("WhitelistPolicy — Edge Cases", () => {
         },
       };
       const policy = new WhitelistPolicy(config);
-      // The try/catch in the policy catches the invalid regex error and skips
-      // So the request should be allowed (if no other restriction fails)
+      // An invalid security restriction must not silently become an allow.
       const r = await policy.check(ctx("test_tool", { url: "anything" }));
-      expect(r.allowed).toBe(true);
+      expect(r.allowed).toBe(false);
+      if (r.allowed === false) expect(r.reason).toContain("invalid pattern");
     });
   });
 
@@ -1075,7 +1077,7 @@ describe("ConfigLoader — Robustness", () => {
 // ============================================================
 describe("AuditLogger — Stress", () => {
   it("logs 10000 entries rapidly without data loss", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     for (let i = 0; i < 10000; i++) {
       logger.log(
@@ -1132,7 +1134,7 @@ describe("AuditLogger — Stress", () => {
   });
 
   it("clear() + re-log maintains correct counts", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     for (let i = 0; i < 5000; i++) {
       logger.log(ctx(`tool_${i}`), { allowed: true });
@@ -1149,7 +1151,7 @@ describe("AuditLogger — Stress", () => {
   });
 
   it("handles getEntries() being called during logging", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     // Log some, snapshot, log more, verify snapshot is immutable
     logger.log(ctx("a"), { allowed: true });
@@ -1267,7 +1269,7 @@ describe("WhitelistPolicy — Cross-tool Param Bypass", () => {
 // ============================================================
 describe("AuditLogger — Circular Reference Defense", () => {
   it("does not crash when arguments contain circular references", () => {
-    const logger = new AuditLogger();
+    const logger = new AuditLogger({ level: "silent" });
 
     // Create circular reference
     const circ: Record<string, unknown> = { name: "test" };
@@ -1286,9 +1288,7 @@ describe("AuditLogger — Circular Reference Defense", () => {
 
     const entries = logger.getEntries();
     expect(entries).toHaveLength(1);
-    expect(entries[0].arguments).toEqual({
-      _error: "arguments contained non-serializable values",
-    });
+    expect(entries[0].arguments).toEqual({});
   });
 });
 

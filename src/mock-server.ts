@@ -5,7 +5,7 @@
  * A lightweight MCP server that:
  * 1. Can be spawned as a subprocess (receives STDIO transport)
  * 2. Exposes test tools that return predictable results
- * 3. Uses the same UpstreamServer config format: {command, args, env}
+ * 3. Uses the stdio UpstreamServer config shape: {command, args, env}
  *
  * @module mock-server
  */
@@ -14,6 +14,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 /**
  * Handler for the "echo" tool.
@@ -86,7 +88,10 @@ export async function startMockServer(): Promise<void> {
   await server.connect(transport);
 }
 
-// Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run if called directly. Compare normalized filesystem paths so Windows drive
+// letters and separators do not break subprocess integration tests.
+const modulePath = path.resolve(fileURLToPath(import.meta.url));
+const entryPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (entryPath === modulePath) {
   startMockServer().catch(console.error);
 }

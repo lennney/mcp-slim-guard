@@ -9,6 +9,7 @@
  */
 
 import micromatch from "micromatch";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { CacheConfig } from "./config-types.js";
 
 const { isMatch } = micromatch;
@@ -19,11 +20,8 @@ export interface CacheEntry {
   expiresAt: number;
 }
 
-/** Tool call result (same shape as serverManager.callTool return) */
-export interface ToolResult {
-  content: Array<{ type: string; text?: string }>;
-  isError?: boolean;
-}
+/** Complete MCP tool result (same shape as ServerManager.callTool). */
+export type ToolResult = CallToolResult;
 
 /** Verbs for search-like tools — shorter TTL (15s), results change frequently */
 const SEARCH_VERBS: ReadonlySet<string> = new Set(["search", "list", "find", "query"]);

@@ -1,9 +1,9 @@
 /**
  * Integration tests for mcp-guard compressor pipeline.
  *
- * Tests the compressor wrapper tools (mcp__list_tools, mcp__get_tool_schema,
- * mcp__invoke_tool) through the full GuardProxy pipeline with a real
- * mock-server subprocess.
+ * Tests the fixed find_tool/call_tool/read_result product surface plus legacy
+ * mcp__* compatibility aliases through the full GuardProxy pipeline with a
+ * real mock-server subprocess.
  *
  * Covers:
  * - tools/list returns wrapper tools
@@ -97,22 +97,70 @@ describe("Compressor Pipeline", () => {
   vi.setConfig({ testTimeout: 15000 });
 
   // -----------------------------------------------------------------------
-  // 1. tools/list returns wrapper tools (compressor light level)
+  // 1. tools/list returns the one fixed product surface
   // -----------------------------------------------------------------------
-  it("tools/list returns 3 wrapper tools when compressor=light", async () => {
+  it("tools/list returns the fixed three tools when compressor=light", async () => {
     const ctx = await buildProxy(makeConfig());
     try {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
       const names = tools.map((t) => t.name);
 
-      expect(names).toEqual(["mcp__list_tools", "mcp__get_tool_schema", "mcp__invoke_tool"]);
+      expect(names).toEqual(["find_tool", "call_tool", "read_result"]);
       expect(tools).toHaveLength(3);
 
       // Each wrapper must have an inputSchema
       for (const t of tools) {
         expect(t.inputSchema).toBeDefined();
       }
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  it("find_tool issues a catalog-bound reference that call_tool can invoke", async () => {
+    const ctx = await buildProxy(makeConfig());
+    try {
+      const found = await ctx.client.callTool({
+        name: "find_tool",
+        arguments: { query: "echo message" },
+      });
+      const foundContent = found.content[0] as { type: string; text?: string };
+      const body = JSON.parse(foundContent.text ?? "{}") as {
+        matches: Array<{ tool_ref: string; name: string; input_schema: Record<string, unknown> }>;
+      };
+      expect(body.matches[0].name).toBe("mock_echo");
+      expect(body.matches[0].input_schema).toHaveProperty("required");
+
+      const called = await ctx.client.callTool({
+        name: "call_tool",
+        arguments: {
+          tool_ref: body.matches[0].tool_ref,
+          arguments: { message: "fixed surface" },
+        },
+      });
+      const calledContent = called.content[0] as { type: string; text?: string };
+      expect(JSON.parse(calledContent.text ?? "{}")).toEqual({ echoed: "fixed surface" });
+    } finally {
+      await destroyProxy(ctx);
+    }
+  });
+
+  it("find_tool never discloses a denied tool", async () => {
+    const config = makeConfig({
+      tools: { allow: ["mock_*"], deny: ["mock_add"] },
+    });
+    const ctx = await buildProxy(config);
+    try {
+      const found = await ctx.client.callTool({
+        name: "find_tool",
+        arguments: { query: "add numbers" },
+      });
+      const foundContent = found.content[0] as { type: string; text?: string };
+      const body = JSON.parse(foundContent.text ?? "{}") as {
+        matches: Array<{ name: string }>;
+      };
+      expect(body.matches.map((match) => match.name)).not.toContain("mock_add");
     } finally {
       await destroyProxy(ctx);
     }
@@ -137,28 +185,22 @@ describe("Compressor Pipeline", () => {
   });
 
   // -----------------------------------------------------------------------
-  // 3. mcp__list_tools returns tool names + descriptions
+  // 3. Fixed surface rejects every hidden compatibility route
   // -----------------------------------------------------------------------
-  it("mcp__list_tools returns tool names and descriptions", async () => {
+  it("fixed surface rejects legacy wrappers and direct catalog names", async () => {
     const ctx = await buildProxy(makeConfig());
     try {
-      const result = await ctx.client.callTool({ name: "mcp__list_tools", arguments: {} });
-      const content = result.content[0] as { type: string; text?: string };
-      expect(content.type).toBe("text");
-
-      const parsed = JSON.parse(content.text ?? "[]");
-      expect(Array.isArray(parsed)).toBe(true);
-      expect(parsed.length).toBeGreaterThanOrEqual(1);
-
-      const names = parsed.map((e: { name: string }) => e.name);
-      expect(names).toContain("mock_echo");
-      expect(names).toContain("mock_add");
-      expect(names).toContain("mock_get_time");
-
-      // Should have descriptions but no inputSchema
-      for (const entry of parsed) {
-        expect(entry).toHaveProperty("description");
-        expect(entry).not.toHaveProperty("inputSchema");
+      for (const name of [
+        "mcp__list_tools",
+        "mcp__get_tool_schema",
+        "mcp__get_schema",
+        "mcp__invoke_tool",
+        "mock_echo",
+      ]) {
+        const result = await ctx.client.callTool({ name, arguments: {} });
+        expect(result.isError).toBe(true);
+        const content = result.content[0] as { type: string; text?: string };
+        expect(content.text).toBe(`Unknown tool: ${name}`);
       }
     } finally {
       await destroyProxy(ctx);
@@ -169,7 +211,7 @@ describe("Compressor Pipeline", () => {
   // 4. mcp__get_tool_schema returns full schema for known tool
   // -----------------------------------------------------------------------
   it("mcp__get_tool_schema returns full schema", async () => {
-    const ctx = await buildProxy(makeConfig());
+    const ctx = await buildProxy(makeConfig({ compressor: { enabled: true, level: "tight" } }));
     try {
       const result = await ctx.client.callTool({
         name: "mcp__get_tool_schema",
@@ -189,7 +231,7 @@ describe("Compressor Pipeline", () => {
   // 5. mcp__get_tool_schema returns error for unknown tool
   // -----------------------------------------------------------------------
   it("mcp__get_tool_schema returns error for unknown tool", async () => {
-    const ctx = await buildProxy(makeConfig());
+    const ctx = await buildProxy(makeConfig({ compressor: { enabled: true, level: "tight" } }));
     try {
       const result = await ctx.client.callTool({
         name: "mcp__get_tool_schema",
@@ -207,7 +249,7 @@ describe("Compressor Pipeline", () => {
   // 6. mcp__invoke_tool delegates through policy pipeline
   // -----------------------------------------------------------------------
   it("mcp__invoke_tool calls tool with correct arguments", async () => {
-    const ctx = await buildProxy(makeConfig());
+    const ctx = await buildProxy(makeConfig({ compressor: { enabled: true, level: "tight" } }));
     try {
       const result = await ctx.client.callTool({
         name: "mcp__invoke_tool",
@@ -226,7 +268,7 @@ describe("Compressor Pipeline", () => {
   // 7. mcp__invoke_tool correctly routes add tool
   // -----------------------------------------------------------------------
   it("mcp__invoke_tool calls add tool with numeric args", async () => {
-    const ctx = await buildProxy(makeConfig());
+    const ctx = await buildProxy(makeConfig({ compressor: { enabled: true, level: "tight" } }));
     try {
       const result = await ctx.client.callTool({
         name: "mcp__invoke_tool",
@@ -243,9 +285,12 @@ describe("Compressor Pipeline", () => {
   // 8. Audit entries generated for wrapper calls
   // -----------------------------------------------------------------------
   it("generates audit entries for compressor wrapper calls", async () => {
-    const ctx = await buildProxy(makeConfig());
+    const ctx = await buildProxy(makeConfig({ compressor: { enabled: true, level: "tight" } }));
     try {
-      await ctx.client.callTool({ name: "mcp__list_tools", arguments: {} });
+      await ctx.client.callTool({
+        name: "mcp__get_tool_schema",
+        arguments: { tool_name: "mock_echo" },
+      });
       await ctx.client.callTool({
         name: "mcp__invoke_tool",
         arguments: { tool_name: "mock_echo", input: { message: "audit" } },
@@ -253,7 +298,7 @@ describe("Compressor Pipeline", () => {
 
       const entries = ctx.audit.getEntries();
       const entryNames = entries.map((e) => e.toolName);
-      expect(entryNames).toContain("mcp__list_tools");
+      expect(entryNames).toContain("mcp__get_tool_schema");
 
       // The invoke_tool wrapper call is logged as "mcp__invoke_tool" (proxy audit),
       // and the inner tool call is logged as "mock_echo" (forwardToolCall audit).
@@ -264,18 +309,23 @@ describe("Compressor Pipeline", () => {
   });
 
   // -----------------------------------------------------------------------
-  // 9. Whitelist filtering: mcp__list_tools only shows allowed tools
+  // 9. Whitelist filtering: an allowed legacy schema remains available
   // -----------------------------------------------------------------------
-  it("mcp__list_tools filters by whitelist when allow is restricted", async () => {
-    const config = makeConfig({ tools: { allow: ["mock_echo"], deny: [] } });
+  it("mcp__get_tool_schema serves an explicitly allowed tool", async () => {
+    const config = makeConfig({
+      tools: { allow: ["mock_echo"], deny: [] },
+      compressor: { enabled: true, level: "tight" },
+    });
     const ctx = await buildProxy(config);
     try {
-      const result = await ctx.client.callTool({ name: "mcp__list_tools", arguments: {} });
+      const result = await ctx.client.callTool({
+        name: "mcp__get_tool_schema",
+        arguments: { tool_name: "mock_echo" },
+      });
       const content = result.content[0] as { type: string; text?: string };
-      const parsed = JSON.parse(content.text ?? "[]");
+      const parsed = JSON.parse(content.text ?? "{}");
 
-      const names = parsed.map((e: { name: string }) => e.name);
-      expect(names).toEqual(["mock_echo"]);
+      expect(parsed.name).toBe("mock_echo");
     } finally {
       await destroyProxy(ctx);
     }
@@ -285,7 +335,10 @@ describe("Compressor Pipeline", () => {
   // 10. Whitelist filtering: mcp__get_tool_schema rejects blocked tools
   // -----------------------------------------------------------------------
   it("mcp__get_tool_schema rejects tool not in allow list", async () => {
-    const config = makeConfig({ tools: { allow: ["mock_echo"], deny: [] } });
+    const config = makeConfig({
+      tools: { allow: ["mock_echo"], deny: [] },
+      compressor: { enabled: true, level: "tight" },
+    });
     const ctx = await buildProxy(config);
     try {
       const result = await ctx.client.callTool({
@@ -303,10 +356,13 @@ describe("Compressor Pipeline", () => {
   });
 
   // -----------------------------------------------------------------------
-  // 11. Blocked tool via mcp__invoke_tool reaches deny policy
+  // 11. Denied targets stay hidden behind the compatibility wrapper
   // -----------------------------------------------------------------------
-  it("mcp__invoke_tool blocks tool matching deny pattern", async () => {
-    const config = makeConfig({ tools: { allow: ["*"], deny: ["mock_echo"] } });
+  it("mcp__invoke_tool cannot reach a denied target", async () => {
+    const config = makeConfig({
+      tools: { allow: ["*"], deny: ["mock_echo"] },
+      compressor: { enabled: true, level: "tight" },
+    });
     const ctx = await buildProxy(config);
     try {
       const result = await ctx.client.callTool({
@@ -315,7 +371,7 @@ describe("Compressor Pipeline", () => {
       });
       expect((result as { isError?: boolean }).isError).toBe(true);
       const content = result.content[0] as { type: string; text?: string };
-      expect(content.text).toContain("deny");
+      expect(content.text).toBe("Unknown tool: mock_echo");
     } finally {
       await destroyProxy(ctx);
     }

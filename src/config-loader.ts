@@ -12,6 +12,7 @@ import * as yaml from "js-yaml";
 import type { GuardConfig, UpstreamServer } from "./config-types.js";
 import type { MCPConfig } from "./types.js";
 import { validateConfigSchema, formatSchemaErrors } from "./config-schema.js";
+import { assertEnvironmentBackedSecrets, importUpstreamServer } from "./upstream-config.js";
 
 /**
  * Normalize compression level. Maps deprecated `"tight"` to `"normal"` and
@@ -31,10 +32,11 @@ function normalizeCompressionLevel(level: string): "off" | "light" | "normal" | 
 export class ConfigLoader {
   /**
    * 扫描当前目录找到 MCP 配置文件。
-   * 按优先级顺序查找：.mcp.json > mcp.json > claude_desktop_config.json > .cursor/mcp.json
+   * 按优先级顺序查找：.mcp.json > mcp.json > claude_desktop_config.json >
+   * .cursor/mcp.json > .vscode/mcp.json
    */
   static discoverMCPConfig(cwd: string): string | null {
-    const candidates = [".mcp.json", "mcp.json", "claude_desktop_config.json", ".cursor/mcp.json"];
+    const candidates = [".mcp.json", "mcp.json", "claude_desktop_config.json", ".cursor/mcp.json", ".vscode/mcp.json"];
     for (const candidate of candidates) {
       const fullPath = path.join(cwd, candidate);
       if (fs.existsSync(fullPath)) return fullPath;
@@ -49,16 +51,23 @@ export class ConfigLoader {
   static generateGuardConfig(mcpConfigPath: string): GuardConfig {
     const raw = fs.readFileSync(mcpConfigPath, "utf-8");
     const mcpConfig = JSON.parse(raw) as MCPConfig;
+    if (!mcpConfig || typeof mcpConfig !== "object") {
+      throw new Error("Invalid MCP config: expected an object");
+    }
+    if (mcpConfig.mcpServers !== undefined && mcpConfig.servers !== undefined) {
+      throw new Error('Invalid MCP config: use either "mcpServers" or "servers", not both');
+    }
 
     const servers: Record<string, UpstreamServer> = {};
     const toolNames: string[] = [];
+    const sourceServers = mcpConfig.mcpServers ?? mcpConfig.servers ?? {};
+    const configDir = path.dirname(path.resolve(mcpConfigPath));
+    const workspaceRoot = [".vscode", ".cursor"].includes(path.basename(configDir))
+      ? path.dirname(configDir)
+      : configDir;
 
-    for (const [name, entry] of Object.entries(mcpConfig.mcpServers ?? {})) {
-      servers[name] = {
-        command: entry.command,
-        args: entry.args ?? [],
-        env: entry.env ?? {},
-      };
+    for (const [name, entry] of Object.entries(sourceServers)) {
+      servers[name] = importUpstreamServer(name, entry, workspaceRoot);
       toolNames.push(`${name}_*`);
     }
 
@@ -83,7 +92,7 @@ export class ConfigLoader {
         mode: "block",
       },
       compressor: {
-        enabled: false,
+        enabled: true,
         level: "light",
         lazy_loading: false,
         lazy_budget: 8,
@@ -130,6 +139,10 @@ export class ConfigLoader {
     if (schemaErrors.length > 0) {
       const msg = formatSchemaErrors(schemaErrors);
       throw new Error(msg);
+    }
+
+    for (const [name, server] of Object.entries(config.servers)) {
+      assertEnvironmentBackedSecrets(name, server);
     }
 
     // Fill defaults for optional sections

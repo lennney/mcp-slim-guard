@@ -69,6 +69,7 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
     },
     cache: {
       type: "object",
+      required: ["enabled", "ttl", "max_entries", "allow", "deny"],
       properties: {
         enabled: { type: "boolean" },
         ttl: { type: "number", minimum: 0 },
@@ -108,13 +109,13 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
         default: {
           description: "默认速率限制。支持数字、对象或 '60/min' 格式字符串",
           oneOf: [
-            { type: "number" },
+            { type: "number", minimum: 0 },
             {
               type: "object",
               required: ["window_ms", "max_requests"],
               properties: {
-                window_ms: { type: "number" },
-                max_requests: { type: "number" },
+                window_ms: { type: "number", minimum: 1 },
+                max_requests: { type: "number", minimum: 0 },
               },
               additionalProperties: false,
             },
@@ -126,13 +127,13 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
           description: "按 agent ID 的速率限制覆盖",
           additionalProperties: {
             oneOf: [
-              { type: "number" },
+              { type: "number", minimum: 0 },
               {
                 type: "object",
                 required: ["window_ms", "max_requests"],
                 properties: {
-                  window_ms: { type: "number" },
-                  max_requests: { type: "number" },
+                  window_ms: { type: "number", minimum: 1 },
+                  max_requests: { type: "number", minimum: 0 },
                 },
                 additionalProperties: false,
               },
@@ -147,20 +148,42 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
       type: "object",
       description: "上游 MCP 服务器映射",
       additionalProperties: {
-        type: "object",
-        required: ["command"],
-        properties: {
-          command: { type: "string" },
-          args: {
-            type: "array",
-            items: { type: "string" },
-          },
-          env: {
+        oneOf: [
+          {
             type: "object",
-            additionalProperties: { type: "string" },
+            required: ["command"],
+            properties: {
+              type: { type: "string", enum: ["stdio"] },
+              command: { type: "string" },
+              args: {
+                type: "array",
+                items: { type: "string" },
+              },
+              env: {
+                type: "object",
+                additionalProperties: { type: "string" },
+              },
+              cwd: { type: "string" },
+            },
+            additionalProperties: false,
           },
-        },
-        additionalProperties: false,
+          {
+            type: "object",
+            required: ["url"],
+            properties: {
+              type: {
+                type: "string",
+                enum: ["http", "streamable-http", "sse"],
+              },
+              url: { type: "string" },
+              headers: {
+                type: "object",
+                additionalProperties: { type: "string" },
+              },
+            },
+            additionalProperties: false,
+          },
+        ],
       },
     },
     ssrf: {
@@ -266,16 +289,24 @@ function checkType(value: unknown, expected: string | string[] | undefined, path
 function checkOneOf(value: unknown, oneOf: SchemaNode[], path: string, errors: SchemaError[]): boolean {
   if (oneOf.length === 0) return false;
 
+  let closestErrors: SchemaError[] | undefined;
   for (const variant of oneOf) {
     const subErrors: SchemaError[] = [];
     validateNode(value, variant, path, subErrors);
     if (subErrors.length === 0) return true;
+    if (closestErrors === undefined || subErrors.length < closestErrors.length) {
+      closestErrors = subErrors;
+    }
   }
 
-  errors.push({
-    path,
-    message: `does not match any allowed format (oneOf)`,
-  });
+  errors.push(
+    ...(closestErrors ?? [
+      {
+        path,
+        message: `does not match any allowed format (oneOf)`,
+      },
+    ]),
+  );
   return false;
 }
 

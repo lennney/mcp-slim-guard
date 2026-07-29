@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "node:path";
 
 // ── Mock all CLI dependencies ──────────────────────────────────────────
 // NOTE: vi.mock() is hoisted to top. Factories execute when module loads.
@@ -24,7 +25,7 @@ vi.mock("../../src/config-loader.js", () => ({
 }));
 
 vi.mock("../../src/index.js", () => ({
-  VERSION: "0.1.0",
+  VERSION: "0.1.1-alpha.1",
 }));
 
 vi.mock("../../src/policies/base.js", () => ({
@@ -49,8 +50,12 @@ vi.mock("../../src/audit.js", () => ({
 
 const { ServerManager: MockServerManager } = vi.hoisted(() => {
   const getTools = vi.fn().mockReturnValue([]);
-  const start = vi.fn().mockResolvedValue(undefined);
-  const stop = vi.fn().mockResolvedValue(undefined);
+  const start = vi.fn().mockResolvedValue({
+    configured: 1,
+    connected: [{ serverName: "github", transportKind: "stdio", toolCount: 0 }],
+    failed: [],
+  });
+  const stop = vi.fn().mockResolvedValue({ closed: ["github"], failed: [] });
   return {
     ServerManager: vi.fn().mockImplementation(() => ({ getTools, start, stop })),
   };
@@ -63,7 +68,9 @@ vi.mock("../../src/server-manager.js", () => ({
 // GuardProxy mock — store .start reference so tests can verify it was called
 vi.mock("../../src/proxy.js", () => {
   const start = vi.fn<(transport: unknown) => Promise<void>>().mockResolvedValue(undefined);
-  const GuardProxy = vi.fn().mockImplementation(() => ({ start }));
+  const stop = vi.fn().mockResolvedValue(undefined);
+  const recordLifecycle = vi.fn();
+  const GuardProxy = vi.fn().mockImplementation(() => ({ start, stop, recordLifecycle }));
   return { GuardProxy };
 });
 
@@ -156,6 +163,8 @@ describe("CLI", () => {
     // Re-apply the mock implementation
     vi.mocked(GuardProxy).mockImplementation(() => ({
       start: vi.fn<(transport: unknown) => Promise<void>>().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      recordLifecycle: vi.fn(),
     }));
   });
 
@@ -186,6 +195,7 @@ describe("CLI", () => {
 
       expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalled();
       expect(consoleErrorSpy).toHaveBeenCalledWith("Error: No MCP configuration file found.");
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining(".vscode/mcp.json"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
@@ -193,21 +203,42 @@ describe("CLI", () => {
   // ── start ────────────────────────────────────────────────────────
 
   describe("start", () => {
-    it("loads config and starts proxy → prints started message", async () => {
+    it("loads config and keeps human status messages off protocol stdout", async () => {
       MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
 
       await main(["node", "cli.js", "start"]);
 
       expect(MockConfigLoader.ConfigLoader.findAndLoad).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
-      expect(consoleLogSpy).toHaveBeenCalledWith("   Listening on STDIO transport");
+      expect(consoleLogSpy).not.toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
+      expect(consoleErrorSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard started");
+      expect(consoleErrorSpy).toHaveBeenCalledWith("   Listening on STDIO transport");
       // GuardProxy constructor was called
-      expect(vi.mocked(GuardProxy)).toHaveBeenCalled();
+      expect(vi.mocked(GuardProxy)).toHaveBeenCalledWith(
+        MOCK_GUARD_CONFIG,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        { surface: "generic" },
+      );
       // proxy.start was called on the returned instance
       const instance = vi.mocked(GuardProxy).mock.results[0]?.value as {
         start: ReturnType<typeof vi.fn>;
       };
       expect(instance.start).toHaveBeenCalled();
+    });
+
+    it("starts the explicit native Tool surface without changing the default", async () => {
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+
+      await main(["node", "cli.js", "start", "--surface", "native"]);
+
+      expect(vi.mocked(GuardProxy)).toHaveBeenCalledWith(
+        MOCK_GUARD_CONFIG,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        { surface: "native" },
+      );
     });
   });
 
@@ -219,10 +250,34 @@ describe("CLI", () => {
 
       await main(["node", "cli.js", "status"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard status");
+      expect(consoleLogSpy).toHaveBeenCalledWith("🛡️ mcp-slim-guard configuration");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("github"));
+    });
+  });
+
+  describe("doctor", () => {
+    it("reports a structured upstream connection failure instead of treating zero tools as healthy", async () => {
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+      vi.mocked(MockServerManager).mockImplementationOnce(
+        () =>
+          ({
+            start: vi.fn().mockResolvedValue({
+              configured: 1,
+              connected: [],
+              failed: [{ serverName: "github", errorType: "McpError" }],
+            }),
+            getTools: vi.fn().mockReturnValue([]),
+            stop: vi.fn().mockResolvedValue({ closed: [], failed: [] }),
+          }) as never,
+      );
+
+      await main(["node", "cli.js", "doctor"]);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith("❌ FAIL — McpError");
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("0 server(s) OK, 1 failed"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 
@@ -245,6 +300,31 @@ describe("CLI", () => {
       await main(["node", "cli.js", "log", "--tail"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tailing"));
+    });
+
+    it("renders trace stage and upstream outcome", async () => {
+      const { existsSync, readFileSync } = await import("node:fs");
+      (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        `${JSON.stringify({
+          timestamp: "2026-07-26T13:22:48.000Z",
+          traceId: "t_1234567890abcdef",
+          requestId: 3,
+          serverName: "agent_search",
+          toolName: "agent_search_free_search_advanced",
+          action: "allowed",
+          event: "upstream",
+          outcome: "upstream_error",
+          durationMs: 4,
+        })}\n`,
+      );
+
+      await main(["node", "cli.js", "log"]);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[t_12345678] #3 agent_search:agent_search_free_search_advanced"),
+      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("upstream/upstream_error (4ms)"));
     });
   });
 
@@ -274,7 +354,7 @@ describe("CLI", () => {
       await main(["node", "cli.js", "--version"]);
 
       // Commander writes version to stdout
-      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.1.0"));
+      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.1.1-alpha.1"));
     });
 
     it("shows help text with --help", async () => {
@@ -310,7 +390,7 @@ describe("buildAuditOptions", () => {
   it("falls back to default filePath and omits unset options", () => {
     const opts = buildAuditOptions({ output: "file" }, "/tmp");
     expect(opts.output).toBe("file");
-    expect(opts.filePath).toBe("/tmp/mcp-slim-guard-audit.log");
+    expect(opts.filePath).toBe(path.join("/tmp", "mcp-slim-guard-audit.log"));
     expect(opts.maxSize).toBeUndefined();
   });
 

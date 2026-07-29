@@ -34,6 +34,36 @@ export type PolicyResult =
   // 允许通过（可携带可选 reason 作为警告，如 SSRF log 模式命中内网）
   { allowed: true; reason?: string } | { allowed: false; reason: string; policy: string };
 
+export type AuditEventKind =
+  "discovery" | "routing" | "validation" | "policy" | "cache" | "upstream" | "projection" | "recovery" | "lifecycle";
+
+export type AuditOutcome =
+  | "success"
+  | "blocked"
+  | "invalid_request"
+  | "cache_hit"
+  | "upstream_error"
+  | "transport_error"
+  | "internal_error"
+  | "degraded"
+  | "projected"
+  | "pass_through"
+  | "fail_open"
+  | "chunk"
+  | "complete"
+  | "rejected";
+
+export interface AuditEventDetails {
+  /** Correlates every event produced by one downstream tools/call request. */
+  traceId?: string;
+  /** Runtime stage that produced this event. */
+  event?: AuditEventKind;
+  /** Stage outcome; independent from the legacy policy action. */
+  outcome?: AuditOutcome;
+  /** Bounded, recursively redacted operational metadata. */
+  metadata?: Record<string, unknown>;
+}
+
 /**
  * 审计日志条目（完整可追溯）。
  */
@@ -66,6 +96,14 @@ export interface AuditEntry {
   reason?: string;
   /** 策略评估耗时（毫秒） */
   durationMs?: number;
+  /** One downstream tools/call trace; absent on legacy entries. */
+  traceId?: string;
+  /** Runtime stage represented by this entry. */
+  event?: AuditEventKind;
+  /** Stage result; does not conflate upstream errors with policy blocks. */
+  outcome?: AuditOutcome;
+  /** Redacted, bounded stage metadata. */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -96,8 +134,10 @@ export interface Policy {
  * 用于加载用户已有的 MCP 服务器定义并注入 Guard。
  */
 export interface MCPConfig {
-  /** MCP 服务器映射，key 为用户定义的服务器名 */
-  mcpServers: Record<string, UpstreamServer>;
+  /** Claude Desktop、Claude Code、Cursor 等使用的服务器映射。 */
+  mcpServers?: Record<string, UpstreamServer>;
+  /** VS Code 使用的服务器映射。 */
+  servers?: Record<string, UpstreamServer>;
 }
 
 /**

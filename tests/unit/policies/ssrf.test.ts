@@ -6,6 +6,7 @@ import type { PolicyContext } from "../../../src/types.js";
 // Mock DNS to avoid actual network calls
 vi.mock("node:dns/promises", () => ({
   resolve4: vi.fn(),
+  resolve6: vi.fn(),
 }));
 
 import * as dns from "node:dns/promises";
@@ -20,6 +21,8 @@ describe("SSRFPolicy", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(dns.resolve4).mockResolvedValue([]);
+    vi.mocked(dns.resolve6).mockResolvedValue([]);
   });
 
   function ctx(toolName: string, args: Record<string, unknown> = {}): PolicyContext {
@@ -40,6 +43,33 @@ describe("SSRFPolicy", () => {
     if (result.allowed === false) {
       expect(result.reason).toContain("private IP");
     }
+  });
+
+  it("blocks a private URL written with backslash separators", async () => {
+    const policy = new SSRFPolicy({ ...config, allow_domains: [], block_domains: [] });
+    const url = "http:" + String.fromCharCode(92, 92) + "127.0.0.1" + String.fromCharCode(92);
+
+    expect(new URL(url).hostname).toBe("127.0.0.1");
+    const result = await policy.check(ctx("test", { url }));
+
+    expect(result.allowed).toBe(false);
+    if (result.allowed === false) expect(result.reason).toContain("private IP");
+  });
+
+  it("fails closed instead of recursing indefinitely through deeply nested arguments", async () => {
+    const policy = new SSRFPolicy({ ...config, allow_domains: [], block_domains: [] });
+    const args: Record<string, unknown> = {};
+    let cursor = args;
+    for (let depth = 0; depth <= 64; depth += 1) {
+      const child: Record<string, unknown> = {};
+      cursor.child = child;
+      cursor = child;
+    }
+
+    await expect(policy.check(ctx("test", args))).resolves.toMatchObject({
+      allowed: false,
+      policy: "ssrf",
+    });
   });
 
   it("blocks private IP via DNS resolution", async () => {
@@ -80,13 +110,49 @@ describe("SSRFPolicy", () => {
     expect(resolveMock).toHaveBeenCalledTimes(1); // Still 1 — cached
   });
 
-  it("allows whitelisted domain without DNS check", async () => {
+  it("allows whitelisted domain after public DNS resolution", async () => {
+    vi.mocked(dns.resolve4).mockResolvedValue([{ address: "140.82.112.3", ttl: 60 }]);
     const policy = new SSRFPolicy(config);
     const result = await policy.check(ctx("test", { url: "https://api.github.com/repos" }));
     expect(result.allowed).toBe(true);
-    // DNS should not be called for whitelisted domains
-    expect(dns.resolve4).not.toHaveBeenCalled();
+    // Domain allowlists must not bypass private-IP resolution.
+    expect(dns.resolve4).toHaveBeenCalledWith("api.github.com", { ttl: true });
+    expect(dns.resolve6).toHaveBeenCalledWith("api.github.com", { ttl: true });
   });
+
+  it("blocks an allowlisted hostname when DNS resolves to a private IP", async () => {
+    vi.mocked(dns.resolve4).mockResolvedValue([{ address: "10.0.0.7", ttl: 60 }]);
+
+    const policy = new SSRFPolicy({
+      ...config,
+      allow_domains: ["trusted.example.com"],
+    });
+    const result = await policy.check(ctx("test", { url: "https://trusted.example.com/" }));
+
+    expect(result.allowed).toBe(false);
+    if (result.allowed === false) expect(result.reason).toContain("private IP");
+  });
+
+  it("blocks private IPv6 addresses returned in AAAA records", async () => {
+    vi.mocked(dns.resolve6).mockResolvedValue([{ address: "fd00::7", ttl: 60 }]);
+
+    const policy = new SSRFPolicy({ ...config, allow_domains: [], block_domains: [] });
+    const result = await policy.check(ctx("test", { url: "https://internal.example.com/" }));
+
+    expect(result.allowed).toBe(false);
+    if (result.allowed === false) expect(result.reason).toContain("private IP");
+  });
+
+  it.each(["file", "ftp", "gopher", "dict", "ldap", "sftp"])(
+    "blocks non-HTTP URL scheme %s in block mode",
+    async (scheme) => {
+      const policy = new SSRFPolicy({ ...config, allow_domains: [], block_domains: [] });
+      const result = await policy.check(ctx("test", { url: `${scheme}://example.com/resource` }));
+
+      expect(result.allowed).toBe(false);
+      if (result.allowed === false) expect(result.reason).toContain("URL scheme");
+    },
+  );
 
   it("blocks blacklisted domain", async () => {
     const policy = new SSRFPolicy(config);
@@ -113,7 +179,7 @@ describe("SSRFPolicy", () => {
     expect(result.allowed).toBe(false);
   });
 
-  it("handles dns resolution failure gracefully", async () => {
+  it("fails closed when DNS resolution fails in block mode", async () => {
     const resolveMock = vi.mocked(dns.resolve4);
     resolveMock.mockRejectedValue(new Error("DNS failure"));
 
@@ -123,8 +189,8 @@ describe("SSRFPolicy", () => {
       allow_domains: [],
     });
     const result = await policy.check(ctx("test", { url: "http://unknown-host.local/path" }));
-    // DNS 失败 → 没有 IP 可检查 → allow
-    expect(result.allowed).toBe(true);
+    expect(result.allowed).toBe(false);
+    if (result.allowed === false) expect(result.reason).toContain("could not resolve");
   });
 
   it("clamps minimum DNS cache TTL to 10s for security", async () => {
@@ -147,6 +213,22 @@ describe("SSRFPolicy", () => {
     const policy = new SSRFPolicy(config);
     const result = await policy.check(ctx("test", { url: "http://127.0.0.1:8080/admin" }));
     expect(result.allowed).toBe(false);
+  });
+
+  it.each([
+    "http://224.0.0.1/",
+    "http://239.255.255.250/",
+    "http://255.255.255.255/",
+    "http://240.0.0.1/",
+    "http://198.18.0.1/",
+    "http://[ff02::1]/",
+  ])("blocks non-global or multicast address %s", async (url) => {
+    const policy = new SSRFPolicy({ ...config, allow_domains: [], block_domains: [] });
+
+    const result = await policy.check(ctx("test", { url }));
+
+    expect(result.allowed).toBe(false);
+    if (result.allowed === false) expect(result.reason).toContain("private IP");
   });
 
   it("allows private IP when block_private_ips is false", async () => {

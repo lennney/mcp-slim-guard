@@ -98,4 +98,24 @@ describe("WhitelistPolicy", () => {
     const invalid = await p.check(ctx("github_test_tool", { url: "ftp://example.com" }));
     expect(invalid.allowed).toBe(false);
   });
+
+  it("fails closed when a configured parameter pattern is invalid", async () => {
+    const p = new WhitelistPolicy({
+      allow: ["github_*"],
+      deny: [],
+      param_restrictions: {
+        github_test_tool: {
+          url: { pattern: "[invalid" },
+        },
+      },
+    });
+
+    const result = await p.check(ctx("github_test_tool", { url: "anything" }));
+
+    expect(result.allowed).toBe(false);
+    if (result.allowed === false) {
+      expect(result.reason).toContain("invalid pattern");
+      expect(result.policy).toBe("whitelist");
+    }
+  });
 });

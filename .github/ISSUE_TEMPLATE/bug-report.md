@@ -12,7 +12,7 @@ assignees: ""
 
 ## Reproduction Steps
 
-1. Setup: <!-- MCP server config, compression level, etc. -->
+1. Setup: <!-- host, upstream MCP server, transport, and redacted config -->
 2. Command: <!-- exact CLI command or MCP call -->
 3. Expected behavior:
 4. Actual behavior:

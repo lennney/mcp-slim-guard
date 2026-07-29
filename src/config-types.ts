@@ -8,17 +8,39 @@
  */
 
 /**
- * 上游 MCP 服务器定义。
- * 映射到用户 `.mcp.json` / `mcpServers` 中的单个条目。
+ * 本地 stdio 上游 MCP 服务器。
+ *
+ * `type` 可省略，兼容 Claude Desktop、Cursor 等现有 `mcpServers`
+ * 配置。只要存在 `command`，Slim Guard 就会自动识别为 stdio。
  */
-export interface UpstreamServer {
+export interface StdioUpstreamServer {
+  type?: "stdio";
   /** MCP 服务器启动命令（可执行文件路径） */
   command: string;
   /** 命令行参数 */
-  args: string[];
-  /** 环境变量 */
-  env: Record<string, string>;
+  args?: string[];
+  /** 传递给子进程的环境变量；敏感值必须引用运行时环境变量 */
+  env?: Record<string, string>;
+  /** 子进程工作目录 */
+  cwd?: string;
 }
+
+/**
+ * 远程 MCP 服务器。
+ *
+ * `"http"` / `"streamable-http"` 都表示优先使用 Streamable HTTP，并在
+ * 初始化失败时兼容回退到旧 HTTP+SSE。`"sse"` 仅用于明确标记的旧服务。
+ */
+export interface RemoteUpstreamServer {
+  type?: "http" | "streamable-http" | "sse";
+  /** MCP endpoint URL */
+  url: string;
+  /** HTTP headers；认证值必须引用运行时环境变量 */
+  headers?: Record<string, string>;
+}
+
+/** 标准 MCP 上游定义；由 `command` 或 `url` 自动判别传输。 */
+export type UpstreamServer = StdioUpstreamServer | RemoteUpstreamServer;
 
 /**
  * 单个工具参数的约束规则。

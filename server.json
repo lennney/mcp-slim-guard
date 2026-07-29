@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.lennney/mcp-slim-guard",
-  "description": "Schema compression (83%+ savings) + security proxy for MCP servers — SSRF, injection, rate limit",
+  "description": "Cut MCP context before it reaches the agent. Same upstream call, exact results recoverable.",
   "repository": {
     "url": "https://github.com/lennney/mcp-slim-guard",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.1.1-alpha.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-slim-guard",
-      "version": "0.1.0",
+      "version": "0.1.1-alpha.1",
       "transport": {
         "type": "stdio"
       },

@@ -49,6 +49,15 @@ describe("ConfigLoader", () => {
       expect(found).toBe(altPath);
     });
 
+    it("finds .vscode/mcp.json", () => {
+      const vscodeDir = path.join(tmpDir, ".vscode");
+      fs.mkdirSync(vscodeDir, { recursive: true });
+      const altPath = path.join(vscodeDir, "mcp.json");
+      fs.writeFileSync(altPath, "{}");
+      const found = ConfigLoader.discoverMCPConfig(tmpDir);
+      expect(found).toBe(altPath);
+    });
+
     it("returns null when no config found", () => {
       const found = ConfigLoader.discoverMCPConfig(tmpDir);
       expect(found).toBeNull();
@@ -79,6 +88,11 @@ describe("ConfigLoader", () => {
       expect(config.tools.deny).toContain("*_delete_*");
       expect(config.ssrf.mode).toBe("block");
       expect(config.rate_limit.default).toBe("60/min");
+      expect(config.compressor).toMatchObject({
+        enabled: true,
+        level: "light",
+        lazy_loading: false,
+      });
     });
 
     it("handles empty servers", () => {
@@ -100,6 +114,75 @@ describe("ConfigLoader", () => {
       const config = ConfigLoader.generateGuardConfig(mcpJsonPath);
       expect(config.servers.simple.args).toEqual([]);
       expect(config.servers.simple.env).toEqual({});
+    });
+
+    it("imports VS Code servers with stdio and remote MCP entries", () => {
+      const vscodeDir = path.join(tmpDir, ".vscode");
+      fs.mkdirSync(vscodeDir, { recursive: true });
+      const vscodePath = path.join(vscodeDir, "mcp.json");
+      fs.writeFileSync(
+        vscodePath,
+        JSON.stringify({
+          servers: {
+            local: {
+              type: "stdio",
+              command: "node",
+              args: ["${workspaceFolder}/server.js"],
+              cwd: "${workspaceFolder}",
+            },
+            remote: {
+              type: "http",
+              url: "https://mcp.example.test/mcp",
+              headers: {
+                Authorization: "Bearer ${REMOTE_AUTH}",
+              },
+            },
+          },
+          inputs: [],
+        }),
+      );
+
+      const config = ConfigLoader.generateGuardConfig(vscodePath);
+
+      expect(config.servers.local).toMatchObject({
+        type: "stdio",
+        command: "node",
+        cwd: path.resolve(tmpDir),
+      });
+      expect(config.servers.remote).toEqual({
+        type: "http",
+        url: "https://mcp.example.test/mcp",
+        headers: { Authorization: "Bearer ${REMOTE_AUTH}" },
+      });
+      expect(config.tools.allow).toEqual(["local_*", "remote_*"]);
+    });
+
+    it("rejects ambiguous top-level server maps", () => {
+      fs.writeFileSync(
+        mcpJsonPath,
+        JSON.stringify({
+          mcpServers: {},
+          servers: {},
+        }),
+      );
+
+      expect(() => ConfigLoader.generateGuardConfig(mcpJsonPath)).toThrow('use either "mcpServers" or "servers"');
+    });
+
+    it("rejects plaintext sensitive headers during import", () => {
+      fs.writeFileSync(
+        mcpJsonPath,
+        JSON.stringify({
+          mcpServers: {
+            remote: {
+              url: "https://mcp.example.test/mcp",
+              headers: { Authorization: "" },
+            },
+          },
+        }),
+      );
+
+      expect(() => ConfigLoader.generateGuardConfig(mcpJsonPath)).toThrow("must reference an environment variable");
     });
   });
 

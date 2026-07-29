@@ -68,9 +68,9 @@ describe("whitelistFilter", () => {
     { name: "slack_send", description: "send", inputSchema: { type: "object", properties: {} } },
   ];
 
-  it("passes all tools when allow is empty and deny is empty", () => {
+  it("fails closed when allow is empty", () => {
     const stage = whitelistFilter([], []);
-    expect(stage(tools)).toHaveLength(3);
+    expect(stage(tools)).toEqual([]);
   });
 
   it("filters by allow pattern", () => {
@@ -89,6 +89,16 @@ describe("whitelistFilter", () => {
     const stage = whitelistFilter(["github_*"], ["github_create"]);
     const result = stage(tools);
     expect(result.map((t) => t.name)).toEqual(["github_search"]);
+  });
+
+  it("applies deny patterns to legacy names shared by collision routes", () => {
+    const colliding: Tool[] = [
+      { name: "a_b_c__sg_11111111", inputSchema: { type: "object" } },
+      { name: "a_b_c__sg_22222222", inputSchema: { type: "object" } },
+    ];
+    const stage = whitelistFilter(["*"], ["a_b_c"], () => ["a_b_c"]);
+
+    expect(stage(colliding)).toEqual([]);
   });
 });
 
@@ -167,24 +177,24 @@ describe("levelToStage (extreme/maximum)", () => {
 
 describe("generateTools (wrapper levels via pipeline)", () => {
   it("light level returns 3 wrapper tools", () => {
-    const result = generateTools(sampleTools, { enabled: true, level: "light" });
+    const result = generateTools(sampleTools, { enabled: true, level: "light" }, ["*"], []);
     const names = result.map((t) => t.name);
     expect(names).toEqual(["mcp__list_tools", "mcp__get_tool_schema", "mcp__invoke_tool"]);
   });
 
   it("normal level returns 2 wrapper tools", () => {
-    const result = generateTools(sampleTools, { enabled: true, level: "normal" });
+    const result = generateTools(sampleTools, { enabled: true, level: "normal" }, ["*"], []);
     const names = result.map((t) => t.name);
     expect(names).toEqual(["mcp__get_tool_schema", "mcp__invoke_tool"]);
   });
 
   it("off level returns full tools", () => {
-    const result = generateTools(sampleTools, { enabled: true, level: "off" });
+    const result = generateTools(sampleTools, { enabled: true, level: "off" }, ["*"], []);
     expect(result).toEqual(sampleTools);
   });
 
   it("disabled returns full tools regardless of level", () => {
-    const result = generateTools(sampleTools, { enabled: false, level: "light" });
+    const result = generateTools(sampleTools, { enabled: false, level: "light" }, ["*"], []);
     expect(result).toEqual(sampleTools);
   });
 });
@@ -373,7 +383,7 @@ describe("generateTools / buildPipeline", () => {
 
   it("lazy+off: returns preloaded + slim + get_schema", () => {
     const config = { enabled: true, level: "off" as const, lazy_loading: true, lazy_budget: 8 };
-    const result = generateTools(tools, config, [], []);
+    const result = generateTools(tools, config, ["*"], []);
     // github_search is high-priority → full schema
     // github_create is not → slim
     // + mcp__get_schema
@@ -387,7 +397,7 @@ describe("generateTools / buildPipeline", () => {
 
   it("lazy+extreme: level strips first, then lazy restores high-priority from original", () => {
     const config = { enabled: true, level: "extreme" as const, lazy_loading: true, lazy_budget: 8 };
-    const result = generateTools(tools, config, [], []);
+    const result = generateTools(tools, config, ["*"], []);
     const search = result.find((t) => t.name === "github_search")!;
     // Should have original full schema (restored from originalTools), not extreme-stripped
     expect(search.inputSchema.properties).toHaveProperty("q");
@@ -397,14 +407,14 @@ describe("generateTools / buildPipeline", () => {
 
   it("lazy+maximum: level embeds signature, then lazy restores high-priority", () => {
     const config = { enabled: true, level: "maximum" as const, lazy_loading: true, lazy_budget: 8 };
-    const result = generateTools(tools, config, [], []);
+    const result = generateTools(tools, config, ["*"], []);
     const search = result.find((t) => t.name === "github_search")!;
     expect(search.inputSchema.properties).toHaveProperty("q");
   });
 
   it("lazy+light: degrades to off behavior (no wrapper)", () => {
     const config = { enabled: true, level: "light" as const, lazy_loading: true, lazy_budget: 8 };
-    const result = generateTools(tools, config, [], []);
+    const result = generateTools(tools, config, ["*"], []);
     // No mcp__list_tools / mcp__get_tool_schema / mcp__invoke_tool
     expect(result.find((t) => t.name === "mcp__list_tools")).toBeUndefined();
     expect(result.find((t) => t.name === "mcp__invoke_tool")).toBeUndefined();
@@ -414,7 +424,7 @@ describe("generateTools / buildPipeline", () => {
 
   it("non-lazy+extreme: works without lazy (existing behavior)", () => {
     const config = { enabled: true, level: "extreme" as const };
-    const result = generateTools(tools, config, [], []);
+    const result = generateTools(tools, config, ["*"], []);
     expect(result).toHaveLength(2);
     const search = result.find((t) => t.name === "github_search")!;
     expect(search.inputSchema.properties).toBeDefined();
@@ -424,13 +434,13 @@ describe("generateTools / buildPipeline", () => {
 
   it("non-lazy+off: passes through unchanged", () => {
     const config = { enabled: true, level: "off" as const };
-    const result = generateTools(tools, config, [], []);
+    const result = generateTools(tools, config, ["*"], []);
     expect(result).toEqual(tools);
   });
 
   it("disabled compressor returns full tools", () => {
     const config = { enabled: false, level: "off" as const, lazy_loading: true };
-    const result = generateTools(tools, config, [], []);
+    const result = generateTools(tools, config, ["*"], []);
     expect(result).toEqual(tools);
   });
 

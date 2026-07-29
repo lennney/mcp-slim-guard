@@ -107,6 +107,11 @@ export class WhitelistPolicy implements Policy {
               };
             }
           } catch {
+            return {
+              allowed: false,
+              reason: `Param "${param}" rejected: invalid pattern configuration`,
+              policy: "whitelist",
+            };
             // 无效正则表达式 — 放行（应记录警告）
           }
         }

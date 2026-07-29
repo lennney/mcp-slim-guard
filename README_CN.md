@@ -1,302 +1,307 @@
----
-type: Readme
-title: mcp-slim-guard 中文文档
-timestamp: "2026-07-23T18:00:00+08:00"
-description: 轻量级 MCP 安全代理 — 压缩（最高 86%）+ SSRF 防护 + 白名单 + 审计 + 限速 + 注入检测
-tags:
-  - mcp-slim-guard
-  - readme
-  - mcp
-  - security
-  - compression
-  - 中文
----
-
 <p align="center">
-  <strong>中文文档</strong> · <a href="./README.md">English</a>
+  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
 </p>
 
-<h1 align="center">🛡️ mcp-slim-guard</h1>
+<p align="center"><strong>MCP 上下文压缩</strong></p>
 
 <p align="center">
-  <b>一个代理，两大超能力：压缩 + 安全。</b>
+  继续调用你现有的 MCP 工具，向 Agent 发送更少 Token。<br>
+  上游调用不变，原始结果可精确恢复。
+</p>
+
+<p align="center"><sub>0.1.1 Alpha · 本地 stdio · Node.js 20+</sub></p>
+
+<p align="center">
+  <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard.svg?label=npm" alt="npm"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard" alt="npm version"></a>
-  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node >=18">
-  <img src="https://img.shields.io/badge/tests-402%20passed-green" alt="402 tests">
-  <img src="https://img.shields.io/badge/compression-up%20to%2086%25-blue" alt="86% compression">
-  <img src="https://img.shields.io/badge/dependencies-5%20prod-lightgrey" alt="5 deps">
-  <img src="https://img.shields.io/npm/l/mcp-slim-guard" alt="MIT">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#选择宿主入口">宿主入口</a> ·
+  <a href="#验证数据">验证数据</a> ·
+  <a href="#兼容性">兼容性</a> ·
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/README.md">English</a>
 </p>
 
-<br>
+Slim Guard 压缩现有 MCP Server 产生的工具目录和调用结果。它位于真实上游调用
+之后、结果进入模型上下文之前。它不会替换工具、修改参数，也不会在恢复时再次
+调用上游。
 
-mcp-slim-guard 是放在 AI Agent 和 MCP Server 之间的轻量代理，透明地加上 **Schema 压缩**（5 级，最高减少 86% Token）和**安全策略管道**（SSRF 防护、工具白名单、注入检测、限速、审计日志）。
+![Slim Guard 压缩 MCP 上下文](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/mcp-context-flow.svg)
 
-```mermaid
-graph LR
-    A[AI Agent] --> B[mcp-slim-guard]
-    B --> C[压缩管道]
-    B --> D[安全管道]
-    C --> E[MCP Server 1]
-    C --> F[MCP Server N]
-    D --> E
-    D --> F
-    style B fill:#4a90d9,color:#fff
-    style C fill:#e6f3ff
-    style D fill:#ffe6e6
-```
+## 它做什么
 
-**同类唯一：一个代理同时搞定压缩 + 安全。**  
-其他工具要么只压缩不管安全，要么只安全不省 Token。
-
----
-
-## 为什么需要 mcp-slim-guard？
-
-| 问题            | 影响                                 | mcp-slim-guard 方案             |
-| --------------- | ------------------------------------ | ------------------------------- |
-| **上下文浪费**  | 工具 Schema 吃掉 60-86% 的上下文窗口 | 5 级压缩 + 按需加载 + 缓存      |
-| **无访问控制**  | 任何 Agent 可调用任意工具            | Glob 白名单/黑名单，默认拒绝    |
-| **SSRF**        | 参数注入内网请求                     | IP 黑名单 + 域名白名单          |
-| **Prompt 注入** | 恶意参数执行 Shell/SQL               | 17 种启发式检测，3 级灵敏度     |
-| **滥用**        | 工具调用洪泛上游                     | Token Bucket 限速（逐工具可配） |
-| **无审计**      | 不知道谁调了什么                     | 结构化 JSON 日志，轮转 + 压缩   |
-
----
+- **减少 MCP 上下文。** 大型工具目录变成按需发现入口；符合条件的大型结果变成
+  紧凑视图。
+- **保留真实工具调用。** Slim Guard 将相同参数传给上游，每次请求最多执行一次
+  选定工具。
+- **精确恢复原始结果。** `read_result` 读取不可变快照，不会重新执行上游。
+- **在已验证宿主中保留工具身份。** Codex 可以通过 `--surface native` 发现并
+  调用授权后的原始工具。
+- **为其他宿主提供兼容入口。** 默认公开 `find_tool`、`call_tool` 和
+  `read_result`。
+- **只压缩确定安全的结果。** 小型、结构化、绑定 schema、混合、错误、源码类和
+  不确定结果保持原样。
+- **执行后故障保持原结果。** 交付、存储、观察或审计失败时返回精确上游结果。
+- **本地确定性运行。** 压缩不调用模型或外部 API。
 
 ## 快速开始
 
-```bash
-# 安装
-npm install -g mcp-slim-guard
+需要：
 
-# 自动发现 .mcp.json 中的 MCP Server
-cd your-project/
+- Node.js 20 或更高版本
+- npm
+- 已有的项目级 MCP 配置
+
+预发布版本进入 npm `alpha` 渠道后，使用：
+
+```bash
+npm install -g mcp-slim-guard@alpha
+```
+
+发布前，内部测试者和 reviewer 使用绝对路径安装已验收的冻结候选：
+
+```bash
+npm install -g /absolute/path/to/mcp-slim-guard-0.1.1-alpha.1.tgz
+```
+
+该冻结候选早于本次 README 修订。npm 发布前必须重新冻结并验证发布包。
+
+导入项目中已经配置的 MCP Server：
+
+```bash
+cd /absolute/path/to/your-project
 mcp-slim-guard init
-
-# 干跑策略，检查是否误杀
 mcp-slim-guard validate
-
-# 启动代理
-mcp-slim-guard start
 ```
 
-> 自动发现 `.mcp.json`、`mcp.json`、`claude_desktop_config.json`。
+`init` 生成 `mcp-slim-guard.yml`。检查该文件后，将宿主原来的 MCP Server
+条目替换为一个 Slim Guard 条目。不要同时暴露原始入口和 Slim Guard。
 
-### 生成的 `mcp-slim-guard.yml`
+`init` 可以导入常见 JSON、Cursor 和 VS Code MCP 配置，但不能导入 Codex
+TOML。只有 Codex 配置的项目必须先根据
+[手工上游模板](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md#codex-cli)
+创建 `mcp-slim-guard.yml`，再把 Slim Guard 加入 `.codex/config.toml`。
 
-```yaml
-tools:
-  allow: ["search_*", "read_*"] # 只允许 search/read 前缀
-  deny: ["*_delete_*", "*_admin_*"] # 禁止危险操作
-ssrf:
-  mode: block
-  block_private_ips: true
-  allow_domains: ["*.github.com"]
-rate_limit:
-  default: 60/min # 每工具每分钟 60 次
-injection_detection:
-  enabled: true
-  mode: block
-  sensitivity: medium
-compressor:
-  enabled: true
-  level: light # 5 级: off/light/normal/extreme/maximum
-cache:
-  enabled: false # TTL+LRU 只读结果缓存
-audit:
-  output: file # 结构化 JSON 审计日志
-  maxSize: 10MB
-  maxFiles: 5
+## 选择宿主入口
+
+Slim Guard 不根据宿主元数据猜测入口。请显式选择。
+
+| 入口    | 宿主可见内容                              | 适用场景                           |
+| ------- | ----------------------------------------- | ---------------------------------- |
+| Native  | 授权后的原始工具和 `read_result`          | 宿主保留工具发现、身份和逐工具审批 |
+| Generic | `find_tool`、`call_tool` 和 `read_result` | 宿主需要通用兼容入口               |
+
+### Codex：原始工具
+
+在项目的 `.codex/config.toml` 中加入：
+
+```toml
+[mcp_servers.slim_guard]
+command = "mcp-slim-guard"
+args = ["start", "--surface", "native"]
+cwd = "/absolute/path/to/your-project"
 ```
 
----
-
-## 功能
-
-### 🗜️ Schema 压缩 — 拿回你的上下文窗口
-
-| 等级        | 策略                                | Tokens (14 工具) | 节省     | 推荐场景                               |
-| ----------- | ----------------------------------- | ---------------- | -------- | -------------------------------------- |
-| `off`       | 透传                                | 1,736            | —        | < 5 个工具，或测试                     |
-| **`light`** | **3 个包装工具（按需获取 schema）** | **300**          | **-83%** | **⭐ 默认推荐，绝大多数场景最佳平衡**  |
-| `normal`    | 2 个包装工具（无 list_tools）       | 245              | -86%     | 30+ 工具，强 LLM                       |
-| `extreme`   | 原地压缩：去掉参数描述              | 1,361            | -22%     | 少量工具但单个 schema 复杂（10+ 参数） |
-| `maximum`   | 签名模式，清空 properties           | 1,294            | -25%     | 单个工具 schema 极大                   |
-| `lazy`      | 预算预加载 + 按需获取               | 1,644            | -5%      | 30+ 工具，大部分不常用                 |
-
-> **为什么差距这么大？** `light`/`normal` 把所有工具替换成 2-3 个包装工具（`mcp__invoke_tool`、`mcp__get_tool_schema`），LLM 按需获取 schema。`extreme`/`maximum` 保留所有工具，只压缩每个工具的 schema 字段——省多少取决于 schema 本身有多复杂。
-
-#### 实际成本换算
-
-| 配置           | Tokens/次 | 月成本（DeepSeek V4, 1 万次调用） |
-| -------------- | --------- | --------------------------------- |
-| 不压缩         | 1,736     | ~¥380                             |
-| **用 `light`** | **300**   | **~¥65 (-83%)**                   |
-
-#### 准确率已验证
-
-基于 DeepSeek V4 Flash，12 场景 × 5 等级 × 3 轮 = 180 次 API 调用。  
-[自行运行 →](#基准测试)
-
-### 🛡️ 安全管道 — 纵深防御
-
-每次工具调用都串行经过以下管道，任一环节拒绝即停止：
-
-```
-Agent 请求
-     │
-     ▼
-┌─────────────────┐
-│  1. 白名单/黑名单 │  ← Glob 模式匹配。默认拒绝（fail-closed）
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  2. SSRF 防护    │  ← IP 黑名单 + 域名白名单
-│                  │     自动拦截 10.*, 192.168.*, 169.254.*
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  3. 注入检测     │  ← 17 种启发式模式
-│                  │     Shell/SQL/NoSQL/Prompt 注入
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  4. 限速         │  ← Token Bucket
-│                  │     默认：60 次/分钟/工具
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  5. 审计日志     │  ← 结构化 JSON
-│                  │     轮转 + gzip 压缩
-└────────┬────────┘
-         ▼
-   上游 MCP Server
-```
-
-### 🔄 更多能力
-
-| 功能               | 说明                                                            |
-| ------------------ | --------------------------------------------------------------- |
-| **多 Server 路由** | 一个代理代理多个上游。工具名自动加 `{server}_` 前缀，按前缀路由 |
-| **热重载**         | `kill -HUP <pid>` — 零停机重载配置。所有字段都支持热更新        |
-| **请求缓存**       | TTL+LRU 内存缓存只读工具结果，逐工具统计命中率                  |
-| **HTTP 模式**      | `mcp-slim-guard start --http --port 3000` — 作为远程 MCP 端点   |
-| **STDIO 模式**     | 默认模式，即插即用                                              |
-
----
-
-## 工作原理
-
-```mermaid
-sequenceDiagram
-    participant LLM as AI Agent
-    participant MM as mcp-slim-guard
-    participant US as 上游 MCP Server
-
-    LLM->>MM: tools/list
-    Note over MM: 压缩管道<br/>过滤 + 转换工具列表
-    MM-->>LLM: 压缩后的工具列表（light: 3 个包装工具）
-
-    LLM->>MM: mcp__get_tool_schema("search")
-    MM-->>LLM: "search" 的完整 schema
-
-    LLM->>MM: mcp__invoke_tool("search", {q: "..."})
-    Note over MM: 安全管道<br/>白名单 → SSRF → 注入检测 → 限速
-    MM->>US: 转发调用
-    US-->>MM: 结果
-    Note over MM: 记录审计日志
-    MM-->>LLM: 结果
-```
-
-### 命令参考
-
-| 命令                                      | 说明                                         |
-| ----------------------------------------- | -------------------------------------------- |
-| `mcp-slim-guard init`                     | 自动发现 MCP 配置，生成 `mcp-slim-guard.yml` |
-| `mcp-slim-guard validate`                 | 干跑策略，显示每个工具的 allow/deny          |
-| `mcp-slim-guard start`                    | 启动代理（STDIO 模式）                       |
-| `mcp-slim-guard start --http --port 3000` | 启动代理（HTTP 模式）                        |
-| `mcp-slim-guard status`                   | 查看配置摘要 + 策略概览                      |
-| `mcp-slim-guard doctor`                   | 诊断上游 MCP Server 连通性                   |
-| `mcp-slim-guard audit`                    | 查看审计日志                                 |
-| `mcp-slim-guard uninit`                   | 删除 mcp-slim-guard.yml 回滚                 |
-
----
-
-## 基准测试
-
-所有基准使用真实 MCP Server 工具 schema（`filesystem` 服务，14 工具），`tiktoken` gpt-4o 编码。  
-自行运行：`npm run bench`
-
-### Token 节省
-
-| 等级       | Tokens  | 节省     |
-| ---------- | ------- | -------- |
-| off        | 1,736   | 基线     |
-| **light**  | **300** | **-83%** |
-| **normal** | **245** | **-86%** |
-| extreme    | 1,361   | -22%     |
-| maximum    | 1,294   | -25%     |
-| lazy       | 1,644   | -5%      |
-
-### 延迟开销
-
-```
-策略管道:       ~2ms/次  (白名单 → SSRF → 注入检测 → 限速)
-压缩 (light):  <0.05ms
-缓存命中:       0.01ms
-```
-
-### 准确率 (DeepSeek V4 Flash)
-
-12 场景 × 5 等级 × 3 轮 = 180 次 API 调用。含 4 个模糊工具名测试。
-
-| 等级   | 准确率    | 说明                            |
-| ------ | --------- | ------------------------------- |
-| off    | 100%      | 基线                            |
-| light  | ✅ (按需) | wrapper 模式需多一轮获取 schema |
-| normal | ✅ (按需) | 同上                            |
-
----
-
-## 竞品对比
-
-| 特性            | mcp-slim-guard     | slim-mcp         | mcp-compressor | mcp-guardian |
-| --------------- | ------------------ | ---------------- | -------------- | ------------ |
-| Schema 压缩     | ✅ 5 级，-86%      | ✅ 5 级，-77%    | ✅             | ❌           |
-| 准确率验证      | ✅ 180 API calls   | ✅ 120 API calls | ❌             | —            |
-| 请求缓存        | ✅ TTL+LRU         | ❌               | ❌             | ❌           |
-| 工具白名单      | ✅ Glob 模式       | ❌               | ❌             | ✅           |
-| SSRF 防护       | ✅ IP + 域名       | ❌               | ❌             | ✅           |
-| 注入检测        | ✅ 17 种模式       | ❌               | ❌             | ✅           |
-| 限速            | ✅ Token Bucket    | ❌               | ❌             | ✅           |
-| 审计日志        | ✅ JSON，轮转      | ❌               | ❌             | ✅           |
-| 热重载          | ✅ SIGHUP          | ❌               | ❌             | ❌           |
-| 多 Server 路由  | ✅ 前缀自动分发    | ❌               | ❌             | ❌           |
-| HTTP 传输       | ✅ Streamable HTTP | ❌               | ✅             | ❌           |
-| **压缩 + 安全** | **✅ 一个代理**    | ❌ 仅压缩        | ❌ 仅压缩      | ❌ 仅安全    |
-
----
-
-## 环境要求
-
-- **Node.js** >= 18
-- **仅 5 个生产依赖**（MCP SDK, commander, js-yaml, micromatch, pino）
-
----
-
-## Docker
+检查解析结果：
 
 ```bash
-docker build -t mcp-slim-guard .
-docker run -i --rm -v $(pwd)/mcp-slim-guard.yml:/app/mcp-slim-guard.yml mcp-slim-guard start
+codex mcp list
 ```
 
----
+Codex CLI 已经通过该入口完成模型选择的原始工具调用和多页精确恢复。
+
+### VS Code：原始工具
+
+在 `.vscode/mcp.json` 中加入：
+
+```json
+{
+  "servers": {
+    "slim-guard": {
+      "type": "stdio",
+      "command": "mcp-slim-guard",
+      "args": ["start", "--surface", "native"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+当前证据检查了 VS Code 接口和逐工具审批模型，尚未验证 VS Code 模型选择调用。
+
+### 通用 `mcpServers` 宿主
+
+使用默认入口：
+
+```json
+{
+  "mcpServers": {
+    "slim-guard": {
+      "command": "mcp-slim-guard",
+      "args": ["start"],
+      "cwd": "/absolute/path/to/your-project"
+    }
+  }
+}
+```
+
+宿主应当只看到：
+
+```text
+find_tool
+call_tool
+read_result
+```
+
+命令定位、连接检查和配置边界见
+[宿主接入指南](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md)。
+
+## 结果如何交付
+
+| MCP 结果                               | 交付方式                              |
+| -------------------------------------- | ------------------------------------- |
+| 大型纯文本                             | 头尾视图和精确快照                    |
+| 统一 JSON 数组                         | 更省 Token 时转成字段只出现一次的表格 |
+| 日志类文本                             | 保留错误和边界，标记重复噪声          |
+| 小型、代码、diff 或不确定结果          | 原样返回                              |
+| 结构化、混合、错误或绑定 schema 的结果 | 原样返回                              |
+
+压缩只在上游 `CallToolResult` 已经产生后开始。原样路径保留 `isError`、内容顺序
+和类型、`structuredContent`、`_meta`、`outputSchema` 及未知字段。
+
+紧凑结果包含 `result_ref` 时，使用 `read_result` 分段读取快照。恢复不会执行
+上游。
+
+## 查看一次完整调用
+
+本地演示加载 12 个上游工具，发现其中一个，捕获 73,507 字符的结果，并恢复
+精确分片。上游计数保持为一。
+
+```text
+$ npm run demo:alpha
+
+1. Upstream catalog: 12 tools
+2. Agent catalog: 3 tools -> find_tool, call_tool, read_result
+3. Discovery: fixture_generate_report -> tool_3b5c122fb5b6a0d...
+4. Large result: head-tail-v1, 73507 chars -> capsule
+5. On-demand recovery: 24000 exact chars
+6. Upstream execution count: 1
+PASS: Compress what agents see. Preserve what tools do.
+```
+
+![Slim Guard 调用流程](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-demo.gif)
+
+## 验证数据
+
+![Slim Guard 冻结 Alpha 基准](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/benchmark-alpha.svg)
+
+| 冻结的 12 工具、24 任务 fixture | 原始 MCP | `mcp-compressor 0.31.6` | Slim Guard |
+| ------------------------------- | -------: | ----------------------: | ---------: |
+| 正常路径 Token                  |   71,388 |                  54,710 | **17,007** |
+| Agent 可见工具                  |       12 |                       2 |      **3** |
+| 完成任务                        |    24/24 |                   24/24 |  **24/24** |
+| 上游调用                        |       24 |                      24 |     **24** |
+
+在该 fixture 中，Slim Guard 正常路径比原始 MCP 少 76.18% Token，比
+`mcp-compressor` 少 68.91%。23 个超大结果用例全部精确重建。
+
+这是使用 `o200k_base` 测量的确定性协议 fixture，没有调用模型或 API。它不是
+通用节省比例。
+
+两个大型报告强制完整恢复后使用 39,899 Token，竞品路径为 37,975 Token。
+已公开的 5.07% 额外开销仍是优化目标。
+
+复现：
+
+```bash
+npm install
+npm run build
+npm run bench:compression:verify
+```
+
+阅读固定版本的
+[基准方法](https://github.com/lennney/mcp-slim-guard/blob/9ecade9/docs/evidence/2026-07-26-alpha-benchmark-bilingual.md)、
+[真实 MCP Server smoke](https://github.com/lennney/mcp-slim-guard/blob/9ecade9/docs/evidence/2026-07-26-real-mcp-server-smoke.md)
+和
+[宿主采用检查点](https://github.com/lennney/mcp-slim-guard/blob/9ecade9/docs/evidence/2026-07-28-host-adoption-checkpoint.md)。
+
+## 适用场景
+
+以下情况适合使用 Slim Guard：
+
+- 一个宿主加载很多 MCP 工具；
+- 上游工具经常返回长报告、JSON 数组或日志；
+- Agent 通常只需要紧凑结果，但必须保留精确恢复能力；
+- 宿主需要保留原始工具名称和逐工具审批。
+
+Slim Guard 不压缩模型 provider prompt、对话历史、源文件或所有结果形态。它只
+处理 MCP 工具目录和工具结果。
+
+## 安全与可观察性
+
+- 未授权工具不会进入发现和调用路径。
+- 每次调用绑定当前目录中的一个确定条目。
+- 非法工具参数在执行上游前返回 `InvalidParams`。
+- API key 必须使用环境变量引用；`init` 拒绝敏感字段中的明文值。
+- 审计默认不记录凭证、参数、结果正文和原始 capability 引用。
+
+跟踪一次调用：
+
+```bash
+mcp-slim-guard log --file ./mcp-slim-guard-audit.log
+```
+
+典型阶段：
+
+```text
+policy/success -> upstream/success -> projection/projected
+recovery/chunk
+```
+
+## 兼容性
+
+| 路径                  | 当前证据                             |
+| --------------------- | ------------------------------------ |
+| 本地 stdio 入口       | Alpha 主要路径                       |
+| stdio 上游            | 支持                                 |
+| Streamable HTTP 上游  | 通过共享 adapter 支持                |
+| GitHub MCP Server     | 只读多 block 结果通过                |
+| Filesystem MCP Server | 大型结构化结果精确恢复               |
+| Everything MCP Server | 结构化结果原样通过                   |
+| ContextForge          | HTTP bridge 到 Slim Guard stdio 通过 |
+| Codex CLI             | 原始工具模型选择和精确恢复通过       |
+| VS Code               | 已检查原生接口和审批模型             |
+| 下游 Streamable HTTP  | 实验能力，仅限 loopback              |
+
+## 当前限制
+
+- 本次 README 修订需要在 npm 发布前重新冻结包。
+- 交互式宿主审批界面尚未完整验证。
+- VS Code 模型选择调用尚未验证。
+- 结果引用只属于一个 runtime generation。
+- 生产级远程入口、多租户控制面和相关性检索不进入本次 Alpha。
+- 安全检查只报告 finding，不会改写可恢复的原始结果。
+
+## 开发
+
+```bash
+npm run build
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run demo:alpha
+npm run smoke:package
+```
+
+参见
+[架构](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/architecture-mcp-slim-guard.md)、
+[路线图](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/ROADMAP.md)和
+[已验收的 Host-native 目标](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/GOAL.md)。
 
 ## License
 

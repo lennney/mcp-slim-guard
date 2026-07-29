@@ -15,6 +15,10 @@ import type { SSRFConfig } from "../config-types.js";
 
 const { isMatch } = micromatch;
 
+/** Bound argument inspection so one malformed MCP request cannot exhaust the stack or event loop. */
+const MAX_URL_SCAN_DEPTH = 64;
+const MAX_URL_SCAN_NODES = 10_000;
+
 // RFC 1918 + RFC 6598 + loopback + link-local
 const PRIVATE_RANGES: Array<{ start: number; end: number }> = [
   { start: ipToInt("10.0.0.0"), end: ipToInt("10.255.255.255") },
@@ -24,6 +28,9 @@ const PRIVATE_RANGES: Array<{ start: number; end: number }> = [
   { start: ipToInt("127.0.0.0"), end: ipToInt("127.255.255.255") },
   { start: ipToInt("169.254.0.0"), end: ipToInt("169.254.255.255") },
   { start: ipToInt("0.0.0.0"), end: ipToInt("0.255.255.255") },
+  { start: ipToInt("198.18.0.0"), end: ipToInt("198.19.255.255") }, // benchmark networks
+  { start: ipToInt("224.0.0.0"), end: ipToInt("239.255.255.255") }, // multicast
+  { start: ipToInt("240.0.0.0"), end: ipToInt("255.255.255.255") }, // reserved + broadcast
 ];
 
 /** DNS 缓存条目 */
@@ -57,13 +64,30 @@ export class SSRFPolicy implements Policy {
     if (!isBlock && !isLog) return { allowed: true };
 
     // 从参数中提取所有 URL
-    const urls = extractURLs(ctx.arguments);
+    const scan = scanURLs(ctx.arguments);
+    if (scan.exceededLimits) {
+      const reason = "SSRF blocked: tool arguments exceed URL inspection limits";
+      if (isBlock) return { allowed: false, reason, policy: "ssrf" };
+      return { allowed: true, reason: reason.replace("blocked", "log") };
+    }
+    const urls = scan.urls;
     // log 模式下收集命中内网的观察结果（首个用于 warn reason）
     let loggedHit: string | null = null;
 
     for (const url of urls) {
       try {
-        let hostname = new URL(url).hostname;
+        const parsedUrl = new URL(url);
+        const scheme = parsedUrl.protocol.toLowerCase();
+        if (scheme !== "http:" && scheme !== "https:") {
+          const reason = `SSRF blocked: URL scheme "${parsedUrl.protocol}" is not allowed`;
+          if (isBlock) {
+            return { allowed: false, reason, policy: "ssrf" };
+          }
+          loggedHit ??= reason.replace("blocked", "log");
+          continue;
+        }
+
+        let hostname = parsedUrl.hostname;
 
         // Strip brackets from IPv6 hostnames (URL.hostname includes them)
         if (hostname.startsWith("[") && hostname.endsWith("]")) {
@@ -84,10 +108,19 @@ export class SSRFPolicy implements Policy {
         }
 
         // 2. 域名白名单检查 — 命中则跳过该 URL
-        if (this.isDomainAllowed(hostname)) continue;
+        const domainAllowed = this.isDomainAllowed(hostname);
+        if (domainAllowed && !this.config.block_private_ips) continue;
 
         // 3. DNS 解析 → IP 检查
         const ips = await this.resolveHost(hostname);
+        if (ips.length === 0 && this.config.block_private_ips) {
+          const reason = `SSRF ${isBlock ? "blocked" : "log"}: could not resolve hostname "${hostname}"`;
+          if (isBlock) {
+            return { allowed: false, reason, policy: "ssrf" };
+          }
+          loggedHit ??= reason;
+          continue;
+        }
         for (const ip of ips) {
           if (this.isPrivateIP(ip)) {
             if (isBlock) {
@@ -130,8 +163,13 @@ export class SSRFPolicy implements Policy {
       }
 
       // DNS 解析（带 TTL）
-      const records = await dns.resolve4(hostname, { ttl: true });
+      const [ipv4Records, ipv6Records] = await Promise.all([
+        dns.resolve4(hostname, { ttl: true }).catch(() => []),
+        dns.resolve6(hostname, { ttl: true }).catch(() => []),
+      ]);
+      const records = [...ipv4Records, ...ipv6Records];
       const ips = records.map((r) => r.address);
+      if (records.length === 0) return [];
       // 取最小 TTL（保守策略），至少 10 秒，最多 300 秒
       const ttl = Math.max(
         10,
@@ -228,6 +266,10 @@ function isPrivateIPv6(ip: string): boolean {
 
   // Unique local: fc00::/7
   if (/^fc[0-9a-f]/i.test(normalized) || /^fd[0-9a-f]/i.test(normalized)) return true;
+
+  // Deprecated site-local fec0::/10 and multicast ff00::/8 are not
+  // globally routable egress targets.
+  if (/^fe[c-f][0-9a-f]/i.test(normalized) || /^ff[0-9a-f]{2}/i.test(normalized)) return true;
 
   return false;
 }
@@ -327,16 +369,40 @@ function normalizeToIPv4(hostname: string): string | null {
  * 仅提取字符串值中的 URL，支持嵌套对象。
  */
 export function extractURLs(args: Record<string, unknown>): string[] {
+  return scanURLs(args).urls;
+}
+
+interface URLScanResult {
+  urls: string[];
+  exceededLimits: boolean;
+}
+
+/**
+ * Iteratively scan JSON-shaped tool arguments. URL parsers such as Node's
+ * normalize backslashes in HTTP URLs, so normalize separators before matching
+ * as well; otherwise `http:\\host` bypasses a `://`-only extractor.
+ */
+function scanURLs(args: Record<string, unknown>): URLScanResult {
   const urls: string[] = [];
-  // Match all supported protocols in one pass
+  const pending: Array<{ value: unknown; depth: number }> = [{ value: args, depth: 0 }];
+  let scannedNodes = 0;
+  // Match all supported protocols in one pass after URL-separator normalization.
   const urlRe = /(?:https?|file|ftp|gopher|dict|ldap|sftp):\/\/[^\s"'<>]+/gi;
-  for (const value of Object.values(args)) {
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    if (++scannedNodes > MAX_URL_SCAN_NODES || current.depth > MAX_URL_SCAN_DEPTH) {
+      return { urls, exceededLimits: true };
+    }
+    const { value } = current;
     if (typeof value === "string") {
-      const matches = value.match(urlRe);
+      const matches = value.replaceAll("\\", "/").match(urlRe);
       if (matches) urls.push(...matches);
+    } else if (Array.isArray(value)) {
+      for (const child of value) pending.push({ value: child, depth: current.depth + 1 });
     } else if (typeof value === "object" && value !== null) {
-      urls.push(...extractURLs(value as Record<string, unknown>));
+      for (const child of Object.values(value)) pending.push({ value: child, depth: current.depth + 1 });
     }
   }
-  return urls;
+  return { urls, exceededLimits: false };
 }

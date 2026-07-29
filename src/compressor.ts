@@ -14,7 +14,7 @@
  */
 
 import type { CompressorConfig, CompressionLevel } from "./config-types.js";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import micromatch from "micromatch";
 
 const { isMatch } = micromatch;
@@ -28,18 +28,37 @@ const INVOKE = `${PREFIX}invoke_tool`;
 
 /** A compression/lazy stage: input tools → output tools */
 export type ToolStage = (tools: Tool[]) => Tool[];
+export type ToolNameAliasProvider = (name: string) => readonly string[];
+
+/** Return only the compatibility wrappers actually advertised by this config. */
+export function activeWrapperToolNames(config: CompressorConfig): ReadonlySet<string> {
+  if (!config.enabled) return new Set();
+  if (config.lazy_loading) return new Set([GET_SCHEMA]);
+  if (config.level === "light") return new Set([LIST_TOOLS, GET_TOOL_SCHEMA, INVOKE]);
+  if (config.level === "normal" || config.level === "tight") return new Set([GET_TOOL_SCHEMA, INVOKE]);
+  return new Set();
+}
 
 /**
  * Whitelist filter stage — filters tools by allow/deny patterns.
  * deny match → blocked; allow non-empty → must match; otherwise allowed.
  * This replaces the isToolVisible logic previously embedded in handleWrapperTool.
  */
-export const whitelistFilter = (allow: string[], deny: string[]): ToolStage => {
+export const whitelistFilter = (
+  allow: string[],
+  deny: string[],
+  denyAliases: ToolNameAliasProvider = () => [],
+): ToolStage => {
   return (tools: Tool[]) => {
     const isAllowed = (name: string): boolean => {
-      if (deny.length > 0 && deny.some((p) => isMatch(name, p))) return false;
-      if (allow.length > 0) return allow.some((p) => isMatch(name, p));
-      return true;
+      const namesDeniedByPolicy = [name, ...denyAliases(name)];
+      if (
+        deny.length > 0 &&
+        deny.some((pattern) => namesDeniedByPolicy.some((candidate) => isMatch(candidate, pattern)))
+      ) {
+        return false;
+      }
+      return allow.some((p) => isMatch(name, p));
     };
     return tools.filter((t) => isAllowed(t.name));
   };
@@ -259,12 +278,14 @@ export function generateTools(
   config: CompressorConfig,
   allow: string[] = [],
   deny: string[] = [],
+  denyAliases?: ToolNameAliasProvider,
 ): Tool[] {
-  if (!config.enabled) return fullTools;
-  if (config.level === "off" && !config.lazy_loading) return fullTools;
+  const authorizedTools = whitelistFilter(allow, deny, denyAliases)(fullTools);
+  if (!config.enabled) return authorizedTools;
+  if (config.level === "off" && !config.lazy_loading) return authorizedTools;
 
-  const originalTools = new Map(fullTools.map((t) => [t.name, t]));
-  return buildPipeline(config, allow, deny, originalTools).reduce((tools, stage) => stage(tools), fullTools);
+  const originalTools = new Map(authorizedTools.map((tool) => [tool.name, tool]));
+  return buildPipeline(config, allow, deny, originalTools).reduce((tools, stage) => stage(tools), authorizedTools);
 }
 
 /**
@@ -277,16 +298,8 @@ export async function handleWrapperTool(
   toolName: string,
   args: Record<string, unknown>,
   fullTools: Tool[],
-  serverCall: (
-    resolvedToolName: string,
-    resolvedArgs: Record<string, unknown>,
-  ) => Promise<{
-    content: Array<{ type: string; text?: string }>;
-  }>,
-): Promise<{
-  content: Array<{ type: string; text?: string }>;
-  isError?: boolean;
-} | null> {
+  serverCall: (resolvedToolName: string, resolvedArgs: Record<string, unknown>) => Promise<CallToolResult>,
+): Promise<CallToolResult | null> {
   // Only handle our wrapper tools
   if (!toolName.startsWith(PREFIX)) return null;
 
@@ -330,6 +343,12 @@ export async function handleWrapperTool(
       const input = (args.input || {}) as Record<string, unknown>;
       if (!targetName) {
         return { content: [{ type: "text", text: "Missing required parameter: tool_name" }], isError: true };
+      }
+      if (!nameToSchema[targetName]) {
+        return {
+          content: [{ type: "text", text: `Unknown tool: ${targetName}` }],
+          isError: true,
+        };
       }
       return serverCall(targetName, input);
     }

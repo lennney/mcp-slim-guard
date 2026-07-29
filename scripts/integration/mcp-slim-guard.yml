@@ -1,0 +1,27 @@
+version: 1
+tools:
+  allow:
+    - fixture_*
+  deny: []
+ssrf:
+  mode: "off"
+  block_private_ips: false
+  allow_domains: []
+  block_domains: []
+rate_limit:
+  default: "1000/min"
+injection_detection:
+  enabled: false
+compressor:
+  enabled: true
+  level: light
+audit:
+  output: file
+  filePath: host-smoke-audit.log
+servers:
+  fixture:
+    command: node
+    args:
+      - scripts/benchmark/task-fixture-server.mjs
+    cwd: ../..
+    env: {}

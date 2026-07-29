@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "slim_guard": {
+      "type": "stdio",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Set-Location -LiteralPath 'scripts/integration'; node ../../dist/cli.js start"
+      ]
+    }
+  }
+}

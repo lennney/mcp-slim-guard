@@ -5,7 +5,7 @@
  * 支持日志轮转：达到 maxSize 时自动轮转，保留 maxFiles 个历史文件。
  */
 
-import pino from "pino";
+import pino, { type DestinationStream } from "pino";
 import { Writable } from "node:stream";
 import {
   existsSync,
@@ -20,7 +20,8 @@ import {
 } from "node:fs";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
-import type { PolicyContext, PolicyResult, AuditEntry } from "./types.js";
+import { randomBytes } from "node:crypto";
+import type { PolicyContext, PolicyResult, AuditEntry, AuditEventDetails } from "./types.js";
 
 /** 决策步骤 — 一个策略的评估结果 */
 export interface DecisionStep {
@@ -31,8 +32,8 @@ export interface DecisionStep {
 
 /** 构造选项 */
 export interface AuditLoggerOptions {
-  /** 输出目标（默认 stdout） */
-  output?: "stdout" | "file";
+  /** 输出目标（默认 stderr，避免公开构造污染 stdio MCP 协议） */
+  output?: "stdout" | "stderr" | "file";
   /** 文件路径 */
   filePath?: string;
   /** pino 日志级别（默认 info） */
@@ -51,6 +52,15 @@ export interface AuditLoggerOptions {
 const DEFAULT_MAX_SIZE = "10MB";
 /** 默认保留的历史文件数 */
 const DEFAULT_MAX_FILES = 5;
+
+/** Pino destination whose write either completes or throws before log() returns. */
+class SynchronousDescriptorDestination implements DestinationStream {
+  constructor(private readonly descriptor: 1 | 2) {}
+
+  write(message: string): void {
+    writeSync(this.descriptor, message);
+  }
+}
 
 /**
  * 将大小字符串解析为字节数。
@@ -101,13 +111,20 @@ class RotatingFileStream extends Writable {
 
   _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     try {
-      this.checkRotation(chunk.length);
-      writeSync(this.fd, chunk);
-      this.writtenSinceCheck += chunk.length;
+      this.writeSynchronous(chunk);
       callback(null);
     } catch (err) {
       callback(err instanceof Error ? err : new Error(String(err)));
     }
+  }
+
+  /** Write one complete Pino line or throw before returning to the caller. */
+  writeSynchronous(chunk: string | Buffer): void {
+    if (this.fd === -1) throw new Error("Audit file destination is closed");
+    const data = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    this.checkRotation(data.length);
+    writeSync(this.fd, data);
+    this.writtenSinceCheck += data.length;
   }
 
   _final(callback: (error?: Error | null) => void): void {
@@ -257,6 +274,15 @@ class RotatingFileStream extends Writable {
   }
 }
 
+/** Synchronous adapter that keeps Pino away from Writable callback semantics. */
+class SynchronousRotatingDestination implements DestinationStream {
+  constructor(private readonly stream: RotatingFileStream) {}
+
+  write(message: string): void {
+    this.stream.writeSynchronous(message);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // AuditLogger
 // ---------------------------------------------------------------------------
@@ -264,15 +290,40 @@ class RotatingFileStream extends Writable {
 /** 默认内存中保留的审计条目上限 */
 const DEFAULT_MAX_MEMORY_ENTRIES = 10000;
 
+const SENSITIVE_KEY = /authorization|api[-_]?key|token|password|passwd|secret|cookie|credential|(tool|result)[-_]?ref/i;
+
+/**
+ * Recursively clone audit values while redacting common credential fields.
+ * Circular or otherwise non-serializable values are handled by the caller.
+ */
+function redactAuditValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return "[Circular]";
+    seen.add(value);
+    return value.map((entry) => redactAuditValue(entry, seen));
+  }
+  if (value && typeof value === "object") {
+    if (seen.has(value)) return "[Circular]";
+    seen.add(value);
+    const redacted: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      redacted[key] = SENSITIVE_KEY.test(key) ? "[REDACTED]" : redactAuditValue(entry, seen);
+    }
+    return redacted;
+  }
+  return value;
+}
+
 export class AuditLogger {
   private entries: AuditEntry[] = [];
   private logger: pino.Logger;
   private sessionCounter = 0;
   private rotator: RotatingFileStream | null = null;
   private maxMemoryEntries: number;
+  private closed = false;
 
   constructor(options: AuditLoggerOptions = {}) {
-    const { output = "stdout", filePath, level = "info", maxMemoryEntries = DEFAULT_MAX_MEMORY_ENTRIES } = options;
+    const { output = "stderr", filePath, level = "info", maxMemoryEntries = DEFAULT_MAX_MEMORY_ENTRIES } = options;
     this.maxMemoryEntries = maxMemoryEntries;
 
     if (output === "file" && filePath) {
@@ -281,21 +332,24 @@ export class AuditLogger {
       const compress = options.compress ?? false;
 
       this.rotator = new RotatingFileStream(filePath, maxSize, maxFiles, compress);
-      this.logger = pino({ level }, this.rotator as unknown as Writable);
+      this.logger = pino({ level }, new SynchronousRotatingDestination(this.rotator));
     } else {
-      this.logger = pino({ level });
+      this.logger = pino({ level }, new SynchronousDescriptorDestination(output === "stdout" ? 1 : 2));
     }
   }
 
   /**
    * 生成新的会话 ID。
-   * 格式: `s<counter>_<timestamp36>_<random6>`
+   * 格式: `s<counter>_<random128bit>`
    */
   newSession(): string {
     this.sessionCounter++;
-    const ts = Date.now().toString(36);
-    const rand = Math.random().toString(36).slice(2, 8);
-    return `s${this.sessionCounter}_${ts}_${rand}`;
+    return `s${this.sessionCounter}_${randomBytes(16).toString("hex")}`;
+  }
+
+  /** Generate an opaque ID shared by every audit event for one tools/call. */
+  newTrace(): string {
+    return `t_${randomBytes(16).toString("hex")}`;
   }
 
   /**
@@ -311,20 +365,32 @@ export class AuditLogger {
   log(
     ctx: PolicyContext,
     result: PolicyResult,
-    trail: DecisionStep[] = [],
+    trail: DecisionStep[] | number = [],
     sessionId = "?",
     requestId = 0,
     durationMs?: number,
-  ): void {
-    // 防循环引用
-    let safeArgs: Record<string, unknown>;
-    try {
-      safeArgs = JSON.parse(JSON.stringify(ctx.arguments));
-    } catch {
-      safeArgs = { _error: "arguments contained non-serializable values" };
+    details: AuditEventDetails = {},
+  ): boolean {
+    // Default audit records are content-free. Key-based redaction cannot
+    // safely identify credentials stored under ordinary argument names.
+    const safeArgs: Record<string, unknown> = {};
+
+    let safeMetadata: Record<string, unknown> | undefined;
+    if (details.metadata) {
+      try {
+        safeMetadata = redactAuditValue(details.metadata) as Record<string, unknown>;
+      } catch {
+        safeMetadata = { _error: "metadata contained non-serializable values" };
+      }
     }
 
     const action = result.allowed ? ("allowed" as const) : ("blocked" as const);
+    const decisionTrail = Array.isArray(trail) ? trail : [];
+    const effectiveDurationMs = typeof trail === "number" ? trail : durationMs;
+    const safeTrail = decisionTrail.map(({ policy, result: decisionResult }) => ({
+      policy,
+      result: decisionResult,
+    }));
 
     const entry: AuditEntry = {
       timestamp: new Date().toISOString(),
@@ -334,15 +400,29 @@ export class AuditLogger {
       serverName: ctx.serverName,
       arguments: safeArgs,
       action,
-      decisionTrail: trail,
-      ...(durationMs !== undefined ? { durationMs } : {}),
-      ...(!result.allowed && (result as Extract<PolicyResult, { allowed: false }>).reason
-        ? { reason: (result as Extract<PolicyResult, { allowed: false }>).reason }
+      decisionTrail: safeTrail,
+      ...(effectiveDurationMs !== undefined ? { durationMs: effectiveDurationMs } : {}),
+      ...(details.traceId ? { traceId: details.traceId } : {}),
+      ...(details.event ? { event: details.event } : {}),
+      ...(details.outcome
+        ? { outcome: details.outcome }
+        : { outcome: result.allowed ? ("success" as const) : ("blocked" as const) }),
+      ...(safeMetadata ? { metadata: safeMetadata } : {}),
+      ...(!result.allowed
+        ? { reason: `${(result as Extract<PolicyResult, { allowed: false }>).policy} blocked request` }
         : {}),
     };
 
     this.pushEntry(entry);
-    this.logger.info(entry, "audit entry");
+    try {
+      this.logger.info(entry, "audit entry");
+      return true;
+    } catch {
+      // Audit output is best-effort and must never block tool execution.
+      // Report the synchronous sink failure so post-upstream delivery can
+      // fail open to the exact upstream result.
+      return false;
+    }
   }
 
   /**
@@ -359,10 +439,16 @@ export class AuditLogger {
       arguments: { count: toolCount, tools: toolNames },
       action: "discovery",
       decisionTrail: [],
+      event: "discovery",
+      outcome: "success",
     };
 
     this.pushEntry(entry);
-    this.logger.info(entry, "audit discovery");
+    try {
+      this.logger.info(entry, "audit discovery");
+    } catch {
+      // Discovery must remain available even when the audit sink fails.
+    }
   }
 
   /** 返回所有已记录的审计条目（副本） */
@@ -374,6 +460,26 @@ export class AuditLogger {
   clear(): void {
     this.entries = [];
   }
+
+  /** Flush and close an owned file sink. Shared stdout/stderr remain open. */
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    const rotator = this.rotator;
+    if (!rotator || rotator.destroyed) return;
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        rotator.off("error", finish);
+        resolve();
+      };
+      rotator.once("error", finish);
+      rotator.end(finish);
+    });
+  }
+
   /** 追加一条审计条目，超出内存上限时丢弃最旧的 */
   private pushEntry(entry: AuditEntry): void {
     this.entries.push(entry);

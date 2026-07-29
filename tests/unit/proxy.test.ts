@@ -1565,6 +1565,57 @@ describe("GuardProxy", () => {
     ).toBe(0);
   });
 
+  it("restores an evicted capsule when a native delivery audit fails", async () => {
+    const config = { ...makeMinimalConfig(), tools: { allow: ["fixture_search"], deny: [] } };
+    const pipeline = makeMockPipeline();
+    const audit = makeMockAudit();
+    let projectionAudits = 0;
+    audit.log.mockImplementation((...args: unknown[]) => {
+      const event = (args[6] as { event?: string } | undefined)?.event;
+      if (event !== "projection") return true;
+      projectionAudits += 1;
+      return projectionAudits !== 65;
+    });
+    const serverManager = makeMockServerManager();
+    const route = {
+      catalogName: "fixture_search",
+      serverName: "fixture",
+      originalToolName: "search",
+      tool: { name: "search", inputSchema: { type: "object" as const, properties: {} } },
+    };
+    serverManager.getTools.mockReturnValue([{ ...route.tool, name: route.catalogName }]);
+    serverManager.getNativeTools.mockReturnValue([route]);
+    let upstreamCalls = 0;
+    const upstreamResults = Array.from({ length: 65 }, (_, index) => ({
+      content: [{ type: "text" as const, text: `${index}:${"x".repeat(20_000)}` }],
+    }));
+    serverManager.callTool.mockImplementation(async () => upstreamResults[upstreamCalls++]!);
+
+    const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never, {
+      surface: "native",
+    });
+    await proxy.start({} as never);
+    const callHandler = mockServerHandlers.get(CALL_TOOL_SCHEMA)!;
+    let firstResultRef = "";
+    let failedDelivery: unknown;
+    for (let index = 0; index < 65; index++) {
+      const result = await callHandler({
+        params: { name: "search", arguments: {} },
+      });
+      if (index === 0) {
+        firstResultRef = (result.structuredContent as { result_ref: string }).result_ref;
+      }
+      if (index === 64) failedDelivery = result;
+    }
+
+    expect(failedDelivery).toBe(upstreamResults[64]);
+    const recovered = await callHandler({
+      params: { name: READ_RESULT, arguments: { result_ref: firstResultRef } },
+    });
+    expect(recovered.isError).not.toBe(true);
+    expect(serverManager.callTool).toHaveBeenCalledTimes(65);
+  });
+
   it("returns the exact upstream result without projection when the policy audit sink fails", async () => {
     const config = { ...makeMinimalConfig(), tools: { allow: ["fixture_search"], deny: [] } };
     const pipeline = makeMockPipeline();

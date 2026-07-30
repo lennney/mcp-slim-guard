@@ -1,35 +1,44 @@
-## Description
+## Outcome
 
-<!-- What does this PR do? Why is it needed? -->
+<!-- What user-visible behavior changes, and why is it needed? -->
 
-## Related Issue
+## Related issue
 
-<!-- Closes #NNN, or "N/A" if none. -->
+<!-- Closes #NNN, or "N/A" for a small documentation or maintenance change. -->
 
-## Type of Change
+## Change type
 
-- [ ] Bug fix (non-breaking change that fixes an issue)
-- [ ] New feature (non-breaking change that adds functionality)
-- [ ] Breaking change (fix or feature that causes existing functionality to break)
-- [ ] Documentation update
-- [ ] Performance improvement
-- [ ] Code refactoring (no functional changes)
-- [ ] Build/CI change
+- [ ] Bug fix
+- [ ] Feature
+- [ ] Breaking change
+- [ ] Documentation
+- [ ] Performance
+- [ ] Refactor
+- [ ] Build or CI
 
-## How Has This Been Tested?
+## Verification
 
-<!-- Include exact commands and output. -->
+<!-- Include the exact commands and results. Explain any skipped check. -->
 
 ```text
 
 ```
 
+## Compatibility and recovery
+
+<!-- Note affected Hosts, Servers, transports, config, result shapes, and recovery behavior. -->
+
 ## Checklist
 
-- [ ] Branch is based on latest `main`
-- [ ] Only target files changed (no workspace files: AGENTS.md, HANDOVER.md, .hermes/, docs/plans/)
-- [ ] `npm run build` passes
-- [ ] `npm test` passes (all tests)
-- [ ] `npx tsc --noEmit` passes
-- [ ] CHANGELOG.md updated (if user-facing change)
-- [ ] README updated (if API/CLI/config change)
+- [ ] This pull request covers one focused behavior.
+- [ ] The branch is based on the latest `main`.
+- [ ] No credentials, private paths, result bodies, local artifacts, internal
+      plans, research notes, or launch drafts are included.
+- [ ] Relevant focused tests pass.
+- [ ] `npm run typecheck`, `npm run lint`, and `npm run format:check` pass when
+      applicable.
+- [ ] Routing or stdio changes include a relevant protocol smoke.
+- [ ] Token, compression, latency, or accuracy claims include the relevant
+      benchmark evidence.
+- [ ] `CHANGELOG.md` is updated for a user-visible change.
+- [ ] README files are updated for public CLI, API, or configuration changes.

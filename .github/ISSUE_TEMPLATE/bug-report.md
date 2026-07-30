@@ -1,36 +1,45 @@
 ---
 name: Bug report
-about: Report a bug to help improve mcp-slim-guard
-title: ""
+about: Report reproducible Slim Guard behavior
+title: "[bug] "
 labels: bug
 assignees: ""
 ---
 
-## Description
+## Observed behavior
 
-<!-- Clear description of the bug. -->
+<!-- What happened? Do not include credentials, private paths, or result bodies. -->
 
-## Reproduction Steps
+## Expected behavior
 
-1. Setup: <!-- host, upstream MCP server, transport, and redacted config -->
-2. Command: <!-- exact CLI command or MCP call -->
-3. Expected behavior:
-4. Actual behavior:
+<!-- What should Slim Guard have returned or exposed? -->
+
+## Reproduction
+
+1. Host and surface:
+2. Upstream MCP Server and transport:
+3. Redacted configuration:
+4. Command or MCP call:
+5. Result:
 
 ## Environment
 
-- mcp-slim-guard version: <!-- e.g. 0.1.0 -->
+- Slim Guard version:
 - Node.js version:
-- OS:
-- MCP client: <!-- e.g. Claude Code, OpenCode, Cursor -->
+- Operating system:
+- MCP Host and version: <!-- Codex or Claude Code; VS Code config preview if applicable -->
+- Surface: <!-- Generic or Host-native -->
 
-## Logs / Error Output
+## Redacted logs
+
+```text
 
 ```
-<!-- Paste relevant logs or error messages -->
-```
 
-## Checklist
+## Checks
 
-- [ ] I've searched existing issues for duplicates
-- [ ] I've included the exact mcp-slim-guard.yml config (with secrets redacted)
+- [ ] I searched existing issues.
+- [ ] I removed credentials, private paths, arguments, result bodies, and raw
+      result or Tool references.
+- [ ] This report does not contain vulnerability details. Security issues
+      follow `SECURITY.md`.

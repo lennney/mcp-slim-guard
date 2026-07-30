@@ -30,6 +30,15 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: surface
+    attributes:
+      label: Slim Guard surface
+      options:
+        - Generic (find_tool, call_tool, read_result)
+        - Host-native (authorized original Tools, read_result)
+    validations:
+      required: true
+  - type: dropdown
     id: transport
     attributes:
       label: Upstream transport
@@ -67,7 +76,7 @@ body:
     id: observed
     attributes:
       label: Observed behavior
-      description: Include whether the three-tool surface appeared and whether a result_ref was returned.
+      description: Include which Tools appeared, whether delivery passed through or projected the result, and whether recovery returned the exact stored result.
     validations:
       required: true
   - type: textarea

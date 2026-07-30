@@ -33,8 +33,11 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainer at **lennney@users.noreply.github.com**.
-All complaints will be reviewed and investigated promptly and fairly.
+reported through a
+[code-of-conduct contact request](https://github.com/lennney/mcp-slim-guard/issues/new?template=code-of-conduct-contact.yml).
+Do not include personal, sensitive, or identifying details in the public
+issue. The maintainer will arrange a private follow-up channel. All complaints
+will be reviewed fairly and kept confidential to the extent possible.
 
 ## Attribution
 

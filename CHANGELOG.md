@@ -5,7 +5,25 @@ numbers are intentionally omitted.
 
 ## [Unreleased]
 
-No product changes.
+### Added
+
+- `analyze` reports the current MCP catalog cost without calling a Tool or
+  changing configuration.
+- `plan` generates dry-run Host configuration changes for Codex and Claude
+  Code.
+- `install` applies one validated Host configuration transaction after
+  creating a backup.
+- `profile --last` summarizes the latest local delivery segment without
+  reading result bodies.
+- `rollback` restores the exact pre-install Host configuration and refuses to
+  overwrite later edits.
+
+### Documentation
+
+- Updated contribution, support, issue, pull request, and security-reporting
+  guidance for the current Generic and Host-native product surfaces.
+- Moved development plans, research, launch drafts, and candidate acceptance
+  notes out of the public source tree.
 
 ## [0.1.1-alpha.1] - 2026-07-28
 

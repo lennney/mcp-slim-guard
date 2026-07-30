@@ -1,0 +1,17 @@
+name: Code-of-conduct contact request
+description: Ask the maintainer to arrange a private channel. Do not disclose details here.
+title: "[conduct contact] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Do not include personal information, identifying details, screenshots, logs, or a description of the incident.
+
+        The maintainer will use this issue only to arrange a private follow-up channel.
+  - type: checkboxes
+    id: disclosure
+    attributes:
+      label: Public disclosure check
+      options:
+        - label: I have not included personal, identifying, or incident details in this public issue.
+          required: true

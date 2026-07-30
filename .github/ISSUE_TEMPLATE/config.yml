@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/lennney/mcp-slim-guard/security/advisories/new
+    about: Submit vulnerability details through GitHub private vulnerability reporting.

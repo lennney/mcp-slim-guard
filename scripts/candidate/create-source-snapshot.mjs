@@ -12,14 +12,10 @@ const ROOT_FILES = Object.freeze([
   ".gitignore",
   ".lintstagedrc",
   ".prettierrc",
-  "AGENTS.md",
   "CHANGELOG.md",
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
   "Dockerfile",
-  "GOAL.md",
-  "HANDOVER.md",
-  "LEARNINGS.md",
   "LICENSE",
   "README.md",
   "README_CN.md",
@@ -43,7 +39,25 @@ const EXCLUDED_ROOT_ENTRIES = Object.freeze([
   "mcp-slim-guard",
   "node_modules",
 ]);
-const EXCLUDED_PREFIXES = Object.freeze([".husky/_", "scripts/benchmark/results"]);
+const EXCLUDED_PREFIXES = Object.freeze([
+  ".husky/_",
+  "docs/evidence/2026-07-26-alpha-candidate-dogfood.json",
+  "docs/evidence/2026-07-26-alpha-candidate-dogfood.md",
+  "docs/evidence/2026-07-26-model-selection-pilot.json",
+  "docs/evidence/2026-07-26-model-selection-pilot.md",
+  "docs/evidence/2026-07-27-alpha-candidate-freeze.json",
+  "docs/evidence/2026-07-27-alpha-candidate-freeze.md",
+  "docs/evidence/2026-07-28-host-adoption-checkpoint.md",
+  "docs/evidence/2026-07-28-host-native-acceptance.md",
+  "docs/geo",
+  "docs/marketing",
+  "docs/plans",
+  "docs/research",
+  "docs/superpowers",
+  "docs/templates",
+  "scripts/add-okf-frontmatter.py",
+  "scripts/benchmark/results",
+]);
 const EXCLUDED_ROOT_PATTERNS = Object.freeze(["mcp-slim-guard-*.tgz"]);
 const SENSITIVE_FILENAME_MARKERS = Object.freeze([".env", "auth", "cookie", "credential", "secret", "token"]);
 const SENSITIVE_FILENAME_PATTERN = /(?:auth|cookie|credential|secret|token)/iu;

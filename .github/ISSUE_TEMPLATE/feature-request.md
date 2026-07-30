@@ -6,18 +6,22 @@ labels: enhancement
 assignees: ""
 ---
 
-## Problem
+## User problem
 
-<!-- What problem does this feature solve? Example: "I'm always frustrated when..." -->
+<!-- Describe the repeated workflow or failure. Do not start with an implementation. -->
 
-## Proposed Solution
+## Desired outcome
 
-<!-- What should happen? Be specific about the API/behavior. -->
+<!-- What should become possible or less costly? -->
 
-## Alternatives Considered
+## Current workaround
 
-<!-- What workarounds have you tried? -->
+<!-- What do you do today, and where does it fail? -->
 
-## Additional Context
+## Scope
 
-<!-- Any other information, screenshots, or references. -->
+<!-- Affected Host, Server, transport, surface, and result shape. -->
+
+## Evidence
+
+<!-- Optional measurements, examples, or links. Remove private data. -->

@@ -48,8 +48,9 @@ vi.mock("../../src/audit.js", () => ({
   AuditLogger: vi.fn(),
 }));
 
-const { ServerManager: MockServerManager } = vi.hoisted(() => {
+const { ServerManager: MockServerManager, mockManagerCallTool } = vi.hoisted(() => {
   const getTools = vi.fn().mockReturnValue([]);
+  const callTool = vi.fn();
   const start = vi.fn().mockResolvedValue({
     configured: 1,
     connected: [{ serverName: "github", transportKind: "stdio", toolCount: 0 }],
@@ -57,7 +58,8 @@ const { ServerManager: MockServerManager } = vi.hoisted(() => {
   });
   const stop = vi.fn().mockResolvedValue({ closed: ["github"], failed: [] });
   return {
-    ServerManager: vi.fn().mockImplementation(() => ({ getTools, start, stop })),
+    ServerManager: vi.fn().mockImplementation(() => ({ getTools, callTool, start, stop })),
+    mockManagerCallTool: callTool,
   };
 });
 
@@ -173,6 +175,55 @@ describe("CLI", () => {
   });
 
   // ── init ─────────────────────────────────────────────────────────
+
+  describe("analyze", () => {
+    it("prints a read-only JSON report without writing files or invoking an upstream Tool", async () => {
+      MockConfigLoader.ConfigLoader.discoverMCPConfig.mockReturnValue("/fake/path/.mcp.json");
+      MockConfigLoader.ConfigLoader.generateGuardConfig.mockReturnValue(MOCK_GUARD_CONFIG);
+
+      await main(["node", "cli.js", "analyze"]);
+
+      expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalledWith(expect.any(String));
+      expect(MockConfigLoader.ConfigLoader.generateGuardConfig).toHaveBeenCalledWith("/fake/path/.mcp.json");
+      expect(vi.mocked(await import("node:fs")).writeFileSync).not.toHaveBeenCalled();
+      expect(mockManagerCallTool).not.toHaveBeenCalled();
+      expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+
+      const output = JSON.parse(String(consoleLogSpy.mock.calls[0]?.[0])) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        schemaVersion: 1,
+        kind: "mcp-slim-guard/analyze",
+        mode: "read-only",
+        estimator: { id: "chars-div-4-v1" },
+        operations: ["tools/list"],
+      });
+      expect(JSON.stringify(output)).not.toContain("/fake/path");
+    });
+  });
+
+  describe("plan", () => {
+    it("prints a Codex dry-run plan without writing configuration", async () => {
+      await main(["node", "cli.js", "plan", "--host", "codex"]);
+
+      expect(vi.mocked(await import("node:fs")).writeFileSync).not.toHaveBeenCalled();
+      expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+
+      const output = JSON.parse(String(consoleLogSpy.mock.calls[0]?.[0])) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        schemaVersion: 1,
+        kind: "mcp-slim-guard/config-plan",
+        mode: "dry-run",
+        host: "codex",
+        support: "supported",
+        server: {
+          surface: "native",
+          command: "mcp-slim-guard",
+          args: ["start", "--surface", "native"],
+        },
+        writesPerformed: 0,
+      });
+    });
+  });
 
   describe("init", () => {
     it("discovers MCP config and generates mcp-slim-guard.yml → prints success", async () => {

@@ -39,6 +39,9 @@ import {
   usesSecureProjection,
 } from "./secure-projection.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { buildAnalyzeReport } from "./analyze.js";
+import { buildCodexConfigPlan } from "./codex-config-plan.js";
+import { buildClaudeConfigPlan } from "./claude-config-plan.js";
 
 interface AuditDisplayEntry {
   timestamp?: string;
@@ -225,6 +228,40 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     .name("mcp-slim-guard")
     .version(VERSION)
     .description("MCP context compression runtime — compress what agents see, preserve what tools do");
+
+  program
+    .command("plan")
+    .description("Generate a Host configuration plan without writing it")
+    .addOption(new Option("--host <host>", "Target Host").choices(["codex", "claude-code"]).makeOptionMandatory())
+    .action((options: { host: "codex" | "claude-code" }) => {
+      const plan =
+        options.host === "codex" ? buildCodexConfigPlan(process.cwd()) : buildClaudeConfigPlan(process.cwd());
+      console.log(JSON.stringify(plan, null, 2));
+    });
+
+  program
+    .command("analyze")
+    .description("Inspect an MCP catalog without changing configuration or invoking Tools")
+    .action(async () => {
+      const cwd = process.cwd();
+      const mcpConfigPath = ConfigLoader.discoverMCPConfig(cwd);
+      if (!mcpConfigPath) {
+        console.error("Error: No MCP configuration file found.");
+        process.exit(1);
+        return;
+      }
+
+      const config = ConfigLoader.generateGuardConfig(mcpConfigPath);
+      const manager = new ServerManager(config.servers);
+      try {
+        const startReport = await manager.start();
+        const directTools = manager.getTools();
+        const slimGuardTools = projectToolsForDisplay(directTools, config);
+        console.log(JSON.stringify(buildAnalyzeReport(startReport, directTools, slimGuardTools), null, 2));
+      } finally {
+        await manager.stop();
+      }
+    });
 
   program
     .command("init")

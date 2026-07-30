@@ -60,6 +60,16 @@ interface StoredResult extends ResultSnapshot {
   payloadBytes: number;
 }
 
+interface EvictedStoredResult {
+  resultRef: string;
+  stored: StoredResult;
+}
+
+interface PendingProjectionWrite {
+  resultRef: string;
+  evicted: EvictedStoredResult[];
+}
+
 interface ResultCapsuleMetadata extends Record<string, unknown> {
   result_ref: string;
   encoding: ResultEncoding;
@@ -515,6 +525,9 @@ export class ResultCapsuleStore {
   private results = new Map<string, StoredResult>();
   private resultOrder: string[] = [];
   private storedPayloadBytes = 0;
+  // Delivery observers and the proxy audit settle synchronously. Retain only
+  // the latest capacity eviction until they can reject the new projection.
+  private pendingProjectionWrite: PendingProjectionWrite | null = null;
   private security = new ResultSecurityInspector();
   private classifier: ResultContentClassifier = new DeterministicResultContentClassifier();
   private strategies: Record<ResultContentKind, ResultProjectionStrategy> = {
@@ -525,9 +538,11 @@ export class ResultCapsuleStore {
   };
 
   capture(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult {
+    this.commitPendingProjection();
     try {
       return this.captureVerified(result, observer);
     } catch {
+      this.rollbackPendingProjection();
       // Result compression is post-invocation delivery optimization. An
       // internal classifier, projection, verification, or storage failure
       // must never turn a successful upstream tool call into a failed call.
@@ -548,6 +563,7 @@ export class ResultCapsuleStore {
   captureNative(result: CallToolResult, tool: Tool, observer?: ResultCapsuleObserver): CallToolResult {
     const passThroughReason = nativePassThroughReason(result, tool);
     if (passThroughReason) {
+      this.commitPendingProjection();
       emit(observer, {
         phase: "delivery",
         outcome: "pass_through",
@@ -682,13 +698,14 @@ export class ResultCapsuleStore {
       ...(evictedReferenceId ? { evictedReferenceId } : {}),
     });
     if (!observed) {
-      this.delete(resultRef);
+      this.rollbackPendingProjection(resultRef);
       return result;
     }
     return delivered;
   }
 
   read(args: Record<string, unknown>, observer?: ResultCapsuleObserver): CallToolResult {
+    this.commitPendingProjection();
     const resultRef = typeof args.result_ref === "string" ? args.result_ref : "";
     const cursor = args.cursor === undefined ? 0 : args.cursor;
     if (!resultRef) {
@@ -783,6 +800,7 @@ export class ResultCapsuleStore {
   }
 
   clear(): number {
+    this.pendingProjectionWrite = null;
     const cleared = this.results.size;
     this.results.clear();
     this.resultOrder = [];
@@ -804,34 +822,81 @@ export class ResultCapsuleStore {
       return false;
     }
     const resultRef = (metadata as Record<string, unknown>).result_ref;
-    if (typeof resultRef !== "string" || !this.results.has(resultRef)) return false;
+    if (typeof resultRef !== "string") return false;
+    if (this.pendingProjectionWrite?.resultRef === resultRef) {
+      return this.rollbackPendingProjection(resultRef);
+    }
+    this.commitPendingProjection();
+    if (!this.results.has(resultRef)) return false;
     this.delete(resultRef);
     return true;
   }
 
   private store(resultRef: string, snapshot: ResultSnapshot): string | undefined {
+    this.commitPendingProjection();
     const now = Date.now();
     this.pruneExpired(now);
     let evictedReferenceId: string | undefined;
+    const evicted: EvictedStoredResult[] = [];
     const payloadBytes = Buffer.byteLength(snapshot.payload, "utf8");
-    while (
-      this.resultOrder.length > 0 &&
-      (this.resultOrder.length >= MAX_STORED_RESULTS ||
-        this.storedPayloadBytes + payloadBytes > MAX_STORED_PAYLOAD_BYTES)
-    ) {
-      const oldest = this.resultOrder[0];
-      if (!oldest) break;
-      this.delete(oldest);
-      evictedReferenceId = referenceId(oldest);
+    try {
+      while (
+        this.resultOrder.length > 0 &&
+        (this.resultOrder.length >= MAX_STORED_RESULTS ||
+          this.storedPayloadBytes + payloadBytes > MAX_STORED_PAYLOAD_BYTES)
+      ) {
+        const oldest = this.resultOrder[0];
+        if (!oldest) break;
+        const stored = this.results.get(oldest);
+        if (stored) evicted.push({ resultRef: oldest, stored });
+        this.delete(oldest);
+        evictedReferenceId = referenceId(oldest);
+      }
+      this.results.set(resultRef, {
+        ...snapshot,
+        expiresAt: now + RESULT_TTL_MS,
+        payloadBytes,
+      });
+      this.storedPayloadBytes += payloadBytes;
+      this.resultOrder.push(resultRef);
+    } catch (error) {
+      this.restoreEvictedResults(resultRef, evicted);
+      throw error;
     }
-    this.results.set(resultRef, {
-      ...snapshot,
-      expiresAt: now + RESULT_TTL_MS,
-      payloadBytes,
+    this.pendingProjectionWrite = { resultRef, evicted };
+    // Direct store consumers have no separate delivery acknowledgement. Once
+    // the current call stack completes, the projection is externally visible.
+    queueMicrotask(() => {
+      if (this.pendingProjectionWrite?.resultRef === resultRef) {
+        this.commitPendingProjection();
+      }
     });
-    this.storedPayloadBytes += payloadBytes;
-    this.resultOrder.push(resultRef);
     return evictedReferenceId;
+  }
+
+  private commitPendingProjection(): void {
+    this.pendingProjectionWrite = null;
+  }
+
+  private rollbackPendingProjection(resultRef?: string): boolean {
+    const pending = this.pendingProjectionWrite;
+    if (!pending || (resultRef !== undefined && pending.resultRef !== resultRef)) return false;
+    this.pendingProjectionWrite = null;
+    this.restoreEvictedResults(pending.resultRef, pending.evicted);
+    return true;
+  }
+
+  private restoreEvictedResults(resultRef: string, evicted: EvictedStoredResult[]): void {
+    this.delete(resultRef);
+    const restoredRefs = new Set(evicted.map(({ resultRef: evictedRef }) => evictedRef));
+    for (const { resultRef: evictedRef, stored } of evicted) {
+      this.results.set(evictedRef, stored);
+      this.storedPayloadBytes += stored.payloadBytes;
+    }
+    this.resultOrder = [
+      ...evicted.map(({ resultRef: evictedRef }) => evictedRef),
+      ...this.resultOrder.filter((candidate) => !restoredRefs.has(candidate)),
+    ];
   }
 
   private pruneExpired(now: number): void {

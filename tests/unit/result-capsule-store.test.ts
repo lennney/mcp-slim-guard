@@ -75,6 +75,56 @@ describe("ResultCapsuleStore", () => {
     expect(store.clear()).toBe(0);
   });
 
+  it("restores capacity-evicted snapshots when the delivery observer rejects a projection", () => {
+    const store = new ResultCapsuleStore();
+    const refs: string[] = [];
+    for (let index = 0; index < 64; index++) {
+      const capsule = parseText(
+        store.capture({
+          content: [{ type: "text", text: `${index}:${"x".repeat(20_000)}` }],
+        }),
+      );
+      refs.push(capsule.result_ref as string);
+    }
+    const replacement: CallToolResult = {
+      content: [{ type: "text", text: `replacement:${"x".repeat(20_000)}` }],
+    };
+
+    expect(
+      store.capture(replacement, () => {
+        throw new Error("observer unavailable");
+      }),
+    ).toBe(replacement);
+    expect(store.read({ result_ref: refs[0] }).isError).not.toBe(true);
+    expect(store.clear()).toBe(64);
+  });
+
+  it("restores payload-budget evictions when the delivery observer rejects a projection", () => {
+    const store = new ResultCapsuleStore();
+    const first = parseText(
+      store.capture({
+        content: [{ type: "text", text: `first:${"x".repeat(6 * 1024 * 1024)}` }],
+      }),
+    );
+    const second = parseText(
+      store.capture({
+        content: [{ type: "text", text: `second:${"x".repeat(6 * 1024 * 1024)}` }],
+      }),
+    );
+    const replacement: CallToolResult = {
+      content: [{ type: "text", text: `replacement:${"x".repeat(6 * 1024 * 1024)}` }],
+    };
+
+    expect(
+      store.capture(replacement, () => {
+        throw new Error("observer unavailable");
+      }),
+    ).toBe(replacement);
+    expect(store.read({ result_ref: first.result_ref }).isError).not.toBe(true);
+    expect(store.read({ result_ref: second.result_ref }).isError).not.toBe(true);
+    expect(store.clear()).toBe(2);
+  });
+
   it("fails open to the exact upstream result when classification fails", () => {
     const store = new ResultCapsuleStore();
     (

@@ -2,12 +2,17 @@
   <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
 </p>
 
-<p align="center"><strong>Context compression for MCP</strong></p>
+<p align="center"><strong>Context compression for MCP tools</strong></p>
 
 <p align="center">
-  Keep using your MCP Tools. Send fewer tokens to the agent.<br>
-  Same upstream call. Exact result recoverable.
+  76.18% fewer tokens in the standard benchmark · 99.71% stress-test upper bound · reversible
 </p>
+
+Slim Guard compresses MCP Tool catalogs and oversized results before they reach
+the agent. Same Tool call, fraction of the tokens.
+
+_Standard benchmark: 71,388 → 17,007 normal-path tokens. Extreme stress test:
+499,556 → 1,437 protocol tokens._
 
 <p align="center"><sub>0.1.1 Alpha · local stdio · Node.js 20+</sub></p>
 
@@ -21,60 +26,68 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#choose-a-host-surface">Host surfaces</a> ·
-  <a href="#proof">Proof</a> ·
+  <a href="#benchmark">Benchmark</a> ·
   <a href="#compatibility">Compatibility</a> ·
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/README_CN.md">中文</a>
+  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README_CN.md">中文</a>
 </p>
 
-Slim Guard compresses the catalogs and results produced by your existing MCP
-Servers. It runs after the real upstream Tool call and before the result enters
-the model context. It does not replace the Tool, change its arguments, or call
-it again during recovery.
+## Measured result
 
-![Slim Guard compresses MCP context](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/mcp-context-flow.svg)
+![Slim Guard reduced tokens by 76.18% in the standard benchmark, with a 99.71% stress-test upper bound](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/social-preview-alpha.svg)
 
-## What it does
+**Standard benchmark:** 71,388 → 17,007 normal-path tokens across 24 tasks,
+76.18% fewer than direct MCP. The 24 tasks made 24 upstream calls.
 
-- **Cuts MCP context.** Large Tool catalogs become an on-demand discovery
-  surface. Eligible large results become compact views.
-- **Keeps the real Tool call.** Slim Guard sends the same arguments upstream
-  and executes the selected Tool at most once.
-- **Recovers the exact result.** `read_result` reads one immutable snapshot. It
-  never repeats the upstream call.
-- **Keeps native Tool identity** for verified Hosts. Codex can discover and
-  call authorized original Tools through `--surface native`.
-- **Provides a generic fallback** for other Hosts through `find_tool`,
-  `call_tool`, and `read_result`.
-- **Compresses only eligible results.** Small, structured, schema-bound, mixed,
-  error, source-like, and uncertain results pass through.
-- **Fails open after execution.** Delivery, storage, observer, or audit failure
-  returns the exact upstream result.
-- **Runs locally and deterministically.** Compression does not require a model
-  or an external API.
+**Stress-test upper bound:** 499,556 → 1,437 normal-path protocol tokens in an
+intentionally extreme synthetic test with 100 Tools and one 8,000-row result.
+The Tool ran once and exact full recovery matched. See the
+[stress-test evidence](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-27-automatic-compression-stress.md).
 
-## Quick start
+|  Normal-path tokens | Tokens saved |  Estimated annual savings* | Tasks and upstream calls |
+| ------------------: | -----------: | -------------------------: | -----------------------: |
+| 71,388 → **17,007** |   **54,381** | **Save about $2,481/year** |        **24/24 · 24/24** |
 
-Requirements:
-
-- Node.js 20 or newer
-- npm
-- an existing project-level MCP configuration
-
-After the prerelease reaches the npm `alpha` channel, install it with:
+<sub>*At 1,000 similar MCP tasks per day and $3 per million input tokens:
+54,381 ÷ 24 × 1,000 × 365 ÷ 1,000,000 × $3 ≈ $2,481. This is not a measured
+API bill. The deterministic fixture used no model or API calls.</sub>
 
 ```bash
 npm install -g mcp-slim-guard@alpha
 ```
 
-Before publication, internal testers and reviewers install the accepted frozen
-candidate by absolute path:
+When a project connects several MCP Servers, Tool descriptions and long results
+consume agent context. Slim Guard changes the delivery path. It provides
+on-demand Tool discovery and compact results, with exact recovery through
+`read_result`.
+
+Slim Guard passes arguments upstream unchanged and executes each selected Tool
+at most once. Compression and recovery run locally without a model.
+
+![Slim Guard compresses MCP context](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/mcp-context-flow.svg)
+
+## Delivery paths
+
+| Input                                     | What the agent receives                                                     |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| Tool catalog                              | `find_tool`, `call_tool`, and `read_result` on the generic surface          |
+| Eligible long text, uniform JSON, or logs | A compact result with exact recovery through `read_result`                  |
+| Small, code, diff, error, or mixed result | The original result                                                         |
+| Schema-bound result                       | The original `outputSchema`, `structuredContent`, `_meta`, and other fields |
+
+With `--surface native`, Codex still sees the authorized original Tool names.
+If delivery, storage, the observer, or audit fails, Slim Guard returns the
+upstream result unchanged.
+
+## Quick start
+
+Slim Guard requires Node.js 20 or newer and an existing project-level MCP
+configuration.
+
+Install the Alpha:
 
 ```bash
-npm install -g /absolute/path/to/mcp-slim-guard-0.1.1-alpha.1.tgz
+npm install -g mcp-slim-guard@alpha
 ```
-
-That accepted tarball predates this README revision. The release package must
-be frozen and verified again before npm publication.
 
 Import the MCP Servers already configured in your project:
 
@@ -89,7 +102,7 @@ MCP Server entries with one Slim Guard entry. Do not expose both paths.
 
 `init` imports common JSON, Cursor, and VS Code MCP configurations. It does not
 import Codex TOML. A Codex-only project must create `mcp-slim-guard.yml` from
-the [manual upstream template](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md#codex-cli)
+the [manual upstream template](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md#codex-cli)
 before it adds the Slim Guard Server to `.codex/config.toml`.
 
 ## Choose a Host surface
@@ -166,7 +179,7 @@ read_result
 ```
 
 See the
-[Host setup guide](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/host-setup.md)
+[Host setup guide](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md)
 for command lookup, verification, and configuration boundaries.
 
 ## How result delivery works
@@ -186,7 +199,7 @@ preserves `isError`, content order and types, `structuredContent`, `_meta`,
 When a compact result includes a `result_ref`, call `read_result` to retrieve
 the snapshot in bounded chunks. Recovery does not execute upstream.
 
-## See one complete call
+## Run one complete call
 
 The local demo loads 12 upstream Tools, discovers one Tool, captures a
 73,507-character result, and recovers an exact chunk. The upstream counter
@@ -206,7 +219,7 @@ PASS: Compress what agents see. Preserve what tools do.
 
 ![Slim Guard call flow](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-demo.gif)
 
-## Proof
+## Benchmark
 
 ![Slim Guard frozen Alpha benchmark](https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/benchmark-alpha.svg)
 
@@ -225,7 +238,7 @@ This is a deterministic protocol fixture measured with `o200k_base`. It uses no
 model or API calls. It is not a universal savings claim.
 
 Forced full recovery of the two large reports used 39,899 tokens, compared
-with 37,975 on the competitor path. The disclosed 5.07% overhead remains an
+with 37,975 on the `mcp-compressor` path. The disclosed 5.07% overhead remains an
 optimization target.
 
 Reproduce the fixture:
@@ -251,8 +264,8 @@ Use Slim Guard when:
 - the Agent usually needs a compact answer but must retain exact recovery;
 - the Host should keep original Tool names and per-Tool approval controls.
 
-Slim Guard does not compress provider prompts, conversation history, source
-files, or every result shape. It is an MCP catalog and Tool-result layer.
+Slim Guard handles MCP catalogs and Tool results. It leaves provider prompts,
+conversation history, source files, and unsupported result shapes unchanged.
 
 ## Safety and observability
 
@@ -293,34 +306,24 @@ recovery/chunk
 | VS Code                    | Native Interface and approval model inspected        |
 | Downstream Streamable HTTP | Experimental and loopback-only                       |
 
-## Current limits
+## Scope
 
-- This README revision requires a new package freeze before npm publication.
-- Interactive Host approval presentation is not fully verified.
-- A VS Code model-selected call is not verified.
+- Local stdio is the primary Alpha path.
+- The Native surface is verified end to end with Codex. VS Code support remains
+  a preview.
 - Result references belong to one runtime generation.
-- Production remote ingress, multi-tenant control planes, and relevance
-  retrieval are outside this Alpha.
+- Production remote ingress and multi-tenant control planes are outside this
+  Alpha.
 - Security checks report findings. Slim Guard does not redact the recoverable
   original result.
 
-## Development
+## Project links
 
-```bash
-npm run build
-npm run typecheck
-npm run lint
-npm run format:check
-npm test
-npm run demo:alpha
-npm run smoke:package
-```
-
-See the
-[architecture](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/architecture-mcp-slim-guard.md),
-[roadmap](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/ROADMAP.md),
-and
-[accepted Host-native goal](https://github.com/lennney/mcp-slim-guard/blob/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/GOAL.md).
+See
+[contributing](https://github.com/lennney/mcp-slim-guard/blob/main/CONTRIBUTING.md),
+[architecture](https://github.com/lennney/mcp-slim-guard/blob/main/docs/architecture-mcp-slim-guard.md),
+and the
+[roadmap](https://github.com/lennney/mcp-slim-guard/blob/main/docs/ROADMAP.md).
 
 ## License
 

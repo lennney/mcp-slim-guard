@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Slim Guard MCP 调用与结果交付流程</title>
+  <desc id="desc">工具参数经过 Slim Guard 原样交给现有 MCP 工具。上游结果返回后，Slim Guard 在安全时给 Agent 更短的结果，并保存可精确读取的快照。</desc>
+  <defs>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#1a1d1f" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#9ca1a4"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#ff5a1f"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="620" fill="#08090a"/>
+  <rect width="1200" height="620" fill="url(#grid)" opacity=".28"/>
+
+  <text x="56" y="50" fill="#666c6f" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="15" letter-spacing="2">30 秒看懂</text>
+  <text x="56" y="92" fill="#f2f1ec" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="36" font-weight="700">工具照常调用，结果少占上下文。</text>
+
+  <text x="56" y="142" fill="#ff5a1f" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="14" letter-spacing="2">01 / 工具调用</text>
+  <line x1="56" y1="153" x2="1144" y2="153" stroke="#282b2d"/>
+
+  <rect x="56" y="178" width="280" height="112" fill="#0d0f10" stroke="#282b2d" stroke-width="2"/>
+  <text x="80" y="216" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="14" letter-spacing="1.4">MCP 宿主</text>
+  <text x="80" y="255" fill="#f2f1ec" font-family="Geist Sans, Segoe UI, sans-serif" font-size="27" font-weight="650">Codex / VS Code</text>
+
+  <rect x="460" y="178" width="280" height="112" fill="#0d0f10" stroke="#ff5a1f" stroke-width="2"/>
+  <text x="484" y="216" fill="#ff5a1f" font-family="Geist Mono, Consolas, monospace" font-size="14" letter-spacing="1.4">SLIM GUARD</text>
+  <text x="484" y="255" fill="#f2f1ec" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="27" font-weight="700">鉴权 / 路由</text>
+
+  <rect x="864" y="178" width="280" height="112" fill="#0d0f10" stroke="#282b2d" stroke-width="2"/>
+  <text x="888" y="216" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="14" letter-spacing="1.4">现有 MCP 工具</text>
+  <text x="888" y="255" fill="#f2f1ec" font-family="Geist Sans, Segoe UI, sans-serif" font-size="27" font-weight="650">GitHub / Filesystem</text>
+
+  <line x1="336" y1="234" x2="440" y2="234" stroke="#9ca1a4" stroke-width="3" marker-end="url(#arrow-gray)"/>
+  <text x="388" y="218" text-anchor="middle" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="13">调用</text>
+  <line x1="740" y1="234" x2="844" y2="234" stroke="#9ca1a4" stroke-width="3" marker-end="url(#arrow-gray)"/>
+  <text x="792" y="218" text-anchor="middle" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="13">参数不变 / 只调一次</text>
+
+  <text x="56" y="342" fill="#ff5a1f" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="14" letter-spacing="2">02 / 结果交付</text>
+  <line x1="56" y1="353" x2="1144" y2="353" stroke="#282b2d"/>
+
+  <rect x="56" y="378" width="320" height="126" fill="#0d0f10" stroke="#282b2d" stroke-width="2"/>
+  <text x="80" y="416" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="14" letter-spacing="1.4">上游结果</text>
+  <text x="80" y="455" fill="#f2f1ec" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="25" font-weight="700">完整 CallToolResult</text>
+  <text x="80" y="483" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="15">正文 / 元数据 / 未知字段</text>
+
+  <rect x="440" y="378" width="320" height="126" fill="#0d0f10" stroke="#ff5a1f" stroke-width="2"/>
+  <text x="464" y="416" fill="#ff5a1f" font-family="Geist Mono, Consolas, monospace" font-size="14" letter-spacing="1.4">SLIM GUARD</text>
+  <text x="464" y="455" fill="#f2f1ec" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="25" font-weight="700">判断 / 压缩</text>
+  <text x="464" y="483" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="15">拿不准就原样返回</text>
+
+  <rect x="824" y="378" width="320" height="126" fill="#0d0f10" stroke="#ff5a1f" stroke-width="2"/>
+  <text x="848" y="416" fill="#ff5a1f" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="14" letter-spacing="1.4">AGENT 上下文</text>
+  <text x="848" y="455" fill="#f2f1ec" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="25" font-weight="700">短结果</text>
+  <text x="848" y="483" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="15">正常路径少发 Token</text>
+
+  <line x1="376" y1="441" x2="420" y2="441" stroke="#ff5a1f" stroke-width="3" marker-end="url(#arrow-orange)"/>
+  <line x1="760" y1="441" x2="804" y2="441" stroke="#ff5a1f" stroke-width="3" marker-end="url(#arrow-orange)"/>
+
+  <rect x="440" y="536" width="704" height="56" fill="#0d0f10" stroke="#282b2d"/>
+  <rect x="440" y="536" width="6" height="56" fill="#ff5a1f"/>
+  <text x="468" y="570" fill="#9ca1a4" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif" font-size="17">原文留在快照里。read_result 读取快照，不会再次调用上游。</text>
+  <line x1="600" y1="504" x2="600" y2="536" stroke="#9ca1a4" stroke-width="2"/>
+</svg>

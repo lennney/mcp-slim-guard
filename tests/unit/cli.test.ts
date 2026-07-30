@@ -201,6 +201,118 @@ describe("CLI", () => {
     });
   });
 
+  describe("profile", () => {
+    it("reads the configured audit segment without starting an upstream manager or writing files", async () => {
+      const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((candidate: string) =>
+        candidate.endsWith("mcp-guard-audit.log"),
+      );
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        [
+          JSON.stringify({
+            sessionId: "s_profile",
+            requestId: 1,
+            toolName: "runtime/starting",
+            serverName: "system",
+            action: "allowed",
+            decisionTrail: [],
+            event: "lifecycle",
+            outcome: "success",
+          }),
+          JSON.stringify({
+            sessionId: "s_profile",
+            requestId: 2,
+            toolName: "runtime/ready",
+            serverName: "system",
+            action: "allowed",
+            decisionTrail: [],
+            event: "lifecycle",
+            outcome: "success",
+          }),
+          JSON.stringify({
+            sessionId: "s_profile",
+            requestId: 3,
+            toolName: "tools/list",
+            serverName: "projection",
+            action: "discovery",
+            decisionTrail: [],
+            event: "discovery",
+            outcome: "success",
+            metadata: {
+              directCatalog: { tools: 1, characters: 100 },
+              hostFacingCatalog: { tools: 3, characters: 200 },
+            },
+          }),
+          JSON.stringify({
+            sessionId: "s_profile",
+            requestId: 4,
+            traceId: "t_profile",
+            toolName: "github_read",
+            serverName: "github",
+            action: "allowed",
+            decisionTrail: [],
+            event: "upstream",
+            outcome: "success",
+            metadata: { resultChars: 100, upstreamToolName: "read" },
+          }),
+          JSON.stringify({
+            sessionId: "s_profile",
+            requestId: 5,
+            traceId: "t_profile",
+            toolName: "github_read",
+            serverName: "projection",
+            action: "allowed",
+            decisionTrail: [],
+            event: "projection",
+            outcome: "pass_through",
+            metadata: {
+              upstreamServerName: "github",
+              upstreamToolName: "read",
+              upstreamResultChars: 100,
+              deliveredResultChars: 100,
+              capsule: { phase: "delivery", outcome: "pass_through" },
+            },
+          }),
+          JSON.stringify({
+            sessionId: "s_profile",
+            requestId: 6,
+            toolName: "runtime/stopping",
+            serverName: "system",
+            action: "allowed",
+            decisionTrail: [],
+            event: "lifecycle",
+            outcome: "success",
+          }),
+          JSON.stringify({
+            sessionId: "s_profile",
+            requestId: 7,
+            toolName: "runtime/stopped",
+            serverName: "system",
+            action: "allowed",
+            decisionTrail: [],
+            event: "lifecycle",
+            outcome: "success",
+          }),
+        ].join("\n"),
+      );
+
+      await main(["node", "cli.js", "profile", "--last", "--json"]);
+
+      expect(MockConfigLoader.ConfigLoader.findAndLoad).toHaveBeenCalledWith(expect.any(String));
+      expect(writeFileSync).not.toHaveBeenCalled();
+      expect(mockManagerCallTool).not.toHaveBeenCalled();
+      const output = JSON.parse(String(consoleLogSpy.mock.calls[0]?.[0])) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        schemaVersion: 1,
+        kind: "mcp-slim-guard/profile",
+        mode: "read-only",
+        segment: { coverage: "complete" },
+        delivery: { observedResults: 1, upstream: { characters: 100 }, host: { characters: 100 } },
+      });
+    });
+  });
+
   describe("plan", () => {
     it("prints a Codex dry-run plan without writing configuration", async () => {
       await main(["node", "cli.js", "plan", "--host", "codex"]);

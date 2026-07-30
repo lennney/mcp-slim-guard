@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Slim Guard — 76.18% fewer tokens</title>
+  <desc id="desc">Slim Guard cut normal-path tokens from 71,388 to 17,007 in a frozen 12-Tool, 24-task fixture. All 24 tasks completed with 24 upstream calls, and all 23 oversized projection cases recovered exactly.</desc>
+  <defs>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#1a1d1f" stroke-width="1"/>
+    </pattern>
+    <g id="signal-muted">
+      <path d="M0 2h12l14 18M0 20h26M0 38h12l14-18M34 20h18" fill="none" stroke="#9ca1a4" stroke-width="3.5" stroke-linecap="square" stroke-linejoin="miter"/>
+      <rect x="26" y="16" width="8" height="8" fill="#9ca1a4"/>
+    </g>
+    <g id="signal-active">
+      <path d="M0 2h12l14 18M0 20h26M0 38h12l14-18" fill="none" stroke="#9ca1a4" stroke-width="3.5" stroke-linecap="square" stroke-linejoin="miter"/>
+      <rect x="26" y="16" width="8" height="8" fill="#ff5a1f"/>
+      <path d="M34 20h18" fill="none" stroke="#ff5a1f" stroke-width="3.5" stroke-linecap="square"/>
+    </g>
+    <style>
+      .sans { font-family: "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: Consolas, "Courier New", monospace; }
+      .white { fill: #f2f1ec; }
+      .muted { fill: #9ca1a4; }
+      .dim { fill: #666c6f; }
+      .orange { fill: #ff5a1f; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="640" fill="#08090a"/>
+  <rect width="1280" height="640" fill="url(#grid)" opacity=".34"/>
+  <line x1="48" y1="0" x2="48" y2="640" stroke="#1a1d1f"/>
+  <line x1="0" y1="568" x2="1280" y2="568" stroke="#282b2d"/>
+
+  <g transform="translate(55 13) scale(.18)" aria-label="Slim Guard mark">
+    <path d="M112 152h82l82 104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M112 256h148" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square"/>
+    <path d="M112 360h82l82-104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M292 256h108" fill="none" stroke="#ff5a1f" stroke-width="28" stroke-linecap="square"/>
+    <rect x="260" y="240" width="32" height="32" fill="#ff5a1f"/>
+  </g>
+  <text x="147" y="70" class="sans white" font-size="26" font-weight="700" letter-spacing=".5">SLIM GUARD</text>
+
+  <rect x="55" y="126" width="52" height="4" fill="#ff5a1f"/>
+  <text x="55" y="168" class="mono muted" font-size="23" font-weight="700" letter-spacing="2.2">CUT MCP CONTEXT BEFORE</text>
+  <text x="55" y="201" class="mono muted" font-size="23" font-weight="700" letter-spacing="2.2">IT REACHES THE AGENT</text>
+
+  <text x="55" y="399" class="sans white" font-size="205" font-weight="700" letter-spacing="-10">76.18</text>
+  <text x="545" y="399" class="sans orange" font-size="140" font-weight="700" letter-spacing="-5">%</text>
+  <text x="55" y="464" class="sans white" font-size="55" font-weight="650" letter-spacing="-2">FEWER TOKENS</text>
+  <text x="55" y="523" class="mono white" font-size="34" font-weight="700">
+    <tspan>71,388</tspan>
+    <tspan x="236" class="orange">→</tspan>
+    <tspan x="300">17,007</tspan>
+  </text>
+
+  <g aria-label="Upstream result to compact delivery to recovery">
+    <line x1="870" y1="337" x2="995" y2="337" stroke="#666c6f" stroke-width="2"/>
+    <line x1="1049" y1="337" x2="1174" y2="337" stroke="#666c6f" stroke-width="2"/>
+    <use href="#signal-muted" x="818" y="317"/>
+    <use href="#signal-active" x="997" y="317"/>
+    <use href="#signal-muted" x="1176" y="317"/>
+
+    <text x="842" y="393" text-anchor="middle" class="mono muted" font-size="15" font-weight="700" letter-spacing="1.2">UPSTREAM</text>
+    <text x="1021" y="393" text-anchor="middle" class="mono white" font-size="15" font-weight="700" letter-spacing="1.2">COMPACT</text>
+    <text x="1200" y="393" text-anchor="middle" class="mono muted" font-size="15" font-weight="700" letter-spacing="1.2">RECOVER</text>
+  </g>
+
+  <text x="55" y="610" class="mono muted" font-size="15" font-weight="700" letter-spacing="1">FROZEN 12-TOOL FIXTURE</text>
+  <line x1="384" y1="586" x2="384" y2="618" stroke="#666c6f"/>
+  <text x="1218" y="610" text-anchor="end" class="mono muted" font-size="14" font-weight="700" letter-spacing=".35">24/24 TASKS · 24 UPSTREAM CALLS · 23/23 OVERSIZED RESULTS RECOVERABLE</text>
+</svg>

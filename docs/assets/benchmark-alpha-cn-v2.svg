@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Slim Guard 冻结基准</title>
+  <desc id="desc">冻结的 12 工具、24 任务基准中，原始 MCP 使用 71,388 个正常路径 Token，Slim Guard 使用 17,007 个，减少 76.18%。24 项任务全部完成，共调用上游 24 次；23 个超大结果均可精确恢复。</desc>
+  <defs>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#1a1d1f" stroke-width="1"/>
+    </pattern>
+    <style>
+      .sans { font-family: "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+      .mono { font-family: Consolas, "Noto Sans SC", "Microsoft YaHei", monospace; }
+      .white { fill: #f2f1ec; }
+      .muted { fill: #9ca1a4; }
+      .dim { fill: #666c6f; }
+      .orange { fill: #ff5a1f; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="640" fill="#08090a"/>
+  <rect width="1280" height="640" fill="url(#grid)" opacity=".34"/>
+  <line x1="48" y1="0" x2="48" y2="640" stroke="#1a1d1f"/>
+  <line x1="0" y1="568" x2="1280" y2="568" stroke="#282b2d"/>
+
+  <g transform="translate(55 13) scale(.18)" aria-label="Slim Guard 标志">
+    <path d="M112 152h82l82 104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M112 256h148" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square"/>
+    <path d="M112 360h82l82-104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M292 256h108" fill="none" stroke="#ff5a1f" stroke-width="28" stroke-linecap="square"/>
+    <rect x="260" y="240" width="32" height="32" fill="#ff5a1f"/>
+  </g>
+  <text x="147" y="70" class="sans white" font-size="26" font-weight="700" letter-spacing=".5">SLIM GUARD</text>
+
+  <rect x="55" y="126" width="52" height="4" fill="#ff5a1f"/>
+  <text x="55" y="168" class="sans muted" font-size="18" font-weight="700" letter-spacing="1.5">冻结的 12 工具 / 24 任务基准</text>
+
+  <text x="55" y="348" class="sans white" font-size="154" font-weight="700" letter-spacing="-8">76.18</text>
+  <text x="430" y="348" class="sans orange" font-size="105" font-weight="700" letter-spacing="-4">%</text>
+  <text x="58" y="405" class="sans white" font-size="35" font-weight="700" letter-spacing="1">更少正常路径 TOKEN</text>
+  <text x="58" y="471" class="sans muted" font-size="18" font-weight="700" letter-spacing="1">少发 54,381 TOKEN</text>
+
+  <g aria-label="原始 MCP 与 Slim Guard 对比">
+    <text x="770" y="196" class="sans muted" font-size="15" font-weight="700" letter-spacing="1.2">原始 MCP</text>
+    <text x="1210" y="196" text-anchor="end" class="mono white" font-size="28" font-weight="700">71,388</text>
+    <line x1="770" y1="230" x2="1210" y2="230" stroke="#9ca1a4" stroke-width="18"/>
+
+    <text x="770" y="303" class="mono white" font-size="15" font-weight="700" letter-spacing="1.2">SLIM GUARD</text>
+    <text x="1210" y="303" text-anchor="end" class="mono orange" font-size="28" font-weight="700">17,007</text>
+    <line x1="770" y1="337" x2="875" y2="337" stroke="#ff5a1f" stroke-width="18"/>
+
+    <line x1="770" y1="408" x2="1210" y2="408" stroke="#282b2d"/>
+    <text x="770" y="449" class="mono muted" font-size="15" font-weight="700">o200k_base</text>
+    <text x="1210" y="449" text-anchor="end" class="sans muted" font-size="15" font-weight="700">无模型或 API 调用</text>
+  </g>
+
+  <text x="55" y="610" class="sans muted" font-size="15" font-weight="700" letter-spacing="1">冻结基准</text>
+  <line x1="315" y1="586" x2="315" y2="618" stroke="#666c6f"/>
+  <text x="1218" y="610" text-anchor="end" class="sans muted" font-size="14" font-weight="700" letter-spacing=".2">24/24 项任务 · 24 次上游调用 · 23/23 个超大结果精确恢复</text>
+</svg>

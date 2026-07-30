@@ -38,6 +38,10 @@ describe("buildCodexConfigPlan", () => {
         args: ["start", "--surface", "native"],
         cwd: projectRoot,
       },
+      preconditions: {
+        guardConfigPath: path.join(projectRoot, "mcp-slim-guard.yml"),
+        guardConfigExists: false,
+      },
       verification: {
         command: ["codex", "mcp", "list"],
       },
@@ -61,5 +65,18 @@ describe("buildCodexConfigPlan", () => {
 
     expect(plan.target).toMatchObject({ exists: true, slimGuardEntry: "present" });
     expect(JSON.stringify(plan)).not.toContain("do-not-report");
+  });
+
+  it("reports the generated Guard configuration as an installation precondition", () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "slim-guard-codex-plan-"));
+    temporaryDirectories.push(projectRoot);
+    fs.writeFileSync(path.join(projectRoot, "mcp-slim-guard.yml"), "version: 1\n");
+
+    const plan = buildCodexConfigPlan(projectRoot);
+
+    expect(plan.preconditions).toEqual({
+      guardConfigPath: path.join(projectRoot, "mcp-slim-guard.yml"),
+      guardConfigExists: true,
+    });
   });
 });

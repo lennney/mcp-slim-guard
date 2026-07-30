@@ -57,11 +57,26 @@ function projectionReportMetadata(report: ProjectionCallReport): Record<string, 
   };
 }
 
+function serializedCharacters(value: unknown): number | undefined {
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === "string" ? serialized.length : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function catalogCharacters(tools: Tool[]): number {
+  return tools.reduce((total, tool) => total + (serializedCharacters(tool) ?? 0), 0);
+}
+
 interface ForwardTraceState {
   upstreamInvoked: boolean;
   auditFailed?: boolean;
   outcome?: "success" | "blocked" | "invalid_request" | "cache_hit" | "upstream_error" | "transport_error";
   reason?: string;
+  upstreamServerName?: string;
+  upstreamToolName?: string;
 }
 
 export type GuardSurface = "generic" | "native";
@@ -233,6 +248,16 @@ export class GuardProxy {
             this.native ? "native" : "projection",
             tools.length,
             visibleNames,
+            {
+              directCatalog: {
+                tools: this.fullTools.length,
+                characters: catalogCharacters(this.fullTools),
+              },
+              hostFacingCatalog: {
+                tools: tools.length,
+                characters: catalogCharacters(tools),
+              },
+            },
           );
           return {
             tools,
@@ -286,7 +311,14 @@ export class GuardProxy {
             traceId,
             event: "projection",
             outcome: delivered.observation?.outcome ?? "pass_through",
-            metadata: delivered.observation ? { capsule: delivered.observation, upstreamInvoked } : { upstreamInvoked },
+            metadata: {
+              ...(delivered.observation ? { capsule: delivered.observation } : {}),
+              upstreamInvoked,
+              upstreamServerName: route.serverName,
+              upstreamToolName: route.originalToolName,
+              upstreamResultChars: serializedCharacters(upstreamResult),
+              deliveredResultChars: serializedCharacters(delivered.result),
+            },
           },
         );
         if (auditRecorded) return delivered.result;
@@ -325,6 +357,10 @@ export class GuardProxy {
         }
 
         const { serverName, originalToolName } = resolved;
+        if (traceState) {
+          traceState.upstreamServerName = serverName;
+          traceState.upstreamToolName = originalToolName;
+        }
         const validationTool = nativeRoute?.tool ?? this.fullTools.find((tool) => tool.name === prefixedName);
         if (!validationTool) {
           throw new McpError(ErrorCode.InternalError, `Catalog schema unavailable for Tool "${prefixedName}"`);
@@ -473,6 +509,7 @@ export class GuardProxy {
               upstreamInvoked: true,
               isError: callResult.isError === true,
               contentBlocks: callResult.content.length,
+              resultChars: serializedCharacters(callResult),
             },
           },
         );
@@ -648,13 +685,22 @@ export class GuardProxy {
                 traceId,
                 event: prefixedName === READ_RESULT ? "recovery" : "projection",
                 outcome: effectiveOutcome,
-                metadata: reloadPassThrough
-                  ? { upstreamInvoked: observed.report.upstreamInvoked, reloadRetiring: true }
-                  : {
-                      ...projectionReportMetadata(observed.report),
-                      upstreamInvoked:
-                        traceState.outcome === undefined ? observed.report.upstreamInvoked : traceState.upstreamInvoked,
-                    },
+                metadata: {
+                  ...(reloadPassThrough ? {} : projectionReportMetadata(observed.report)),
+                  upstreamInvoked:
+                    traceState.outcome === undefined ? observed.report.upstreamInvoked : traceState.upstreamInvoked,
+                  ...(reloadPassThrough ? { reloadRetiring: true } : {}),
+                  ...(traceState.upstreamServerName ? { upstreamServerName: traceState.upstreamServerName } : {}),
+                  ...(traceState.upstreamToolName ? { upstreamToolName: traceState.upstreamToolName } : {}),
+                  ...(observed.upstreamResult
+                    ? {
+                        upstreamResultChars: serializedCharacters(observed.upstreamResult),
+                        deliveredResultChars: serializedCharacters(
+                          reloadPassThrough ? observed.upstreamResult : observed.result,
+                        ),
+                      }
+                    : {}),
+                },
               },
             );
             if (!projectionAuditRecorded && observed.upstreamResult) {

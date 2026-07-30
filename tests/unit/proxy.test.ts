@@ -598,7 +598,7 @@ describe("GuardProxy", () => {
         traceId: "t_test",
         event: "upstream",
         outcome: "success",
-        metadata: { upstreamInvoked: true, isError: false, contentBlocks: 1 },
+        metadata: { upstreamInvoked: true, isError: false, contentBlocks: 1, resultChars: 43 },
       },
     ]);
   });

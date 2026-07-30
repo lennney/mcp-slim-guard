@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Slim Guard 如何交付 MCP 结果</title>
+  <desc id="desc">Slim Guard 原样转发参数，已授权的上游工具最多执行一次。可安全直通的结果保持不变；有损紧凑交付会保存一份不可变快照，read_result 读取快照时不会再次执行上游。</desc>
+  <defs>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#1a1d1f" stroke-width="1"/>
+    </pattern>
+    <g id="signal-muted">
+      <path d="M0 2h12l14 18M0 20h26M0 38h12l14-18M34 20h18" fill="none" stroke="#9ca1a4" stroke-width="3.5" stroke-linecap="square" stroke-linejoin="miter"/>
+      <rect x="26" y="16" width="8" height="8" fill="#9ca1a4"/>
+    </g>
+    <g id="signal-active">
+      <path d="M0 2h12l14 18M0 20h26M0 38h12l14-18" fill="none" stroke="#9ca1a4" stroke-width="3.5" stroke-linecap="square" stroke-linejoin="miter"/>
+      <rect x="26" y="16" width="8" height="8" fill="#ff5a1f"/>
+      <path d="M34 20h18" fill="none" stroke="#ff5a1f" stroke-width="3.5" stroke-linecap="square"/>
+    </g>
+    <style>
+      .sans { font-family: "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+      .mono { font-family: Consolas, "Noto Sans SC", "Microsoft YaHei", monospace; }
+      .white { fill: #f2f1ec; }
+      .muted { fill: #9ca1a4; }
+      .dim { fill: #666c6f; }
+      .orange { fill: #ff5a1f; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="640" fill="#08090a"/>
+  <rect width="1280" height="640" fill="url(#grid)" opacity=".34"/>
+  <line x1="48" y1="0" x2="48" y2="640" stroke="#1a1d1f"/>
+  <line x1="0" y1="568" x2="1280" y2="568" stroke="#282b2d"/>
+
+  <g transform="translate(55 13) scale(.18)" aria-label="Slim Guard 标志">
+    <path d="M112 152h82l82 104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M112 256h148" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square"/>
+    <path d="M112 360h82l82-104" fill="none" stroke="#9ca1a4" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M292 256h108" fill="none" stroke="#ff5a1f" stroke-width="28" stroke-linecap="square"/>
+    <rect x="260" y="240" width="32" height="32" fill="#ff5a1f"/>
+  </g>
+  <text x="147" y="70" class="sans white" font-size="26" font-weight="700" letter-spacing=".5">SLIM GUARD</text>
+
+  <rect x="55" y="126" width="52" height="4" fill="#ff5a1f"/>
+  <text x="55" y="168" class="sans muted" font-size="21" font-weight="700" letter-spacing="1.5">工具调用保持不变</text>
+  <text x="55" y="201" class="sans muted" font-size="21" font-weight="700" letter-spacing="1.5">结果少占上下文</text>
+
+  <text x="55" y="410" class="sans white" font-size="205" font-weight="700" letter-spacing="-10">
+    <tspan>1</tspan><tspan class="orange" letter-spacing="-4">×</tspan>
+  </text>
+  <text x="58" y="470" class="sans white" font-size="42" font-weight="700" letter-spacing="1">上游执行</text>
+  <text x="58" y="520" class="sans muted" font-size="18" font-weight="700" letter-spacing="1">参数原样转发</text>
+
+  <g aria-label="调用路径">
+    <text x="780" y="177" class="sans dim" font-size="13" font-weight="700" letter-spacing="1.4">01 / 调用</text>
+    <line x1="816" y1="233" x2="964" y2="233" stroke="#666c6f" stroke-width="2"/>
+    <line x1="1016" y1="233" x2="1164" y2="233" stroke="#666c6f" stroke-width="2"/>
+    <use href="#signal-muted" x="764" y="213"/>
+    <use href="#signal-active" x="964" y="213"/>
+    <use href="#signal-muted" x="1164" y="213"/>
+    <text x="790" y="280" text-anchor="middle" class="sans muted" font-size="14" font-weight="700">宿主</text>
+    <text x="990" y="280" text-anchor="middle" class="mono white" font-size="14" font-weight="700">SLIM GUARD</text>
+    <text x="1190" y="280" text-anchor="middle" class="sans muted" font-size="14" font-weight="700">已授权工具</text>
+  </g>
+
+  <g aria-label="结果交付路径">
+    <text x="780" y="340" class="sans dim" font-size="13" font-weight="700" letter-spacing="1.4">02 / 交付</text>
+    <line x1="816" y1="396" x2="964" y2="396" stroke="#666c6f" stroke-width="2"/>
+    <line x1="1016" y1="396" x2="1164" y2="396" stroke="#666c6f" stroke-width="2"/>
+    <use href="#signal-muted" x="764" y="376"/>
+    <use href="#signal-active" x="964" y="376"/>
+    <use href="#signal-muted" x="1164" y="376"/>
+    <text x="790" y="443" text-anchor="middle" class="sans muted" font-size="14" font-weight="700">上游结果</text>
+    <text x="990" y="443" text-anchor="middle" class="sans white" font-size="14" font-weight="700">紧凑交付</text>
+    <text x="1190" y="443" text-anchor="middle" class="mono muted" font-size="14" font-weight="700">AGENT</text>
+
+    <line x1="990" y1="414" x2="990" y2="493" stroke="#ff5a1f" stroke-width="2"/>
+    <circle cx="990" cy="493" r="4" fill="#ff5a1f"/>
+    <line x1="990" y1="493" x2="1190" y2="493" stroke="#666c6f" stroke-width="2"/>
+    <text x="990" y="530" text-anchor="middle" class="sans muted" font-size="13" font-weight="700">快照</text>
+    <text x="1190" y="499" text-anchor="middle" class="mono white" font-size="14" font-weight="700">read_result</text>
+    <text x="1190" y="530" text-anchor="middle" class="sans dim" font-size="12" font-weight="700">不再次执行上游</text>
+  </g>
+
+  <text x="55" y="610" class="sans muted" font-size="15" font-weight="700" letter-spacing="1">本地 · 可逆</text>
+  <line x1="315" y1="586" x2="315" y2="618" stroke="#666c6f"/>
+  <text x="1218" y="610" text-anchor="end" class="sans muted" font-size="14" font-weight="700" letter-spacing=".2">拿不准 → 原样交付 · 有损 → 保存快照 · 恢复 → 不重跑上游</text>
+</svg>

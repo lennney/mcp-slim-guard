@@ -25,6 +25,10 @@ export interface CodexConfigPlan {
     operation: "upsert";
     toml: string;
   };
+  preconditions: {
+    guardConfigPath: string;
+    guardConfigExists: boolean;
+  };
   verification: {
     command: ["codex", "mcp", "list"];
   };
@@ -38,6 +42,7 @@ function tomlString(value: string): string {
 export function buildCodexConfigPlan(projectRoot: string): CodexConfigPlan {
   const cwd = path.resolve(projectRoot);
   const targetPath = path.join(cwd, ".codex", "config.toml");
+  const guardConfigPath = path.join(cwd, "mcp-slim-guard.yml");
   const exists = fs.existsSync(targetPath);
   const current = exists ? fs.readFileSync(targetPath, "utf8") : "";
   const slimGuardEntry = /^\s*\[mcp_servers\.slim_guard\]\s*$/mu.test(current) ? "present" : "absent";
@@ -71,6 +76,10 @@ export function buildCodexConfigPlan(projectRoot: string): CodexConfigPlan {
     proposedChange: {
       operation: "upsert",
       toml,
+    },
+    preconditions: {
+      guardConfigPath,
+      guardConfigExists: fs.existsSync(guardConfigPath),
     },
     verification: {
       command: ["codex", "mcp", "list"],

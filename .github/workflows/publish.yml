@@ -46,6 +46,7 @@ jobs:
         shell: bash
         run: |
           npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/slim-guard-pack.json"
+          node scripts/candidate/verify-npm-package.mjs "$RUNNER_TEMP/slim-guard-pack.json"
           PACKAGE_FILE="$(jq -r '.[0].filename' "$RUNNER_TEMP/slim-guard-pack.json")"
           echo "path=$RUNNER_TEMP/$PACKAGE_FILE" >> "$GITHUB_OUTPUT"
       - name: Smoke exact tarball

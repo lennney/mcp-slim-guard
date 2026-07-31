@@ -5,12 +5,11 @@ numbers are intentionally omitted.
 
 ## [Unreleased]
 
-No public changes are queued beyond the `0.1.1-alpha.1` release candidate.
+No unreleased public changes.
 
-## [0.1.1-alpha.1] - Release candidate
+## [0.1.1-alpha.1] - 2026-07-31
 
-The accepted Alpha runtime is prepared for the npm `alpha` channel.
-Publication is pending.
+First self-service Alpha published to the npm `alpha` channel.
 
 ### Added
 

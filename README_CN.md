@@ -112,7 +112,7 @@ Claude Code 使用 `--host claude-code`。如果 Codex 项目没有可导入的 
 
 76.18% 只描述这组 fixture，不测量模型回答质量、供应商缓存或账单。
 
-复现：
+运行当前 fixture 门禁。上表保留为带日期的冻结快照：
 
 ```bash
 npm install

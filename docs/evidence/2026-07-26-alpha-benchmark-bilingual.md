@@ -23,7 +23,8 @@ provider caching, billing, or a universal savings rate.
 All oversized projection cases in the fixture reconstructed to the original
 MCP content. The upstream call count stayed equal to the task count.
 
-Reproduce from the repository:
+Run the current fixture gate from the repository. The totals above remain the
+dated frozen snapshot:
 
 ```bash
 npm run build
@@ -46,7 +47,7 @@ Slim Guard 完成了这组冻结的中英文 MCP 协议任务，并保持每项�
 
 所有超大投影用例都恢复到了原始 MCP 内容，上游调用次数与任务数保持一致。
 
-复现：
+运行当前 fixture 门禁。上面的总数保留为带日期的冻结快照：
 
 ```bash
 npm run build

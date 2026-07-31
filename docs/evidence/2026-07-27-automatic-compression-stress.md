@@ -18,7 +18,8 @@ full read reconstructed content with the same SHA-256 as the direct result.
 This is a synthetic stress bound, not an expected savings rate. It does not
 measure provider billing, caching, model quality, or typical production data.
 
-Reproduce without a model or remote API:
+Run the current stress fixture without a model or remote API. The totals above
+remain the dated snapshot:
 
 ```bash
 npm run bench:stress

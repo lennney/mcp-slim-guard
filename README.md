@@ -118,7 +118,8 @@ tasks. It counts tokens with `o200k_base` and makes no model or API calls. All
 The 76.18% reduction applies to this fixture. It does not measure model answer
 quality, provider caching, or billing.
 
-Reproduce it:
+Run the current fixture gate. The table above remains the dated frozen
+snapshot:
 
 ```bash
 npm install

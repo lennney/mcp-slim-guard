@@ -39,6 +39,17 @@ import {
   usesSecureProjection,
 } from "./secure-projection.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { buildAnalyzeReport } from "./analyze.js";
+import { buildCodexConfigPlan } from "./codex-config-plan.js";
+import { buildClaudeConfigPlan } from "./claude-config-plan.js";
+import { buildRuntimeProfile, parseAuditLog, type RuntimeProfileReport } from "./profile.js";
+import { buildHostInstallationSpec } from "./host-installation.js";
+import {
+  installTransaction,
+  rollbackTransaction,
+  type InstallationHost,
+  type InstallationTransactionRecord,
+} from "./installation-transaction.js";
 
 interface AuditDisplayEntry {
   timestamp?: string;
@@ -78,6 +89,86 @@ function formatAuditEntry(entry: AuditDisplayEntry, compact = false): string {
   const duration = entry.durationMs !== undefined ? ` (${entry.durationMs}ms)` : "";
   const reason = entry.reason ? ` — ${entry.reason}` : "";
   return `${auditIcon(entry)} [${timestamp ?? "?"}]${trace}${request} ${location ?? "?"} → ${stage}${outcome}${duration}${reason}`;
+}
+
+function formatProfileSize(label: string, value: { characters: number; estimatedTokens: number }): void {
+  console.log(
+    `  ${label}: ${value.characters.toLocaleString()} chars (~${value.estimatedTokens.toLocaleString()} est. tokens)`,
+  );
+}
+
+function displayRuntimeProfile(report: RuntimeProfileReport): void {
+  console.log("Slim Guard runtime profile (latest segment)\n");
+  console.log(`  Coverage: ${report.segment.coverage}`);
+  console.log(`  Lifecycle: ${report.segment.lifecycle.join(" -> ") || "unknown"}`);
+  if (report.catalog.direct) {
+    formatProfileSize("Direct catalog", report.catalog.direct);
+    console.log(`    Tools: ${report.catalog.direct.tools}`);
+  } else {
+    console.log("  Direct catalog: unknown");
+  }
+  if (report.catalog.hostFacing) {
+    formatProfileSize("Host-facing catalog", report.catalog.hostFacing);
+    console.log(`    Tools: ${report.catalog.hostFacing.tools}`);
+  } else {
+    console.log("  Host-facing catalog: unknown");
+  }
+  console.log(
+    `  Results observed: ${report.delivery.observedResults} (${report.delivery.measuredResults} fully measured)`,
+  );
+  formatProfileSize("Upstream result payload", report.delivery.upstream);
+  formatProfileSize("Host-delivered result payload", report.delivery.host);
+  console.log(
+    `  Outcomes: projected ${report.delivery.outcomes.projected}, pass-through ${report.delivery.outcomes.pass_through}, fail-open ${report.delivery.outcomes.fail_open}`,
+  );
+  console.log(
+    `  Recovery: verified at delivery ${report.recovery.verifiedAtDelivery}, fully read ${report.recovery.fullyRead}, evicted ${report.recovery.evicted}, unknown ${report.recovery.unknown}`,
+  );
+  if (report.delivery.largestSources.length > 0) {
+    console.log("  Largest result sources:");
+    for (const source of report.delivery.largestSources) {
+      console.log(
+        `    ${source.serverName}:${source.toolName} (${source.results} result(s), ${source.upstream.characters.toLocaleString()} -> ${source.host.characters.toLocaleString()} chars)`,
+      );
+    }
+  }
+  console.log("  Unknown: Host-to-model input, provider billing, repeated-payload savings, durable recovery");
+  if (report.audit.reasons.length > 0) console.log(`  Coverage notes: ${report.audit.reasons.join(", ")}`);
+}
+
+function installationSummary(
+  record: InstallationTransactionRecord,
+  mode: "installed" | "rolled_back",
+  status: "installed" | "rolled_back" | "already_rolled_back" = mode,
+): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    kind: "mcp-slim-guard/installation",
+    mode,
+    status,
+    host: record.host,
+    targetPath: record.targetPath,
+    transactionId: record.transactionId,
+    transactionRecord: record.recordPath,
+    backup: record.backupPath
+      ? { created: true, path: record.backupPath }
+      : { created: false, reason: "target_absent" },
+    beforeSha256: record.beforeSha256,
+    afterSha256: record.afterSha256,
+    validation: mode === "installed" ? "passed" : "restored_exact_before_sha256",
+    writesPerformed: mode === "installed" || status === "rolled_back" ? 1 : 0,
+  };
+}
+
+function displayInstallation(summary: Record<string, unknown>): void {
+  const mode = summary.mode === "installed" ? "Installed" : "Rolled back";
+  console.log(`✓ ${mode} ${String(summary.host)} configuration`);
+  console.log(`  Target: ${String(summary.targetPath)}`);
+  console.log(`  Transaction: ${String(summary.transactionRecord)}`);
+  const backup = summary.backup as { created?: boolean; path?: string; reason?: string };
+  console.log(`  Backup: ${backup.created ? backup.path : (backup.reason ?? "not created")}`);
+  if (summary.status === "already_rolled_back") console.log("  Status: already rolled back");
+  else console.log(`  Validation: ${String(summary.validation)}`);
 }
 
 /**
@@ -225,6 +316,134 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     .name("mcp-slim-guard")
     .version(VERSION)
     .description("MCP context compression runtime — compress what agents see, preserve what tools do");
+
+  program
+    .command("plan")
+    .description("Generate a Host configuration plan without writing it")
+    .addOption(new Option("--host <host>", "Target Host").choices(["codex", "claude-code"]).makeOptionMandatory())
+    .action((options: { host: "codex" | "claude-code" }) => {
+      const plan =
+        options.host === "codex" ? buildCodexConfigPlan(process.cwd()) : buildClaudeConfigPlan(process.cwd());
+      console.log(JSON.stringify(plan, null, 2));
+    });
+
+  program
+    .command("install")
+    .description("Apply one bounded Host configuration transaction with a pre-write backup")
+    .addOption(new Option("--host <host>", "Target Host").choices(["codex", "claude-code"]).makeOptionMandatory())
+    .option("--json", "Emit machine-readable transaction evidence")
+    .action((options: { host: InstallationHost; json?: boolean }) => {
+      const cwd = process.cwd();
+      try {
+        const spec = buildHostInstallationSpec(cwd, options.host);
+        if (!spec.plan.preconditions.guardConfigExists) {
+          throw new Error(
+            `Guard configuration not found at ${spec.plan.preconditions.guardConfigPath}. Run 'mcp-slim-guard init' first.`,
+          );
+        }
+        const result = installTransaction(spec);
+        const summary = installationSummary(result.record, "installed");
+        if (options.json) console.log(JSON.stringify(summary, null, 2));
+        else displayInstallation(summary);
+      } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : "Installation failed."}`);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("rollback")
+    .description("Restore the recorded Host configuration if it has not changed")
+    .addOption(new Option("--host <host>", "Expected recorded Host").choices(["codex", "claude-code"]))
+    .option("--json", "Emit machine-readable transaction evidence")
+    .action((options: { host?: InstallationHost; json?: boolean }) => {
+      try {
+        const result = rollbackTransaction(process.cwd(), options.host);
+        const summary = installationSummary(result.record, "rolled_back", result.status);
+        if (options.json) console.log(JSON.stringify(summary, null, 2));
+        else displayInstallation(summary);
+      } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : "Rollback failed."}`);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("analyze")
+    .description("Inspect an MCP catalog without changing configuration or invoking Tools")
+    .action(async () => {
+      const cwd = process.cwd();
+      const mcpConfigPath = ConfigLoader.discoverMCPConfig(cwd);
+      if (!mcpConfigPath) {
+        console.error("Error: No MCP configuration file found.");
+        process.exit(1);
+        return;
+      }
+
+      const config = ConfigLoader.generateGuardConfig(mcpConfigPath);
+      const manager = new ServerManager(config.servers);
+      try {
+        const startReport = await manager.start();
+        const directTools = manager.getTools();
+        const slimGuardTools = projectToolsForDisplay(directTools, config);
+        console.log(JSON.stringify(buildAnalyzeReport(startReport, directTools, slimGuardTools), null, 2));
+      } finally {
+        await manager.stop();
+      }
+    });
+
+  program
+    .command("profile")
+    .description("Read bounded runtime delivery evidence without invoking Tools")
+    .option("--last", "Read the latest runtime segment")
+    .option("--json", "Emit deterministic machine-readable JSON")
+    .action((options: { last?: boolean; json?: boolean }) => {
+      if (!options.last) {
+        console.error("Error: profile requires --last.");
+        process.exit(1);
+        return;
+      }
+
+      const cwd = process.cwd();
+      const config = ConfigLoader.findAndLoad(cwd);
+      if (!config) {
+        console.error("Error: mcp-slim-guard.yml not found. Run 'mcp-slim-guard init' first.");
+        process.exit(1);
+        return;
+      }
+      const auditConfig = config.audit;
+      if (!auditConfig || auditConfig.output !== "file") {
+        console.error("Error: profile requires audit output configured as a local file.");
+        process.exit(1);
+        return;
+      }
+
+      const logFile = path.resolve(cwd, auditConfig.filePath ?? "mcp-slim-guard-audit.log");
+      if (!fs.existsSync(logFile)) {
+        console.error(`Error: No audit log found at ${logFile}`);
+        process.exit(1);
+        return;
+      }
+
+      const parsed = parseAuditLog(fs.readFileSync(logFile, "utf-8"));
+      const maxFiles = auditConfig.maxFiles ?? 5;
+      const rotatedFiles = Array.from({ length: Math.max(0, maxFiles) }, (_, index) => index + 1).filter(
+        (index) => fs.existsSync(`${logFile}.${index}`) || fs.existsSync(`${logFile}.${index}.gz`),
+      ).length;
+      const report = buildRuntimeProfile(parsed.entries, {
+        parsedLines: parsed.parsedLines,
+        malformedLines: parsed.malformedLines,
+        rotatedFiles,
+      });
+      if (!report) {
+        console.error("Error: No runtime segment found in the audit log.");
+        process.exit(1);
+        return;
+      }
+
+      if (options.json) console.log(JSON.stringify(report, null, 2));
+      else displayRuntimeProfile(report);
+    });
 
   program
     .command("init")

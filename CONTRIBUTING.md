@@ -1,67 +1,104 @@
-# Contributing to mcp-slim-guard
+# Contributing to Slim Guard
 
-Thanks for your interest! This is a small but active project. Here's how to contribute effectively.
+Slim Guard is a reversible MCP result-delivery runtime. Contributions should
+preserve the upstream result, keep unauthorized Tools hidden, and avoid adding
+context cost without evidence.
 
-## Quick Start
+Bug reports, Host and Server compatibility results, documentation fixes, and
+focused code changes are welcome.
+
+## Set up the repository
 
 ```bash
 git clone https://github.com/lennney/mcp-slim-guard.git
 cd mcp-slim-guard
-npm install
+npm ci
 npm run build
-npm test              # 402 tests should pass
+npm test
 ```
 
-## Development
+Node.js 20 or later is required.
 
-### Commit Convention
+## Choose an issue
 
+- Search existing issues before starting work.
+- Use a bug report for reproducible product behavior.
+- Use a compatibility report for one Host and upstream MCP Server combination.
+- Use a feature request to describe a user problem before proposing a large
+  implementation.
+- Do not disclose vulnerability details in an issue. Follow
+  [SECURITY.md](SECURITY.md).
+
+For a large or breaking change, open an issue before writing the implementation.
+
+## Make a focused change
+
+- Start from the latest `main`.
+- Keep the pull request limited to one user-visible behavior.
+- Do not include credentials, private paths, result bodies, local artifacts,
+  workbench files, internal plans, research notes, or launch drafts.
+- Preserve existing public configuration, or describe the required migration
+  as a breaking change.
+- Avoid new production dependencies unless the change needs them.
+
+Use this commit format:
+
+```text
+feat|fix|refactor|docs|chore: short description
 ```
-type: description
 
-types: feat / fix / docs / chore / refactor / test / ci / perf
+## Verify the change
+
+Run the smallest checks that prove the behavior:
+
+```bash
+npm run typecheck
+npm run lint
+npm run format:check
+npm test -- <focused-test>
 ```
 
-- Lowercase description, no period at end
-- Scope optional: `fix(proxy): preserve extended-thinking blocks`
-- Pre-commit hooks (`husky` + `lint-staged`) auto-lint staged files
+Also run:
 
-### Before Submitting a PR
+- `npm run build` when generated JavaScript or package behavior matters;
+- `npm run smoke:protocol` for routing or stdio changes;
+- the relevant package smoke for package or installation changes.
 
-1. **Branch from latest `main`**: `git checkout main && git pull && git checkout -b type/description`
-2. **Keep it clean**: Only target files — no `AGENTS.md`, `HANDOVER.md`, `.hermes/`, or other workspace files
-3. **Run full pre-push check**:
-   ```bash
-   npm run build
-   npm test
-   npx tsc --noEmit
-   ```
-4. **Update CHANGELOG.md** if the change is user-facing
+Do not run benchmarks for an ordinary change. Run the relevant benchmark when
+the pull request changes a token, compression, latency, or accuracy claim.
+Maintainers run the full stable suite and frozen-candidate checks at the release
+boundary.
 
-### PR Workflow
+## Product invariants
 
-1. Open a **Draft PR** early for feedback
-2. Ensure CI passes (lint + build + 402 tests)
-3. Update PR body with verification results
-4. Mark ready for review when done
+A contribution must preserve these behaviors:
 
-## Code Style
+- stdout contains MCP protocol data only;
+- unauthorized Tools are absent from discovery and call paths;
+- one Slim Guard call executes the selected upstream Tool at most once;
+- pass-through delivery preserves the complete upstream result;
+- lossy delivery stores one immutable snapshot with an exact recovery
+  reference;
+- `read_result` never executes the upstream Tool;
+- delivery, storage, observer, or audit failure returns the exact upstream
+  result;
+- logs exclude credentials, arguments, result bodies, and raw capability
+  references by default.
 
-- TypeScript strict mode, zero `any`
-- 5 prod dependencies max (no new deps without discussion)
-- Each policy module independently testable (dependency injection)
-- Default: **fail-closed** (deny first)
+Authorization and policy rejection fail closed. Result-delivery failures fail
+open to the exact upstream result.
 
-## Testing
+## Open a pull request
 
-- `npm test` — full suite (vitest)
-- `npm run bench` — token/schema/latency/accuracy benchmarks
-- Tests live in `tests/`, mirroring `src/` structure
+Include:
 
-## Questions?
+- the user-visible behavior and reason for the change;
+- exact verification commands and results;
+- compatibility or migration notes;
+- a `CHANGELOG.md` entry for a user-visible change;
+- README updates for public CLI, API, or configuration changes.
 
-Open a [Discussion](https://github.com/lennney/mcp-slim-guard/discussions) or file an issue.
+Open a draft pull request when you want early feedback. Mark it ready when the
+focused checks pass and the description is complete.
 
-## Security
-
-See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+For usage questions, see [SUPPORT.md](SUPPORT.md).

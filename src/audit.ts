@@ -429,7 +429,14 @@ export class AuditLogger {
    * 记录 discovery 事件（tools/list）。
    * Agent 每次调用 tools/list 时记录，用于审计"Agent 看到了什么"。
    */
-  logDiscovery(sessionId: string, requestId: number, serverName: string, toolCount: number, toolNames: string[]): void {
+  logDiscovery(
+    sessionId: string,
+    requestId: number,
+    serverName: string,
+    toolCount: number,
+    toolNames: string[],
+    metadata: Record<string, unknown> = {},
+  ): void {
     const entry: AuditEntry = {
       timestamp: new Date().toISOString(),
       sessionId,
@@ -441,6 +448,7 @@ export class AuditLogger {
       decisionTrail: [],
       event: "discovery",
       outcome: "success",
+      ...(Object.keys(metadata).length > 0 ? { metadata: redactAuditValue(metadata) as Record<string, unknown> } : {}),
     };
 
     this.pushEntry(entry);

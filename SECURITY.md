@@ -1,42 +1,50 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-| Version | Supported |
-| ------- | --------- |
-| 0.x     | ✅        |
+| Version                  | Support     |
+| ------------------------ | ----------- |
+| Latest published release | Supported   |
+| Older prereleases        | Best effort |
 
-## Reporting a Vulnerability
+## Report a vulnerability
 
-mcp-slim-guard is a security tool — the safety of our users is our top priority.
+Do not disclose a vulnerability, exploit, credential, private path, or result
+body in a public issue.
 
-If you discover a security vulnerability, please **do NOT** file a public GitHub issue. Instead, send a description to:
+Use GitHub to
+[privately report a security vulnerability](https://github.com/lennney/mcp-slim-guard/security/advisories/new).
+Include the affected version, impact, reproduction steps, and a minimal
+proof of concept. Remove unrelated credentials, private paths, and result
+contents before submission.
 
-**GitHub Issues**: [github.com/lennney/mcp-slim-guard/issues](https://github.com/lennney/mcp-slim-guard/issues)  
-(use the "Security" label, or email the maintainer directly)
+## In scope
 
-We will:
+Security reports can include:
 
-1. Acknowledge receipt within 48 hours
-2. Investigate and provide a timeline for a fix
-3. Publish a security advisory once the fix is released
+- bypassing Tool authorization, discovery filtering, or call policy;
+- binding a call to the wrong upstream Server or Tool;
+- causing one Slim Guard call to execute upstream more than once;
+- reading another runtime generation's result snapshot;
+- recovering a result that differs from the stored upstream result;
+- exposing credentials, arguments, result bodies, or raw capability references
+  through logs or errors;
+- bypassing SSRF or parameter restrictions in a configured transport;
+- executing code through crafted configuration, Tool metadata, arguments, or
+  results.
 
-## Scope
+## Out of scope
 
-mcp-slim-guard is a security proxy that enforces policies between AI agents and MCP servers. The following are in scope for security reports:
+- vulnerabilities that exist only in an upstream MCP Server;
+- social engineering;
+- attacks that require physical access to the Slim Guard host;
+- benchmark differences that do not cross a security or data boundary.
 
-- Bypass of policy enforcement (allow/deny, SSRF, injection detection, rate limiting)
-- Audit log tampering or bypass
-- Remote code execution through crafted tool arguments
-- Information disclosure through error messages or logging
-- Authentication/authorization bypass in HTTP transport mode
-
-## Out of Scope
-
-- Vulnerabilities in upstream MCP servers (these are the user's responsibility to secure)
-- Social engineering of project maintainers
-- Attacks requiring physical access to the machine running mcp-slim-guard
+When a report is confirmed, the maintainer will coordinate remediation and
+public disclosure with the reporter. Response and release timing depend on the
+impact and available evidence.
 
 ## Recognition
 
-We maintain a list of security researchers who have helped improve mcp-slim-guard's security in our [CHANGELOG](./CHANGELOG.md).
+With the reporter's consent, confirmed contributions can be recognized in the
+release notes or `CHANGELOG.md`.

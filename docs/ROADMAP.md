@@ -34,4 +34,3 @@ Server combination.
 
 Compatibility reports and reproducible bugs are welcome through the public
 repository. A capability is added to this page only after it is released.
-

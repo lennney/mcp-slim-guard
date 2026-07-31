@@ -65,4 +65,3 @@ The public CLI provides a reversible local trial:
 
 Slim Guard does not compress conversation history, provider prompts, source
 files, or arbitrary application data. The Alpha release path is local stdio.
-

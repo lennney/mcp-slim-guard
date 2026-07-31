@@ -27,4 +27,3 @@ npm run bench:stress
 The benchmark uses the production delivery path and deterministic protocol
 accounting. Its implementation and fixtures in the public repository are the
 source of the reproducible result.
-

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="MCP Slim Guard" width="640">
+  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-lockup.svg" alt="MCP Slim Guard" width="640">
 </p>
 
 <p align="center"><strong>Cut MCP context before it reaches the agent.</strong></p>

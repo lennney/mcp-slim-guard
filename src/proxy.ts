@@ -1221,13 +1221,18 @@ export class GuardProxy {
     inFlightAtWait: number;
     drainDurationMs: number;
   }> {
-    const started = Date.now();
     const inFlightAtWait = this.inFlightToolCalls;
-    if (inFlightAtWait > 0) {
-      await new Promise<void>((resolve) => {
-        this.idleWaiters.add(resolve);
-      });
+    if (inFlightAtWait === 0) {
+      return {
+        inFlightAtWait,
+        drainDurationMs: 0,
+      };
     }
+
+    const started = Date.now();
+    await new Promise<void>((resolve) => {
+      this.idleWaiters.add(resolve);
+    });
     return {
       inFlightAtWait,
       drainDurationMs: Date.now() - started,

@@ -744,24 +744,30 @@ describe("GuardProxy", () => {
     const proxy = new GuardProxy(config, pipeline as never, audit as never, serverManager as never);
     await proxy.start({} as never);
     mockServerInstances[0].close.mockRejectedValue(new TypeError("downstream close failed"));
+    let now = 1_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now++);
 
-    await expect(proxy.stop()).resolves.toBeUndefined();
+    try {
+      await expect(proxy.stop()).resolves.toBeUndefined();
 
-    expect(serverManager.stop).toHaveBeenCalledTimes(1);
-    expect(audit.close).toHaveBeenCalledTimes(1);
-    const stopped = audit.log.mock.calls.find((call) => call[0].toolName === "runtime/stopped_degraded");
-    expect(stopped?.[6]).toEqual({
-      event: "lifecycle",
-      outcome: "degraded",
-      metadata: {
-        upstreamClosed: ["healthy"],
-        upstreamCloseFailures: [{ serverName: "broken", errorType: "Error" }],
-        downstreamErrorType: "TypeError",
-        invalidatedResults: 0,
-        inFlightAtWait: 0,
-        drainDurationMs: 0,
-      },
-    });
+      expect(serverManager.stop).toHaveBeenCalledTimes(1);
+      expect(audit.close).toHaveBeenCalledTimes(1);
+      const stopped = audit.log.mock.calls.find((call) => call[0].toolName === "runtime/stopped_degraded");
+      expect(stopped?.[6]).toEqual({
+        event: "lifecycle",
+        outcome: "degraded",
+        metadata: {
+          upstreamClosed: ["healthy"],
+          upstreamCloseFailures: [{ serverName: "broken", errorType: "Error" }],
+          downstreamErrorType: "TypeError",
+          invalidatedResults: 0,
+          inFlightAtWait: 0,
+          drainDurationMs: 0,
+        },
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   // -----------------------------------------------------------------------

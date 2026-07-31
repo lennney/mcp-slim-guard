@@ -8,21 +8,11 @@ Slim Guard becomes the only MCP Server entry exposed to the host. Its
 Run these commands from the project that contains the existing `.mcp.json`,
 `mcp.json`, `.cursor/mcp.json`, or `.vscode/mcp.json`:
 
-After the prerelease reaches the npm `alpha` channel, install it with:
+Install the Alpha from the npm `alpha` channel:
 
 ```bash
 npm install -g mcp-slim-guard@alpha
 ```
-
-Before publication, internal testers can install the previously accepted
-review tarball by its absolute path:
-
-```bash
-npm install -g /absolute/path/to/mcp-slim-guard-0.1.1-alpha.1.tgz
-```
-
-This tarball predates the current README revision. Freeze and verify a new
-release package before npm publication.
 
 Then initialize and validate the configuration:
 

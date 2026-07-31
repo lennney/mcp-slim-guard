@@ -18,7 +18,7 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
 | ---------: | ---------: | --------: | -------: |
 | **76.18%** | **54,381** | **24/24** |   **24** |
 
-<p align="center"><sub>0.1.1 Alpha 候选版 · 本地 stdio · Node.js 20+</sub></p>
+<p align="center"><sub>0.1.1 Alpha · 本地 stdio · Node.js 20+</sub></p>
 
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -62,9 +62,7 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
 
 ## 7 条命令开始试用
 
-> 自助候选版已通过独立验收。发布到 npm `alpha` 标签仍需单独执行发布操作。
-
-`alpha` 标签发布后：
+从 npm `alpha` 渠道安装 Alpha：
 
 ```bash
 npm install -g mcp-slim-guard@alpha
@@ -158,8 +156,9 @@ Token 从 499,556 降到 1,437。上游工具执行一次，完整恢复精确�
 | VS Code     | 仅配置预览 | Native 配置预览           | `.vscode/mcp.json`   |
 | OpenCode    | Alpha 后   | 尚未发布                  | 不适用               |
 
-已验收候选版通过公共 CLI 验证了 Codex 和 Claude Code 的安装与精确回滚，也验证了
-打包后的 Generic/Native 运行路径、恢复、协议 stdout 和审计隐私。
+发布门禁覆盖通过公共 CLI 安装 Codex 和 Claude Code 配置并精确回滚，也覆盖
+打包后的 Generic/Native 运行路径、恢复、协议 stdout 和审计隐私。最终 Tag
+对应的包必须在发布前通过这些检查。
 
 ## 试用与参与贡献
 

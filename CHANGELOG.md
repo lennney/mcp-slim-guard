@@ -5,6 +5,13 @@ numbers are intentionally omitted.
 
 ## [Unreleased]
 
+No public changes are queued beyond the `0.1.1-alpha.1` release candidate.
+
+## [0.1.1-alpha.1] - Release candidate
+
+The accepted Alpha runtime is prepared for the npm `alpha` channel.
+Publication is pending.
+
 ### Added
 
 - `analyze` reports the current MCP catalog cost without calling a Tool or
@@ -17,22 +24,6 @@ numbers are intentionally omitted.
   reading result bodies.
 - `rollback` restores the exact pre-install Host configuration and refuses to
   overwrite later edits.
-
-### Documentation
-
-- Updated contribution, support, issue, pull request, and security-reporting
-  guidance for the current Generic and Host-native product surfaces.
-- Added direct README entry points for bug reports, compatibility reports,
-  feature requests, and first contributions.
-- Moved development plans, research, launch drafts, and candidate acceptance
-  notes out of the public source tree.
-
-## [0.1.1-alpha.1] - 2026-07-28
-
-Accepted Alpha candidate for the npm `alpha` channel.
-
-### Added
-
 - An explicit Host-native surface through `start --surface native`. Verified
   Hosts see authorized original Tools plus `read_result`.
 - A model-selected Codex call and exact snapshot recovery through the native
@@ -80,6 +71,8 @@ Accepted Alpha candidate for the npm `alpha` channel.
 
 ### Fixed
 
+- Zero-work shutdown records a deterministic 0 ms drain duration across
+  platforms.
 - Invalid imported Tool arguments return `InvalidParams` without executing
   upstream.
 - Weak Tool candidates that only share generic schema vocabulary no longer
@@ -117,6 +110,15 @@ Accepted Alpha candidate for the npm `alpha` channel.
 - Unknown top-level Tool extension fields survive official SDK validation and
   catalog projection.
 - Stdio human logs stay off protocol stdout.
+
+### Documentation
+
+- Updated contribution, support, issue, pull request, and security-reporting
+  guidance for the current Generic and Host-native product surfaces.
+- Added direct README entry points for bug reports, compatibility reports,
+  feature requests, and first contributions.
+- Moved development plans, research, launch drafts, and candidate acceptance
+  notes out of the public source tree.
 
 ## [0.1.0] - 2026-07-22
 

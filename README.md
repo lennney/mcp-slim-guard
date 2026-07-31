@@ -19,7 +19,7 @@ most once.
 | --------------: | -------------: | --------------: | -------------: |
 |      **76.18%** |     **54,381** |       **24/24** |         **24** |
 
-<p align="center"><sub>0.1.1 Alpha candidate · local stdio · Node.js 20+</sub></p>
+<p align="center"><sub>0.1.1 Alpha · local stdio · Node.js 20+</sub></p>
 
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -67,10 +67,7 @@ most once.
 
 ## Get started (7 commands)
 
-> The self-service candidate passed independent acceptance. Publication to the
-> npm `alpha` tag still requires a separate release action.
-
-After the `alpha` tag is published:
+Install the Alpha from the npm `alpha` channel:
 
 ```bash
 npm install -g mcp-slim-guard@alpha
@@ -167,9 +164,10 @@ preserves `isError`, content order and types, `structuredContent`, `_meta`,
 | VS Code     | Preview only | Native configuration preview       | `.vscode/mcp.json`   |
 | OpenCode    | Post-Alpha   | Not released                       | N/A                  |
 
-The accepted candidate exercised Codex and Claude Code installation and exact
-rollback through the public CLI. It also exercised packaged Generic and Native
-runtime paths, recovery, protocol stdout, and audit privacy.
+The release gate covers Codex and Claude Code installation and exact rollback
+through the public CLI. It also covers packaged Generic and Native runtime
+paths, recovery, protocol stdout, and audit privacy. The exact tagged package
+must pass these checks before publication.
 
 ## Try Slim Guard and contribute
 

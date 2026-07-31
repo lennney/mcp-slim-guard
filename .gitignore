@@ -6,6 +6,7 @@ coverage/
 test-workspace/
 scripts/benchmark/results/
 .artifacts/
+docs/evidence/*.json
 
 # Generated test artifacts (from tsconfig declaration)
 tests/**/*.d.ts

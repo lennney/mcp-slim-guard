@@ -77,25 +77,10 @@ function executableVersion(executable) {
   }).trim();
 }
 
-function findOnPath(executable) {
-  try {
-    const command = process.platform === "win32" ? "where.exe" : "which";
-    return execFileSync(command, [executable], {
-      encoding: "utf8",
-      windowsHide: true,
-    })
-      .split(/\r?\n/u)
-      .find(Boolean);
-  } catch {
-    return undefined;
-  }
-}
-
 function resolveCompetitor() {
-  const configured = process.env.MCP_COMPRESSOR_BIN;
-  const executable = configured || findOnPath("mcp-compressor");
+  const executable = process.env.MCP_COMPRESSOR_BIN;
   if (!executable) {
-    throw new Error("mcp-compressor executable not found. Set MCP_COMPRESSOR_BIN to the official CLI executable.");
+    return undefined;
   }
   return {
     executable,
@@ -392,7 +377,8 @@ function reduction(reference, candidate) {
 async function main() {
   const competitor = resolveCompetitor();
   const profiles = {};
-  for (const profile of ["baseline", "mcp-compressor", "slim-guard"]) {
+  const requestedProfiles = competitor ? ["baseline", "mcp-compressor", "slim-guard"] : ["baseline", "slim-guard"];
+  for (const profile of requestedProfiles) {
     profiles[profile] = await runProfile(profile, competitor);
   }
   for (const slimResult of profiles["slim-guard"].filter((result) => result.exact_recovery)) {
@@ -405,6 +391,20 @@ async function main() {
   const summary = Object.fromEntries(
     Object.entries(profiles).map(([profile, results]) => [profile, summarize(results)]),
   );
+  const comparisons = {
+    slim_guard_vs_baseline_percent: reduction(summary.baseline.total_tokens, summary["slim-guard"].total_tokens),
+  };
+  if (summary["mcp-compressor"]) {
+    comparisons.mcp_compressor_vs_baseline_percent = reduction(
+      summary.baseline.total_tokens,
+      summary["mcp-compressor"].total_tokens,
+    );
+    comparisons.slim_guard_vs_mcp_compressor_percent = reduction(
+      summary["mcp-compressor"].total_tokens,
+      summary["slim-guard"].total_tokens,
+    );
+  }
+
   const report = {
     schema_version: 1,
     benchmark_date: "2026-07-26",
@@ -421,8 +421,12 @@ async function main() {
     },
     provenance: {
       fixture_sha256: createHash("sha256").update(fs.readFileSync(fixtureServer)).digest("hex"),
-      competitor: competitor.version,
-      competitor_compression: "medium",
+      ...(competitor
+        ? {
+            competitor: competitor.version,
+            competitor_compression: "medium",
+          }
+        : {}),
       node: process.version,
       platform: `${process.platform}-${process.arch}`,
     },
@@ -435,17 +439,7 @@ async function main() {
     })),
     profiles,
     summary,
-    comparisons: {
-      mcp_compressor_vs_baseline_percent: reduction(
-        summary.baseline.total_tokens,
-        summary["mcp-compressor"].total_tokens,
-      ),
-      slim_guard_vs_baseline_percent: reduction(summary.baseline.total_tokens, summary["slim-guard"].total_tokens),
-      slim_guard_vs_mcp_compressor_percent: reduction(
-        summary["mcp-compressor"].total_tokens,
-        summary["slim-guard"].total_tokens,
-      ),
-    },
+    comparisons,
   };
 
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");

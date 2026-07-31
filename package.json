@@ -64,7 +64,7 @@
     "bench:tokens": "node scripts/benchmark/tokens.mjs",
     "bench:result": "node scripts/benchmark/result-delivery.mjs",
     "bench:compression": "node scripts/benchmark/content-projection.mjs",
-    "bench:compression:verify": "node scripts/benchmark/verify-compression.mjs",
+    "bench:compression:verify": "node scripts/benchmark/complete-task.mjs && node scripts/benchmark/content-projection.mjs && node scripts/benchmark/automatic-stress.mjs && node scripts/benchmark/verify-compression.mjs",
     "bench:stress": "npm run build && node scripts/benchmark/automatic-stress.mjs",
     "bench:task": "node scripts/benchmark/complete-task.mjs",
     "bench:schema": "node scripts/benchmark/schema.mjs",

@@ -1,17 +1,19 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
+  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="MCP Slim Guard" width="640">
 </p>
 
 <p align="center"><strong>Cut MCP context before it reaches the agent.</strong></p>
 
 <p align="center">
-  <strong>76.18% fewer tokens</strong> in a frozen 12-Tool, 24-task fixture ·
-  same upstream call · exact recovery
+  <strong>76% fewer MCP tokens in our standard benchmark</strong><br>
+  <strong>Up to 99.7% in synthetic stress testing</strong><br>
+  Same upstream call. Exact recovery.
 </p>
 
-Slim Guard reduces Tool catalogs on the Generic surface and eligible oversized
-results on both surfaces. The Host receives less context. Slim Guard forwards
-selected arguments unchanged and executes the upstream Tool at most once.
+MCP Slim Guard reduces Tool catalogs on the Generic surface and eligible
+oversized results on both surfaces. The Host receives less context. MCP Slim
+Guard forwards selected arguments unchanged and executes the upstream Tool at
+most once.
 
 | Token reduction | Tokens removed | Tasks completed | Upstream calls |
 | --------------: | -------------: | --------------: | -------------: |

@@ -1,17 +1,18 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="Slim Guard" width="640">
+  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/5141b7c78c7d5a8c21151fcc5d17a1af209b87a0/docs/assets/slim-guard-lockup.svg" alt="MCP Slim Guard" width="640">
 </p>
 
 <p align="center"><strong>在 MCP 上下文进入 Agent 前压缩它。</strong></p>
 
 <p align="center">
-  冻结的 12 工具、24 任务基准中 <strong>少发 76.18% Token</strong> ·
+  <strong>标准基准中少发 76% MCP Token</strong><br>
+  <strong>合成压力测试中最高减少 99.7%</strong><br>
   上游调用不变 · 原始结果可精确恢复
 </p>
 
-Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减适合压缩的大型结果。
-宿主收到更少的上下文。Slim Guard 原样转发被选中工具的参数，上游工具最多执行
-一次。
+MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减适合压缩的大型
+结果。宿主收到更少的上下文。MCP Slim Guard 原样转发被选中工具的参数，上游
+工具最多执行一次。
 
 | Token 减少 | 少发 Token |  完成任务 | 上游调用 |
 | ---------: | ---------: | --------: | -------: |

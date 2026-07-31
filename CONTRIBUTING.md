@@ -4,6 +4,9 @@ Slim Guard is a reversible MCP result-delivery runtime. Contributions should
 preserve the upstream result, keep unauthorized Tools hidden, and avoid adding
 context cost without evidence.
 
+Bug reports, Host and Server compatibility results, documentation fixes, and
+focused code changes are welcome.
+
 ## Set up the repository
 
 ```bash

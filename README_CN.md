@@ -30,6 +30,7 @@ Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减适合
   <a href="#7-条命令开始试用">安装</a> ·
   <a href="#验证数据">验证</a> ·
   <a href="#宿主兼容矩阵">宿主</a> ·
+  <a href="#试用与参与贡献">贡献</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md">文档</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README.md">English</a>
 </p>
@@ -158,6 +159,22 @@ Token 从 499,556 降到 1,437。上游工具执行一次，完整恢复精确�
 
 已验收候选版通过公共 CLI 验证了 Codex 和 Claude Code 的安装与精确回滚，也验证了
 打包后的 Generic/Native 运行路径、恢复、协议 stdout 和审计隐私。
+
+## 试用与参与贡献
+
+欢迎提交贡献和真实兼容性报告。请把 Slim Guard 接到你正在使用的 Host 和 MCP
+Server，并记录准确版本、传输方式、结果形态和恢复结果。
+
+- 遇到可复现问题，请提交
+  [Bug 报告](https://github.com/lennney/mcp-slim-guard/issues/new?template=bug-report.md)。
+- 验证了新的 Host 与 Server 组合，请提交
+  [兼容性报告](https://github.com/lennney/mcp-slim-guard/issues/new?template=compatibility-report.yml)。
+- 希望增加一个聚焦的行为，请提交
+  [功能建议](https://github.com/lennney/mcp-slim-guard/issues/new?template=feature-request.md)
+  或直接发起 Pull Request。
+
+文档修正、结果形态 fixture 和 Host 兼容性测试都适合作为第一次贡献。开始前请阅读
+[贡献指南](https://github.com/lennney/mcp-slim-guard/blob/main/CONTRIBUTING.md)。
 
 ## 适合使用 · 适合跳过
 

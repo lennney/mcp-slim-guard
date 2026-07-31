@@ -22,6 +22,8 @@ numbers are intentionally omitted.
 
 - Updated contribution, support, issue, pull request, and security-reporting
   guidance for the current Generic and Host-native product surfaces.
+- Added direct README entry points for bug reports, compatibility reports,
+  feature requests, and first contributions.
 - Moved development plans, research, launch drafts, and candidate acceptance
   notes out of the public source tree.
 

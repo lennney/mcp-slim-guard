@@ -30,6 +30,7 @@ selected arguments unchanged and executes the upstream Tool at most once.
   <a href="#get-started-7-commands">Install</a> ·
   <a href="#proof">Proof</a> ·
   <a href="#host-compatibility-matrix">Hosts</a> ·
+  <a href="#try-slim-guard-and-contribute">Contribute</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md">Docs</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README_CN.md">中文</a>
 </p>
@@ -167,6 +168,25 @@ preserves `isError`, content order and types, `structuredContent`, `_meta`,
 The accepted candidate exercised Codex and Claude Code installation and exact
 rollback through the public CLI. It also exercised packaged Generic and Native
 runtime paths, recovery, protocol stdout, and audit privacy.
+
+## Try Slim Guard and contribute
+
+Contributions and real-world compatibility reports are welcome. Use Slim Guard
+with a Host and MCP Server you rely on, then share the exact versions,
+transport, result shape, and recovery outcome.
+
+- Found a reproducible problem? Open a
+  [bug report](https://github.com/lennney/mcp-slim-guard/issues/new?template=bug-report.md).
+- Tested a new Host and Server combination? Submit a
+  [compatibility report](https://github.com/lennney/mcp-slim-guard/issues/new?template=compatibility-report.yml).
+- Need a focused behavior change? Open a
+  [feature request](https://github.com/lennney/mcp-slim-guard/issues/new?template=feature-request.md)
+  or send a pull request.
+
+Documentation fixes, result-shape fixtures, and Host compatibility tests are
+useful first contributions. Read the
+[contribution guide](https://github.com/lennney/mcp-slim-guard/blob/main/CONTRIBUTING.md)
+before you start.
 
 ## When to use · When to skip
 

@@ -12,7 +12,7 @@ body:
     id: slim_guard_version
     attributes:
       label: Slim Guard version
-      placeholder: 0.1.1-alpha.1
+      placeholder: 0.1.1-alpha.2
     validations:
       required: true
   - type: input
@@ -22,6 +22,12 @@ body:
       placeholder: Codex CLI 0.145.0
     validations:
       required: true
+  - type: textarea
+    id: share_report
+    attributes:
+      label: Safe ShareReport
+      description: Prefilled by `mcp-slim-guard profile --open-report`. Do not add paths, arguments, result contents, or identifiers.
+      render: json
   - type: input
     id: server
     attributes:
@@ -55,7 +61,9 @@ body:
       options:
         - Small text
         - Large text
-        - Structured content
+        - JSON array
+        - Log-like text
+        - Structured or mixed content
         - Resource or resource link
         - Image or audio
         - Multi-block or unknown

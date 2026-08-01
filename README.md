@@ -19,7 +19,7 @@ most once.
 | --------------: | -------------: | --------------: | -------------: |
 |      **76.18%** |     **54,381** |       **24/24** |         **24** |
 
-<p align="center"><sub>0.1.1 Alpha · local stdio · Node.js 20+</sub></p>
+<p align="center"><sub>Current Alpha · local stdio · Node.js 20+</sub></p>
 
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -29,7 +29,7 @@ most once.
 </p>
 
 <p align="center">
-  <a href="#get-started-7-commands">Install</a> ·
+  <a href="#get-started-4-commands">Install</a> ·
   <a href="#proof">Proof</a> ·
   <a href="#host-compatibility-matrix">Hosts</a> ·
   <a href="#try-slim-guard-and-contribute">Contribute</a> ·
@@ -65,32 +65,25 @@ most once.
 - **Fail-open delivery** returns the exact upstream result when projection,
   storage, observation, or audit fails.
 
-## Get started (7 commands)
+## Get started (4 commands)
 
-Install the Alpha from the npm `alpha` channel:
+Install the current Alpha:
 
 ```bash
 npm install -g mcp-slim-guard@alpha
 cd /absolute/path/to/your-project
 
-# 1. Measure the current catalog. No writes and no Tool calls.
-mcp-slim-guard analyze
-
-# 2-3. Import upstream Servers and validate the Guard configuration.
+# 1. Import upstream Servers. No manual YAML editing required.
 mcp-slim-guard init
-mcp-slim-guard validate
 
-# 4. Preview the exact Host change. No writes.
-mcp-slim-guard plan --host codex
+# 2. Back up and install one Host configuration change.
+mcp-slim-guard install --host codex
 
-# 5. Back up, write, and validate one Host configuration change.
-mcp-slim-guard install --host codex --json
+# 3. Use MCP normally, then create a safe report for the latest runtime segment.
+mcp-slim-guard profile --share
 
-# 6. After normal Host calls, inspect local delivery evidence.
-mcp-slim-guard profile --last
-
-# 7. Restore the exact pre-install Host configuration.
-mcp-slim-guard rollback --host codex --json
+# 4. Restore the recorded pre-install Host configuration.
+mcp-slim-guard rollback
 ```
 
 Use `--host claude-code` for Claude Code. A Codex-only project with no supported
@@ -99,6 +92,21 @@ JSON MCP configuration must first create `mcp-slim-guard.yml` from the
 
 `install` creates a pre-write backup. `rollback` refuses to overwrite edits
 made after installation.
+
+`profile --share` prints a fixed, screenshot-ready report. It excludes paths,
+arguments, Tool and Server names, result contents, references, result or call
+identifiers, and billing estimates. Use `profile --open-report` to print the same evidence and
+open a prefilled compatibility Issue.
+
+<details>
+<summary><b>Advanced validation and troubleshooting</b></summary>
+
+Use `analyze` for a read-only catalog comparison, `plan --host ...` to preview
+the Host edit, and `validate`, `doctor`, or `status` for deeper checks.
+`profile` keeps the diagnostic view; `profile --json` emits its raw local
+profile JSON. The legacy `profile --last` spelling remains accepted.
+
+</details>
 
 ## Proof
 
@@ -158,12 +166,12 @@ preserves `isError`, content order and types, `structuredContent`, `_meta`,
 
 ## Host compatibility matrix
 
-| Host        | Alpha status | Surface                            | Configuration        |
-| ----------- | ------------ | ---------------------------------- | -------------------- |
-| Codex       | Supported    | Native preferred; Generic fallback | `.codex/config.toml` |
-| Claude Code | Supported    | Generic                            | `.mcp.json`          |
-| VS Code     | Preview only | Native configuration preview       | `.vscode/mcp.json`   |
-| OpenCode    | Post-Alpha   | Not released                       | N/A                  |
+| Host        | Current Alpha status | Surface                            | Configuration        |
+| ----------- | -------------------- | ---------------------------------- | -------------------- |
+| Codex       | Supported            | Native preferred; Generic fallback | `.codex/config.toml` |
+| Claude Code | Supported            | Generic                            | `.mcp.json`          |
+| VS Code     | Preview only         | Native configuration preview       | `.vscode/mcp.json`   |
+| OpenCode    | Not included         | Not released                       | N/A                  |
 
 The release gate covers Codex and Claude Code installation and exact rollback
 through the public CLI. It also covers packaged Generic and Native runtime
@@ -175,6 +183,10 @@ must pass these checks before publication.
 Contributions and real-world compatibility reports are welcome. Use Slim Guard
 with a Host and MCP Server you rely on, then share the exact versions,
 transport, result shape, and recovery outcome.
+
+Run `mcp-slim-guard profile --open-report` after the test to attach the safe,
+versioned evidence automatically. You only need to add the Server version,
+transport, result shape, and reproduction details.
 
 - Found a reproducible problem? Open a
   [bug report](https://github.com/lennney/mcp-slim-guard/issues/new?template=bug-report.md).
@@ -214,7 +226,7 @@ before you start.
 - A selected upstream Tool executes at most once.
 - Lossy delivery stores one immutable snapshot before returning `result_ref`.
 - `read_result` reads the snapshot without executing upstream.
-- Alpha recovery references belong to the current runtime generation.
+- Recovery references belong to the current runtime generation.
 
 </details>
 

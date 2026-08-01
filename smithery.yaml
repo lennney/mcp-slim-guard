@@ -10,5 +10,5 @@ startCommand:
   commandFunction:
     - npx
     - -y
-    - mcp-slim-guard
+    - mcp-slim-guard@alpha
     - start

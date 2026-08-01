@@ -18,7 +18,7 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
 | ---------: | ---------: | --------: | -------: |
 | **76.18%** | **54,381** | **24/24** |   **24** |
 
-<p align="center"><sub>0.1.1 Alpha · 本地 stdio · Node.js 20+</sub></p>
+<p align="center"><sub>当前 Alpha · 本地 stdio · Node.js 20+</sub></p>
 
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -28,7 +28,7 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
 </p>
 
 <p align="center">
-  <a href="#7-条命令开始试用">安装</a> ·
+  <a href="#4-条命令开始试用">安装</a> ·
   <a href="#验证数据">验证</a> ·
   <a href="#宿主兼容矩阵">宿主</a> ·
   <a href="#试用与参与贡献">贡献</a> ·
@@ -60,32 +60,25 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
 - **Result Capsule**保存原始内容，支持有边界的精确读取。
 - **Fail-open 交付**在投影、存储、观察或审计失败时返回准确的上游结果。
 
-## 7 条命令开始试用
+## 4 条命令开始试用
 
-从 npm `alpha` 渠道安装 Alpha：
+安装当前 Alpha：
 
 ```bash
 npm install -g mcp-slim-guard@alpha
 cd /absolute/path/to/your-project
 
-# 1. 测量当前目录，不写文件，也不调用工具。
-mcp-slim-guard analyze
-
-# 2-3. 导入上游 Server，并验证 Guard 配置。
+# 1. 导入上游 Server，不需要手工编辑 YAML。
 mcp-slim-guard init
-mcp-slim-guard validate
 
-# 4. 预览准确的宿主变更，不写文件。
-mcp-slim-guard plan --host codex
+# 2. 备份并安装一次宿主配置变更。
+mcp-slim-guard install --host codex
 
-# 5. 备份、写入并验证一次宿主配置变更。
-mcp-slim-guard install --host codex --json
+# 3. 正常使用 MCP，然后为最新运行 segment 生成安全报告。
+mcp-slim-guard profile --share
 
-# 6. 宿主正常调用后，检查本地交付证据。
-mcp-slim-guard profile --last
-
-# 7. 恢复安装前的准确宿主配置。
-mcp-slim-guard rollback --host codex --json
+# 4. 恢复事务记录中的安装前宿主配置。
+mcp-slim-guard rollback
 ```
 
 Claude Code 使用 `--host claude-code`。如果 Codex 项目没有可导入的 JSON MCP
@@ -95,6 +88,19 @@ Claude Code 使用 `--host claude-code`。如果 Codex 项目没有可导入的 
 
 `install` 在写入前创建备份。如果用户在安装后修改了目标文件，`rollback` 会
 拒绝覆盖。
+
+`profile --share` 输出固定、适合截图的报告，不包含路径、参数、工具或 Server
+名称、结果正文、引用、结果或调用标识符和账单估算。`profile --open-report` 会先
+输出同一份证据，再打开预填的兼容性 Issue。
+
+<details>
+<summary><b>高级验证与故障排查</b></summary>
+
+`analyze` 用于只读目录对比，`plan --host ...` 用于预览宿主修改，`validate`、
+`doctor` 和 `status` 用于深入检查。`profile` 保留诊断视图，`profile --json`
+输出原始本地 profile JSON；旧写法 `profile --last` 继续兼容。
+
+</details>
 
 ## 验证数据
 
@@ -149,12 +155,12 @@ Token 从 499,556 降到 1,437。上游工具执行一次，完整恢复精确�
 
 ## 宿主兼容矩阵
 
-| 宿主        | Alpha 状态 | 入口                      | 配置                 |
-| ----------- | ---------- | ------------------------- | -------------------- |
-| Codex       | 支持       | Native 优先；Generic 回退 | `.codex/config.toml` |
-| Claude Code | 支持       | Generic                   | `.mcp.json`          |
-| VS Code     | 仅配置预览 | Native 配置预览           | `.vscode/mcp.json`   |
-| OpenCode    | Alpha 后   | 尚未发布                  | 不适用               |
+| 宿主        | 当前 Alpha 状态 | 入口                      | 配置                 |
+| ----------- | --------------- | ------------------------- | -------------------- |
+| Codex       | 支持            | Native 优先；Generic 回退 | `.codex/config.toml` |
+| Claude Code | 支持            | Generic                   | `.mcp.json`          |
+| VS Code     | 仅配置预览      | Native 配置预览           | `.vscode/mcp.json`   |
+| OpenCode    | 未包含          | 尚未发布                  | 不适用               |
 
 发布门禁覆盖通过公共 CLI 安装 Codex 和 Claude Code 配置并精确回滚，也覆盖
 打包后的 Generic/Native 运行路径、恢复、协议 stdout 和审计隐私。最终 Tag
@@ -164,6 +170,9 @@ Token 从 499,556 降到 1,437。上游工具执行一次，完整恢复精确�
 
 欢迎提交贡献和真实兼容性报告。请把 Slim Guard 接到你正在使用的 Host 和 MCP
 Server，并记录准确版本、传输方式、结果形态和恢复结果。
+
+测试后运行 `mcp-slim-guard profile --open-report`，即可自动附上安全、带版本的
+证据。用户只需补充 Server 版本、传输方式、结果形态和复现步骤。
 
 - 遇到可复现问题，请提交
   [Bug 报告](https://github.com/lennney/mcp-slim-guard/issues/new?template=bug-report.md)。
@@ -200,7 +209,7 @@ Server，并记录准确版本、传输方式、结果形态和恢复结果。
 - 被选中的上游工具最多执行一次。
 - 有损交付先保存一份不可变快照，再返回 `result_ref`。
 - `read_result` 读取快照，不执行上游工具。
-- Alpha 的恢复引用只属于当前运行时世代。
+- 恢复引用只属于当前运行时世代。
 
 </details>
 

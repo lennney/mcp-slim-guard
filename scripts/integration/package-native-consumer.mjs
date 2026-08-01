@@ -53,6 +53,11 @@ async function recoverText(delivered) {
     });
     const chunk = page.content?.[0];
     assert.equal(chunk?.type, "text", "read_result did not return a text chunk");
+    assert.equal(
+      page.structuredContent?.chunk,
+      chunk.text,
+      "read_result did not expose the exact chunk to structured-only Hosts",
+    );
     recovered += chunk.text;
 
     const metadata = page.structuredContent;

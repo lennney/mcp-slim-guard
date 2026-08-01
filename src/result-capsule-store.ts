@@ -95,6 +95,10 @@ interface ResultChunkMetadata extends Record<string, unknown> {
   done: boolean;
 }
 
+interface ResultChunkStructuredContent extends ResultChunkMetadata {
+  chunk: string;
+}
+
 export type ResultDeliveryReason =
   | "within_budget"
   | "source_like"
@@ -790,12 +794,14 @@ export class ResultCapsuleStore {
       chunkChars: nextCursor - cursor,
     });
 
+    const chunk = stored.payload.slice(cursor, nextCursor);
+    const structuredContent: ResultChunkStructuredContent = { ...metadata, chunk };
     return {
       content: [
-        { type: "text", text: stored.payload.slice(cursor, nextCursor) },
+        { type: "text", text: chunk },
         { type: "text", text: JSON.stringify(metadata) },
       ],
-      structuredContent: metadata,
+      structuredContent,
     };
   }
 

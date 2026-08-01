@@ -7,6 +7,7 @@ RUN npm ci --ignore-scripts
 
 COPY tsconfig.json ./
 COPY src/ ./src/
+COPY scripts/build.mjs ./scripts/build.mjs
 RUN npm run build
 
 # ── Runtime stage ──
@@ -20,5 +21,5 @@ COPY --from=build --chown=mcp-slim-guard:mcp-slim-guard /app/dist ./dist
 COPY --from=build --chown=mcp-slim-guard:mcp-slim-guard /app/node_modules ./node_modules
 COPY --from=build --chown=mcp-slim-guard:mcp-slim-guard /app/package.json ./
 
-ENTRYPOINT ["node", "dist/cli.js"]
+ENTRYPOINT ["node", "/app/dist/cli.js"]
 CMD ["start"]

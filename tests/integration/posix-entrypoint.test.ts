@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import packageManifest from "../../package.json";
 
 describe("installed POSIX CLI entrypoint", () => {
   it.runIf(process.platform !== "win32")("starts when invoked through an npm-style symlink", () => {
@@ -17,7 +18,7 @@ describe("installed POSIX CLI entrypoint", () => {
         timeout: 5_000,
       });
 
-      expect(output.trim()).toBe("0.1.1-alpha.1");
+      expect(output.trim()).toBe(packageManifest.version);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

@@ -6,6 +6,7 @@ import {
   InstallationConflictError,
   installTransaction,
   installationTransactionPath,
+  readInstallationEvidence,
   rollbackTransaction,
 } from "../../src/installation-transaction.js";
 import { buildHostInstallationSpec } from "../../src/host-installation.js";
@@ -52,6 +53,7 @@ describe("installation transaction", () => {
     expect(installed.record.backupPath).not.toBeNull();
     expect(fs.readFileSync(installed.record.backupPath!, "utf8")).toBe(before);
     expect(fs.readFileSync(installationTransactionPath(project), "utf8")).not.toContain("SECRET");
+    expect(readInstallationEvidence(project)).toEqual({ host: "claude-code", rollback: "available" });
 
     const rolledBack = rollbackTransaction(project);
 
@@ -61,6 +63,27 @@ describe("installation transaction", () => {
       state: "rolled_back",
       beforeExisted: true,
     });
+    expect(readInstallationEvidence(project)).toEqual({ host: "claude-code", rollback: "completed" });
+  });
+
+  it("returns unknown evidence when no valid installation transaction exists", () => {
+    const project = tempProject();
+    expect(readInstallationEvidence(project)).toEqual({ host: "unknown", rollback: "unknown" });
+
+    fs.mkdirSync(path.dirname(installationTransactionPath(project)), { recursive: true });
+    fs.writeFileSync(installationTransactionPath(project), '{"host":"secret-host","targetPath":"C:/secret"}', "utf8");
+    expect(readInstallationEvidence(project)).toEqual({ host: "unknown", rollback: "unknown" });
+  });
+
+  it("does not trust a transaction that is not bound to the expected Host path", () => {
+    const project = tempProject();
+    installTransaction(jsonSpec(project, '{"mcpServers":{"slim_guard":true}}\n'));
+    const recordPath = installationTransactionPath(project);
+    const record = JSON.parse(fs.readFileSync(recordPath, "utf8")) as Record<string, unknown>;
+    record.targetPath = path.join(project, "private", "different.json");
+    fs.writeFileSync(recordPath, JSON.stringify(record), "utf8");
+
+    expect(readInstallationEvidence(project)).toEqual({ host: "unknown", rollback: "unknown" });
   });
 
   it("refuses to overwrite a later user edit during rollback", () => {

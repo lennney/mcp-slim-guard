@@ -13,7 +13,7 @@ import { Command, Option } from "commander";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as yaml from "js-yaml";
+import open from "open";
 import { ConfigLoader } from "./config-loader.js";
 import { VERSION } from "./version.js";
 import type { GuardConfig } from "./config-types.js";
@@ -43,9 +43,11 @@ import { buildAnalyzeReport } from "./analyze.js";
 import { buildCodexConfigPlan } from "./codex-config-plan.js";
 import { buildClaudeConfigPlan } from "./claude-config-plan.js";
 import { buildRuntimeProfile, parseAuditLog, type RuntimeProfileReport } from "./profile.js";
+import { prepareShareEvidence } from "./share-evidence.js";
 import { buildHostInstallationSpec } from "./host-installation.js";
 import {
   installTransaction,
+  readInstallationEvidence,
   rollbackTransaction,
   type InstallationHost,
   type InstallationTransactionRecord,
@@ -395,15 +397,11 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .command("profile")
     .description("Read bounded runtime delivery evidence without invoking Tools")
-    .option("--last", "Read the latest runtime segment")
+    .addOption(new Option("--last", "Legacy compatibility: read the latest runtime segment").hideHelp())
     .option("--json", "Emit deterministic machine-readable JSON")
-    .action((options: { last?: boolean; json?: boolean }) => {
-      if (!options.last) {
-        console.error("Error: profile requires --last.");
-        process.exit(1);
-        return;
-      }
-
+    .option("--share", "Print a privacy-safe report for sharing")
+    .option("--open-report", "Print safe evidence and open a prefilled compatibility Issue")
+    .action(async (options: { last?: boolean; json?: boolean; share?: boolean; openReport?: boolean }) => {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
@@ -441,8 +439,34 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         return;
       }
 
-      if (options.json) console.log(JSON.stringify(report, null, 2));
-      else displayRuntimeProfile(report);
+      if (!options.share && !options.openReport) {
+        if (options.json) console.log(JSON.stringify(report, null, 2));
+        else displayRuntimeProfile(report);
+        return;
+      }
+
+      const evidence = prepareShareEvidence({
+        profile: report,
+        installation: readInstallationEvidence(cwd),
+      });
+      if (options.json) console.log(JSON.stringify(evidence.report, null, 2));
+      else console.log(evidence.terminal);
+
+      if (options.openReport) {
+        if (!evidence.issueDraft.canOpen) {
+          console.error("Could not safely prefill the full Issue. Open the template and paste the report below:");
+          console.log(evidence.issueDraft.fallbackUrl);
+          console.log(evidence.issueDraft.fallbackBody);
+          return;
+        }
+        try {
+          await open(evidence.issueDraft.url);
+        } catch {
+          console.error("Could not open a browser. Open the template and paste the report below:");
+          console.log(evidence.issueDraft.fallbackUrl);
+          console.log(evidence.issueDraft.fallbackBody);
+        }
+      }
     });
 
   program
@@ -486,31 +510,15 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       const ymlPath = path.join(cwd, "mcp-slim-guard.yml");
-      const ymlContent = yaml.dump(guardConfig as unknown as Record<string, unknown>);
+      const ymlContent = ConfigLoader.serializeGeneratedConfig(guardConfig);
       fs.writeFileSync(ymlPath, ymlContent, "utf-8");
 
       const serverCount = Object.keys(guardConfig.servers).length;
-      const policyList = buildPolicyList(guardConfig);
 
       console.log("✅ Generated mcp-slim-guard.yml");
-      console.log(`   Servers: ${serverCount}`);
-      console.log(`   Policies: ${policyList.join(", ")}`);
-      console.log(`   SSRF: ${guardConfig.ssrf.mode}`);
-      console.log(`   Rate limit: ${guardConfig.rate_limit.default}`);
-      const auditOut = guardConfig.audit?.output ?? "file";
-      const auditPath = guardConfig.audit?.filePath ?? "mcp-slim-guard-audit.log";
-      const auditMax = guardConfig.audit?.maxSize ?? "10MB";
-      const auditFiles = guardConfig.audit?.maxFiles ?? 5;
-      const auditGzip = guardConfig.audit?.compress ? ", gzip" : "";
-      console.log(
-        `   Audit: ${auditOut}${auditOut === "file" ? ` (${auditPath}, maxSize: ${auditMax}, maxFiles: ${auditFiles}${auditGzip})` : ""}`,
-      );
-
-      if (usesSecureProjection(guardConfig.compressor)) {
-        console.log(`   Model interface: ${FIND_TOOL}, ${CALL_TOOL}, ${READ_RESULT}`);
-      } else {
-        console.log(`   Legacy compressor: ${guardConfig.compressor.level}`);
-      }
+      console.log(`   Imported servers: ${serverCount}`);
+      console.log(`   Config: ${ymlPath}`);
+      console.log("   Next: mcp-slim-guard install --host <codex|claude-code>");
     });
 
   program

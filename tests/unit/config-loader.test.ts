@@ -184,6 +184,39 @@ describe("ConfigLoader", () => {
 
       expect(() => ConfigLoader.generateGuardConfig(mcpJsonPath)).toThrow("must reference an environment variable");
     });
+
+    it("serializes generated config without defaults and restores the same effective config", () => {
+      fs.writeFileSync(
+        mcpJsonPath,
+        JSON.stringify({ mcpServers: { example: { command: "node", args: ["server.js"] } } }),
+      );
+      const generated = ConfigLoader.generateGuardConfig(mcpJsonPath);
+      const serialized = ConfigLoader.serializeGeneratedConfig(generated);
+      const document = yaml.load(serialized) as Record<string, unknown>;
+
+      expect(document).not.toHaveProperty("cache");
+      expect(document).not.toHaveProperty("audit");
+      expect(document.compressor).not.toHaveProperty("lazy_loading");
+      expect(document.compressor).not.toHaveProperty("lazy_budget");
+
+      fs.writeFileSync(guardYmlPath, serialized);
+      expect(ConfigLoader.loadGuardConfig(guardYmlPath)).toEqual(generated);
+    });
+
+    it("preserves non-default cache, audit, and lazy options", () => {
+      fs.writeFileSync(mcpJsonPath, JSON.stringify({ mcpServers: {} }));
+      const generated = ConfigLoader.generateGuardConfig(mcpJsonPath);
+      generated.cache.enabled = true;
+      generated.audit.maxFiles = 2;
+      generated.compressor.lazy_loading = true;
+      generated.compressor.lazy_budget = 3;
+
+      const document = yaml.load(ConfigLoader.serializeGeneratedConfig(generated)) as Record<string, unknown>;
+      expect(document).toHaveProperty("cache.enabled", true);
+      expect(document).toHaveProperty("audit.maxFiles", 2);
+      expect(document).toHaveProperty("compressor.lazy_loading", true);
+      expect(document).toHaveProperty("compressor.lazy_budget", 3);
+    });
   });
 
   describe("loadGuardConfig", () => {

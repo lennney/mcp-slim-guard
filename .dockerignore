@@ -1,0 +1,12 @@
+.git
+.github
+.husky
+.artifacts
+coverage
+dist
+node_modules
+test-workspace
+tests
+docs
+*.tgz
+*.log

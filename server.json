@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.lennney/mcp-slim-guard",
-  "description": "76% fewer MCP tokens in our standard benchmark. Same upstream call. Exact recovery.",
+  "description": "MCP context compression with 76.18% fewer normal-path tokens in a frozen standard benchmark. Same upstream call. Exact recovery.",
   "repository": {
     "url": "https://github.com/lennney/mcp-slim-guard",
     "source": "github"

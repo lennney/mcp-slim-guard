@@ -31,6 +31,7 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
   <a href="#4-条命令开始试用">安装</a> ·
   <a href="#验证数据">验证</a> ·
   <a href="#宿主兼容矩阵">宿主</a> ·
+  <a href="https://take-a-deep-breath0.com/zh/mcp-slim-guard">产品页</a> ·
   <a href="#试用与参与贡献">贡献</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md">文档</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README.md">English</a>

@@ -32,6 +32,7 @@ most once.
   <a href="#get-started-4-commands">Install</a> ·
   <a href="#proof">Proof</a> ·
   <a href="#host-compatibility-matrix">Hosts</a> ·
+  <a href="https://take-a-deep-breath0.com/en/mcp-slim-guard">Product page</a> ·
   <a href="#try-slim-guard-and-contribute">Contribute</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md">Docs</a> ·
   <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README_CN.md">中文</a>

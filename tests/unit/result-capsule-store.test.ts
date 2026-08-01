@@ -38,6 +38,17 @@ function reconstruct(capsule: Record<string, unknown>, payload: string): CallToo
 }
 
 describe("ResultCapsuleStore", () => {
+  it("includes the exact chunk in structured recovery content for structured-only Hosts", () => {
+    const store = new ResultCapsuleStore();
+    const original = "structured-host-recovery".repeat(2_000);
+    const delivered = store.capture({ content: [{ type: "text", text: original }] });
+    const resultRef = (delivered.structuredContent as { result_ref: string }).result_ref;
+
+    const page = store.read({ result_ref: resultRef, cursor: 0 });
+    const textChunk = (page.content[0] as { type: "text"; text: string }).text;
+    expect((page.structuredContent as { chunk: string }).chunk).toBe(textChunk);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -454,10 +465,12 @@ describe("ResultCapsuleStore", () => {
       cursor: 0,
       next_cursor: 24_000,
       done: false,
+      chunk: textChunk(page),
     });
+    const { chunk: _chunk, ...cursorMetadata } = metadata;
     expect(page.content[1]).toEqual({
       type: "text",
-      text: JSON.stringify(metadata),
+      text: JSON.stringify(cursorMetadata),
     });
     expect(page._meta).toBeUndefined();
   });

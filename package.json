@@ -1,6 +1,6 @@
 {
   "name": "mcp-slim-guard",
-  "version": "0.1.1-alpha.1",
+  "version": "0.1.1",
   "mcpName": "io.github.lennney/mcp-slim-guard",
   "description": "76% fewer MCP tokens in our standard benchmark. Same upstream call. Exact recovery.",
   "type": "module",
@@ -88,6 +88,7 @@
     "commander": "^13.1.0",
     "js-yaml": "^4.1.0",
     "micromatch": "^4.0.8",
+    "open": "^11.0.0",
     "pino": "^9.6.0"
   },
   "devDependencies": {

@@ -44,6 +44,11 @@ export interface RollbackResult {
   status: "rolled_back" | "already_rolled_back";
 }
 
+export interface InstallationEvidence {
+  host: InstallationHost | "unknown";
+  rollback: "available" | "completed" | "unknown";
+}
+
 export class InstallationConflictError extends Error {
   readonly code = "transaction_conflict";
 
@@ -345,4 +350,22 @@ export function rollbackTransaction(projectRoot: string, expectedHost?: Installa
 
 export function installationTransactionPath(projectRoot: string): string {
   return transactionRecordPath(projectRoot);
+}
+
+/**
+ * Read the small, privacy-safe part of the installation transaction that can
+ * appear in a share report. Invalid, absent, or legacy state is deliberately
+ * treated as unknown instead of exposing transaction details.
+ */
+export function readInstallationEvidence(projectRoot: string): InstallationEvidence {
+  try {
+    const record = readRecord(projectRoot);
+    assertRecordTarget(projectRoot, record);
+    return {
+      host: record.host,
+      rollback: record.state === "rolled_back" ? "completed" : "available",
+    };
+  } catch {
+    return { host: "unknown", rollback: "unknown" };
+  }
 }

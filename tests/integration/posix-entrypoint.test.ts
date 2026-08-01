@@ -17,7 +17,7 @@ describe("installed POSIX CLI entrypoint", () => {
         timeout: 5_000,
       });
 
-      expect(output.trim()).toBe("0.1.1-alpha.1");
+      expect(output.trim()).toBe("0.1.1");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

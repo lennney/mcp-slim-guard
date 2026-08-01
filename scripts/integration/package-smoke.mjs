@@ -535,6 +535,22 @@ servers:
   await client.close();
   client = undefined;
   const audit = verifyAuditTrace(path.join(runtimeDirectory, "audit.log"), match.tool_ref, capsule.result_ref);
+  const shareRun = run(process.execPath, [cli, "profile", "--share", "--json"], { cwd: runtimeDirectory });
+  const shareReport = JSON.parse(shareRun.stdout);
+  if (
+    shareReport.kind !== "mcp-slim-guard/share-report" ||
+    shareReport.calls?.upstreamExecutions !== 1 ||
+    shareReport.calls?.recoveryPageReads !== 1 ||
+    shareReport.delivery?.projected !== 1 ||
+    shareReport.recovery?.exactRecovery !== "verified"
+  ) {
+    throw new Error("Installed package did not produce the expected safe ShareReport");
+  }
+  for (const forbidden of ["fixture_marker", match.tool_ref, capsule.result_ref, runtimeDirectory]) {
+    if (shareRun.stdout.includes(forbidden)) {
+      throw new Error("Installed package ShareReport exposed non-allowlisted evidence");
+    }
+  }
 
   const nativeConsumerSource = path.join(repositoryRoot, "scripts", "integration", "package-native-consumer.mjs");
   const nativeConsumer = path.join(installDirectory, "package-native-consumer.mjs");
@@ -581,6 +597,7 @@ servers:
       projection: capsule.projection,
       upstream_calls: 1,
       audit,
+      share_report: shareReport,
       native,
       codex,
       uninstalled: true,

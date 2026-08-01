@@ -57,6 +57,10 @@ export interface RuntimeProfileReport {
       host: SizeEstimate;
     }>;
   };
+  calls: {
+    upstreamExecutions: number;
+    recoveryPageReads: number;
+  };
   recovery: {
     verifiedAtDelivery: number;
     fullyRead: number;
@@ -371,6 +375,10 @@ export function buildRuntimeProfile(
       outcomes,
       upstreamErrors: records.filter((item) => item.upstreamError).length,
       largestSources,
+    },
+    calls: {
+      upstreamExecutions: segmentEntries.filter((entry) => entry.event === "upstream").length,
+      recoveryPageReads: segmentEntries.filter((entry) => entry.event === "recovery").length,
     },
     recovery: buildRecovery(segmentEntries, records),
     audit: {

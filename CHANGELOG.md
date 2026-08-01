@@ -7,6 +7,42 @@ numbers are intentionally omitted.
 
 No unreleased public changes.
 
+## [0.1.1] - 2026-08-01
+
+Stable promotion of the self-service runtime after Codex and Claude Code Host
+acceptance. Runtime projection, Capsule recovery, and fail-open behavior are
+unchanged from the Alpha.
+
+### Added
+
+- `profile --share` produces one fixed, privacy-safe terminal report for the
+  latest runtime segment; `--json` emits the versioned safe report object.
+- `profile --open-report` opens the compatibility Issue Form with the same safe
+  evidence prefilled.
+- Package smoke coverage for the installed package's share-report path.
+
+### Changed
+
+- `profile` now reads the latest runtime segment by default. The legacy
+  `--last` option remains accepted but is no longer part of the primary path.
+- `init` emits a shorter behavior-equivalent configuration and directs users to
+  the next install command. Existing complete configurations remain supported.
+- The primary setup path is four Slim Guard commands with no manual YAML edit.
+
+### Compatibility notes
+
+- Share reports estimate serialized MCP result payload size; they do not claim
+  Host model-input, provider billing, or response-quality measurements.
+- Codex CLI 0.145.0 may terminate its MCP child without a graceful lifecycle
+  stop event. In that case profile coverage is reported as partial even when
+  delivery measurements and exact recovery evidence are complete.
+
+### Fixed
+
+- `read_result` now includes the exact page chunk in `structuredContent` so
+  Hosts that prefer structured MCP results can consume recovered content. The
+  existing raw text chunk and compact cursor metadata remain unchanged.
+
 ## [0.1.1-alpha.1] - 2026-07-31
 
 First self-service Alpha published to the npm `alpha` channel.

@@ -116,6 +116,46 @@ export class ConfigLoader {
   }
 
   /**
+   * Render the generated user configuration without repeating defaults that
+   * loadGuardConfig restores byte-for-byte in effective configuration.
+   */
+  static serializeGeneratedConfig(config: GuardConfig): string {
+    const compressor = { ...config.compressor };
+    if (compressor.lazy_loading === false) delete compressor.lazy_loading;
+    if (compressor.lazy_budget === 8) delete compressor.lazy_budget;
+
+    const rendered: Record<string, unknown> = {
+      version: config.version,
+      tools: config.tools,
+      ssrf: config.ssrf,
+      rate_limit: config.rate_limit,
+      injection_detection: config.injection_detection,
+      compressor,
+      servers: config.servers,
+    };
+
+    const defaultCache =
+      config.cache?.enabled === false &&
+      config.cache.ttl === 30 &&
+      config.cache.max_entries === 500 &&
+      config.cache.allow.length === 0 &&
+      config.cache.deny.length === 0 &&
+      config.cache.ttl_per_tool === undefined;
+    if (!defaultCache && config.cache) rendered.cache = config.cache;
+
+    const defaultAudit =
+      config.audit.output === "file" &&
+      config.audit.filePath === "mcp-slim-guard-audit.log" &&
+      config.audit.maxSize === "10MB" &&
+      config.audit.maxFiles === 5 &&
+      config.audit.compress === false &&
+      config.audit.maxMemoryEntries === undefined;
+    if (!defaultAudit) rendered.audit = config.audit;
+
+    return yaml.dump(rendered);
+  }
+
+  /**
    * 从 YAML 文件加载 GuardConfig。
    * 执行基础校验：必须是对象、版本必须为 1、必需字段存在。
    */

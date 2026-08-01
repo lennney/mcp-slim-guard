@@ -8,6 +8,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 
+const { mockOpen } = vi.hoisted(() => ({ mockOpen: vi.fn().mockResolvedValue(undefined) }));
+
+vi.mock("open", () => ({ default: mockOpen }));
+
 // ── Mock all CLI dependencies ──────────────────────────────────────────
 // NOTE: vi.mock() is hoisted to top. Factories execute when module loads.
 
@@ -21,6 +25,7 @@ vi.mock("../../src/config-loader.js", () => ({
     generateGuardConfig: vi.fn<(path: string) => Record<string, unknown>>(),
     loadGuardConfig: vi.fn<(path: string) => Record<string, unknown>>(),
     findAndLoad: vi.fn<(cwd: string) => Record<string, unknown> | null>(),
+    serializeGeneratedConfig: vi.fn<(config: Record<string, unknown>) => string>(),
   },
 }));
 
@@ -76,10 +81,6 @@ vi.mock("../../src/proxy.js", () => {
   return { GuardProxy };
 });
 
-vi.mock("js-yaml", () => ({
-  dump: vi.fn<(obj: unknown) => string>().mockReturnValue("version: 1"),
-}));
-
 vi.mock("node:fs", () => ({
   writeFileSync: vi.fn(),
   existsSync: vi.fn(),
@@ -107,6 +108,7 @@ const MockConfigLoader = ConfigLoaderModule as unknown as {
     generateGuardConfig: ReturnType<typeof vi.fn>;
     loadGuardConfig: ReturnType<typeof vi.fn>;
     findAndLoad: ReturnType<typeof vi.fn>;
+    serializeGeneratedConfig: ReturnType<typeof vi.fn>;
   };
 };
 
@@ -157,6 +159,10 @@ describe("CLI", () => {
     MockConfigLoader.ConfigLoader.generateGuardConfig.mockReset();
     MockConfigLoader.ConfigLoader.loadGuardConfig.mockReset();
     MockConfigLoader.ConfigLoader.findAndLoad.mockReset();
+    MockConfigLoader.ConfigLoader.serializeGeneratedConfig.mockReset();
+    MockConfigLoader.ConfigLoader.serializeGeneratedConfig.mockReturnValue("version: 1\n");
+    mockOpen.mockReset();
+    mockOpen.mockResolvedValue(undefined);
 
     // Reset GuardProxy mock
     vi.mocked(GuardProxy).mockClear();
@@ -297,7 +303,7 @@ describe("CLI", () => {
         ].join("\n"),
       );
 
-      await main(["node", "cli.js", "profile", "--last", "--json"]);
+      await main(["node", "cli.js", "profile", "--json"]);
 
       expect(MockConfigLoader.ConfigLoader.findAndLoad).toHaveBeenCalledWith(expect.any(String));
       expect(writeFileSync).not.toHaveBeenCalled();
@@ -310,6 +316,106 @@ describe("CLI", () => {
         segment: { coverage: "complete" },
         delivery: { observedResults: 1, upstream: { characters: 100 }, host: { characters: 100 } },
       });
+    });
+
+    it("prints one allowlisted share report without upstream calls or writes", async () => {
+      const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((candidate: string) =>
+        candidate.endsWith("mcp-guard-audit.log"),
+      );
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        [
+          { event: "lifecycle", outcome: "success", toolName: "runtime/starting", serverName: "system", requestId: 1 },
+          { event: "lifecycle", outcome: "success", toolName: "runtime/ready", serverName: "system", requestId: 2 },
+          {
+            event: "upstream",
+            outcome: "success",
+            toolName: "SECRET_TOOL",
+            serverName: "SECRET_SERVER",
+            traceId: "SECRET_ID",
+            requestId: 3,
+            arguments: { path: "C:/private" },
+            metadata: { resultChars: 400, upstreamToolName: "SECRET_UPSTREAM" },
+          },
+          {
+            event: "projection",
+            outcome: "projected",
+            toolName: "SECRET_TOOL",
+            serverName: "projection",
+            traceId: "SECRET_ID",
+            requestId: 4,
+            metadata: {
+              upstreamServerName: "SECRET_SERVER",
+              upstreamToolName: "SECRET_UPSTREAM",
+              upstreamResultChars: 400,
+              deliveredResultChars: 120,
+              capsule: { phase: "delivery", outcome: "projected", referenceId: "SECRET_REF" },
+            },
+          },
+          { event: "lifecycle", outcome: "success", toolName: "runtime/stopping", serverName: "system", requestId: 5 },
+          { event: "lifecycle", outcome: "success", toolName: "runtime/stopped", serverName: "system", requestId: 6 },
+        ]
+          .map((entry) =>
+            JSON.stringify({ sessionId: "SECRET_SESSION", action: "allowed", decisionTrail: [], ...entry }),
+          )
+          .join("\n"),
+      );
+
+      await main(["node", "cli.js", "profile", "--share", "--json"]);
+
+      const outputText = String(consoleLogSpy.mock.calls[0]?.[0]);
+      const output = JSON.parse(outputText) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        kind: "mcp-slim-guard/share-report",
+        scope: "latest-runtime-segment",
+        payload: { change: { kind: "reduction", percent: 70 } },
+        calls: { upstreamExecutions: 1, recoveryPageReads: 0 },
+      });
+      for (const forbidden of ["SECRET_TOOL", "SECRET_SERVER", "SECRET_ID", "SECRET_REF", "C:/private"]) {
+        expect(outputText).not.toContain(forbidden);
+      }
+      expect(writeFileSync).not.toHaveBeenCalled();
+      expect(mockManagerCallTool).not.toHaveBeenCalled();
+    });
+
+    it("opens a prefilled Issue after printing the safe terminal report", async () => {
+      const { existsSync, readFileSync } = await import("node:fs");
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((candidate: string) =>
+        candidate.endsWith("mcp-guard-audit.log"),
+      );
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        ["starting", "ready", "stopping", "stopped"]
+          .map((name, requestId) =>
+            JSON.stringify({
+              sessionId: "s",
+              requestId,
+              toolName: `runtime/${name}`,
+              serverName: "system",
+              action: "allowed",
+              decisionTrail: [],
+              event: "lifecycle",
+              outcome: "success",
+            }),
+          )
+          .join("\n"),
+      );
+
+      await main(["node", "cli.js", "profile", "--open-report"]);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("MCP Slim Guard Report"));
+      expect(mockOpen).toHaveBeenCalledOnce();
+      expect(String(mockOpen.mock.calls[0]?.[0])).toContain("compatibility-report.yml");
+
+      mockOpen.mockRejectedValueOnce(new Error("browser unavailable"));
+      await main(["node", "cli.js", "profile", "--open-report"]);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Could not open a browser. Open the template and paste the report below:",
+      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        "https://github.com/lennney/mcp-slim-guard/issues/new?template=compatibility-report.yml",
+      );
     });
   });
 
@@ -346,9 +452,10 @@ describe("CLI", () => {
 
       expect(MockConfigLoader.ConfigLoader.discoverMCPConfig).toHaveBeenCalledWith(expect.any(String));
       expect(MockConfigLoader.ConfigLoader.generateGuardConfig).toHaveBeenCalledWith("/fake/path/.mcp.json");
+      expect(MockConfigLoader.ConfigLoader.serializeGeneratedConfig).toHaveBeenCalledWith(MOCK_GUARD_CONFIG);
       expect(consoleLogSpy).toHaveBeenCalledWith("✅ Generated mcp-slim-guard.yml");
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Servers: 1"));
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Policies:"));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Imported servers: 1"));
+      expect(consoleLogSpy).toHaveBeenCalledWith("   Next: mcp-slim-guard install --host <codex|claude-code>");
     });
 
     it("prints error and exits 1 when no MCP config found", async () => {
@@ -517,7 +624,7 @@ describe("CLI", () => {
       await main(["node", "cli.js", "--version"]);
 
       // Commander writes version to stdout
-      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.1.1-alpha.1"));
+      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.1.1"));
     });
 
     it("shows help text with --help", async () => {

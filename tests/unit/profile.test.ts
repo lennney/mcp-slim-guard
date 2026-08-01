@@ -97,6 +97,7 @@ describe("runtime profile", () => {
         host: { characters: 160, estimatedTokens: 40 },
         outcomes: { projected: 1, pass_through: 1, fail_open: 0 },
       },
+      calls: { upstreamExecutions: 2, recoveryPageReads: 1 },
       recovery: { verifiedAtDelivery: 1, fullyRead: 1, evicted: 0, unknown: 0 },
       audit: { coverage: "complete", parsedLines: 9, malformedLines: 0 },
     });

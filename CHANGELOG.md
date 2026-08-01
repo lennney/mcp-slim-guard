@@ -7,11 +7,11 @@ numbers are intentionally omitted.
 
 No unreleased public changes.
 
-## [0.1.1] - 2026-08-01
+## [0.1.1-alpha.2] - 2026-08-02
 
-Stable promotion of the self-service runtime after Codex and Claude Code Host
-acceptance. Runtime projection, Capsule recovery, and fail-open behavior are
-unchanged from the Alpha.
+Second self-service Alpha after Codex and Claude Code Host acceptance. Runtime
+projection, Capsule recovery, and fail-open behavior are unchanged from the
+first Alpha except for the structured-only Host compatibility fix below.
 
 ### Added
 
@@ -89,7 +89,7 @@ First self-service Alpha published to the npm `alpha` channel.
   projection benchmark.
 - 640-case deterministic security accuracy corpus.
 - Exact-tarball pack, isolated install, stdio invocation, and uninstall smoke.
-- Reproducible 12-to-3 terminal demo and Alpha market-entry roadmap.
+- Reproducible 12-to-3 terminal demo.
 
 ### Changed
 

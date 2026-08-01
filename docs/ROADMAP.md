@@ -1,36 +1,26 @@
-# MCP Slim Guard Public Status
+# MCP Slim Guard Roadmap
 
-Updated: 2026-08-01
+MCP Slim Guard is focused on reducing MCP context while preserving the
+original upstream call and recoverable result.
 
-This page records released behavior. Unreleased architecture, prioritization,
-thresholds, and product sequencing are maintained privately until they ship.
+## Current public line
 
-## Published Alpha: `0.1.1-alpha.1`
+The current Alpha provides:
 
-The public Alpha includes:
+- Generic and Host-native MCP Tool surfaces;
+- conservative delivery for eligible oversized results;
+- pass-through for structured, mixed, error, and uncertain results;
+- immutable local snapshots and bounded exact recovery;
+- read-only assessment and delivery evidence;
+- reversible Host installation with conflict-safe rollback.
 
-- Generic `find_tool`, `call_tool`, and `read_result`;
-- a Host-native surface with authorized original Tools plus `read_result`;
-- deterministic catalog and eligible-result reduction;
-- at-most-once upstream execution and exact snapshot recovery;
-- pass-through of structured, mixed, error, schema-bound, and uncertain
-  results;
-- fail-open delivery if local optimization cannot complete safely;
-- read-only catalog assessment and local delivery profiling;
-- previewed, backed-up Host configuration installation and conflict-aware
-  rollback;
-- public setup paths for Codex and Claude Code, with VS Code configuration
-  preview only.
+## Direction
 
-The npm package is published on the `alpha` dist-tag. The primary release path
-is local stdio on Node.js 20 or newer.
+Near-term work stays focused on compatibility, recovery usability, packaging,
+and operational reliability. New capabilities are considered only when they
+preserve the same-call and exact-recovery contract and have reproducible user
+evidence.
 
-## Evidence boundary
-
-Public claims are limited to reproducible released fixtures and recorded
-compatibility smokes. They do not claim universal Token reduction, provider
-billing savings, model answer quality, or support for every Host and MCP
-Server combination.
-
-Compatibility reports and reproducible bugs are welcome through the public
-repository. A capability is added to this page only after it is released.
+This page is intentionally non-committal. It does not publish internal
+priorities, dates, thresholds, evaluation cases, implementation designs, or
+launch plans. It is updated after a public capability or support level changes.

@@ -29,7 +29,7 @@ vi.mock("../../src/config-loader.js", () => ({
   },
 }));
 
-vi.mock("../../src/index.js", () => ({
+vi.mock("../../src/version.js", () => ({
   VERSION: "0.1.1-alpha.1",
 }));
 

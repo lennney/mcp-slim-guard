@@ -19,7 +19,7 @@ most once.
 | --------------: | -------------: | --------------: | -------------: |
 |      **76.18%** |     **54,381** |       **24/24** |         **24** |
 
-<p align="center"><sub>0.1.1 Stable · local stdio · Node.js 20+</sub></p>
+<p align="center"><sub>Current Alpha · local stdio · Node.js 20+</sub></p>
 
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -67,10 +67,10 @@ most once.
 
 ## Get started (4 commands)
 
-Install the stable package:
+Install the current Alpha:
 
 ```bash
-npm install -g mcp-slim-guard@0.1.1
+npm install -g mcp-slim-guard@alpha
 cd /absolute/path/to/your-project
 
 # 1. Import upstream Servers. No manual YAML editing required.
@@ -166,12 +166,12 @@ preserves `isError`, content order and types, `structuredContent`, `_meta`,
 
 ## Host compatibility matrix
 
-| Host        | 0.1.1 status | Surface                            | Configuration        |
-| ----------- | ------------ | ---------------------------------- | -------------------- |
-| Codex       | Supported    | Native preferred; Generic fallback | `.codex/config.toml` |
-| Claude Code | Supported    | Generic                            | `.mcp.json`          |
-| VS Code     | Preview only | Native configuration preview       | `.vscode/mcp.json`   |
-| OpenCode    | Not in 0.1.1 | Not released                       | N/A                  |
+| Host        | Current Alpha status | Surface                            | Configuration        |
+| ----------- | -------------------- | ---------------------------------- | -------------------- |
+| Codex       | Supported            | Native preferred; Generic fallback | `.codex/config.toml` |
+| Claude Code | Supported            | Generic                            | `.mcp.json`          |
+| VS Code     | Preview only         | Native configuration preview       | `.vscode/mcp.json`   |
+| OpenCode    | Not included         | Not released                       | N/A                  |
 
 The release gate covers Codex and Claude Code installation and exact rollback
 through the public CLI. It also covers packaged Generic and Native runtime

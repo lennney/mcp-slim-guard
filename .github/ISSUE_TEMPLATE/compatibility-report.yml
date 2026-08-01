@@ -12,7 +12,7 @@ body:
     id: slim_guard_version
     attributes:
       label: Slim Guard version
-      placeholder: 0.1.1
+      placeholder: 0.1.1-alpha.2
     validations:
       required: true
   - type: input

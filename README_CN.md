@@ -18,7 +18,7 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
 | ---------: | ---------: | --------: | -------: |
 | **76.18%** | **54,381** | **24/24** |   **24** |
 
-<p align="center"><sub>0.1.1 Stable · 本地 stdio · Node.js 20+</sub></p>
+<p align="center"><sub>当前 Alpha · 本地 stdio · Node.js 20+</sub></p>
 
 <p align="center">
   <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -62,10 +62,10 @@ MCP Slim Guard 在 Generic 入口缩减工具目录，并在两个入口缩减�
 
 ## 4 条命令开始试用
 
-安装稳定版：
+安装当前 Alpha：
 
 ```bash
-npm install -g mcp-slim-guard@0.1.1
+npm install -g mcp-slim-guard@alpha
 cd /absolute/path/to/your-project
 
 # 1. 导入上游 Server，不需要手工编辑 YAML。
@@ -155,12 +155,12 @@ Token 从 499,556 降到 1,437。上游工具执行一次，完整恢复精确�
 
 ## 宿主兼容矩阵
 
-| 宿主        | 0.1.1 状态 | 入口                      | 配置                 |
-| ----------- | ---------- | ------------------------- | -------------------- |
-| Codex       | 支持       | Native 优先；Generic 回退 | `.codex/config.toml` |
-| Claude Code | 支持       | Generic                   | `.mcp.json`          |
-| VS Code     | 仅配置预览 | Native 配置预览           | `.vscode/mcp.json`   |
-| OpenCode    | 不在 0.1.1 | 尚未发布                  | 不适用               |
+| 宿主        | 当前 Alpha 状态 | 入口                      | 配置                 |
+| ----------- | --------------- | ------------------------- | -------------------- |
+| Codex       | 支持            | Native 优先；Generic 回退 | `.codex/config.toml` |
+| Claude Code | 支持            | Generic                   | `.mcp.json`          |
+| VS Code     | 仅配置预览      | Native 配置预览           | `.vscode/mcp.json`   |
+| OpenCode    | 未包含          | 尚未发布                  | 不适用               |
 
 发布门禁覆盖通过公共 CLI 安装 Codex 和 Claude Code 配置并精确回滚，也覆盖
 打包后的 Generic/Native 运行路径、恢复、协议 stdout 和审计隐私。最终 Tag

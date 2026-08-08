@@ -30,14 +30,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import * as http from "node:http";
 import micromatch from "micromatch";
-import { generateTools, whitelistFilter } from "./compressor.js";
-import {
-  CALL_TOOL,
-  FIND_TOOL,
-  READ_RESULT,
-  SecureProjectionKernel,
-  usesSecureProjection,
-} from "./secure-projection.js";
+import { authorizedTools } from "./authorized-catalog.js";
+import { CALL_TOOL, FIND_TOOL, READ_RESULT, SecureProjectionKernel } from "./secure-projection.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { buildAnalyzeReport } from "./analyze.js";
 import { buildCodexConfigPlan } from "./codex-config-plan.js";
@@ -45,6 +39,8 @@ import { buildClaudeConfigPlan } from "./claude-config-plan.js";
 import { buildRuntimeProfile, parseAuditLog, type RuntimeProfileReport } from "./profile.js";
 import { prepareShareEvidence } from "./share-evidence.js";
 import { buildHostInstallationSpec } from "./host-installation.js";
+import { assertClaudeInstallationMode, type GuardMode } from "./modes.js";
+import { verifyModeAcceptance, type ModeAcceptanceReport } from "./mode-acceptance.js";
 import {
   installTransaction,
   readInstallationEvidence,
@@ -173,6 +169,17 @@ function displayInstallation(summary: Record<string, unknown>): void {
   else console.log(`  Validation: ${String(summary.validation)}`);
 }
 
+function displayModeAcceptance(report: ModeAcceptanceReport, host: "codex" | "claude-code"): void {
+  console.log(`✓ ${modeDisplayName(report.mode)} runtime accepted for ${host}`);
+  console.log(
+    `  Upstream catalog: ${report.upstream.catalogTools} tools; authorized: ${report.upstream.authorizedTools}`,
+  );
+  console.log(`  Host surface: ${report.host.tools.join(", ")}`);
+  console.log("  Full-schema check: exact");
+  console.log("  Safety: 0 Host configuration writes; 0 upstream Tool calls");
+  console.log("  Result recovery: not run (verify never invokes a business Tool)");
+}
+
 /**
  * Build a human-readable list of enabled policy names from config.
  */
@@ -187,14 +194,6 @@ function buildPolicyList(config: GuardConfig): string[] {
   list.push("ratelimit");
   if (config.injection_detection.enabled) {
     list.push(`injection:${config.injection_detection.sensitivity ?? "medium"}`);
-  }
-  if (config.compressor?.enabled) {
-    if (usesSecureProjection(config.compressor)) {
-      list.push("compact-tools");
-    } else {
-      const lazy = config.compressor.lazy_loading ? "+lazy" : "";
-      list.push(`legacy-compressor:${config.compressor.level}${lazy}`);
-    }
   }
   return list;
 }
@@ -239,31 +238,27 @@ function computeSchemaStats(rawTools: Tool[], compressedTools: Tool[]): SchemaSt
   };
 }
 
-function displaySchemaStats(stats: SchemaStats): void {
-  console.log(`\n📊 MCP tool schema:`);
-  console.log(`  Tools: ${stats.totalTools} total`);
-  if (stats.fullSchemaTools > 0) console.log(`    ├─ Full schema:  ${stats.fullSchemaTools} (complete inputSchema)`);
-  if (stats.slimSchemaTools > 0)
-    console.log(`    ├─ Slim schema:  ${stats.slimSchemaTools} (name + desc, schema on demand)`);
-  if (stats.compactTools > 0)
-    console.log(`    └─ Compact:      ${stats.compactTools} (${FIND_TOOL}, ${CALL_TOOL}, ${READ_RESULT})`);
-  const estTokens = (chars: number) => Math.ceil(chars / 4);
-  console.log(
-    `\n  Characters: ${stats.rawChars.toLocaleString()} → ${stats.compressedChars.toLocaleString()} (${stats.reductionPct}% reduction)`,
-  );
-  console.log(
-    `  Est. tokens: ~${estTokens(stats.rawChars).toLocaleString()} → ~${estTokens(stats.compressedChars).toLocaleString()} (${stats.reductionPct}% reduction)`,
-  );
+function modeDisplayName(mode: GuardMode): "Native" | "Compact" | "Extreme" {
+  return mode === "native" ? "Native" : mode === "extreme" ? "Extreme" : "Compact";
 }
 
-function projectToolsForDisplay(rawTools: Tool[], config: GuardConfig): Tool[] {
-  const compressor = config.compressor ?? { enabled: false, level: "off" as const };
-  if (usesSecureProjection(compressor)) {
-    const visible =
-      config.tools.allow.length === 0 ? [] : whitelistFilter(config.tools.allow, config.tools.deny)(rawTools);
-    return new SecureProjectionKernel(visible).listTools();
-  }
-  return generateTools(rawTools, compressor, config.tools.allow, config.tools.deny);
+function displayModeCatalogStats(upstreamTools: Tool[], hostTools: Tool[], mode: GuardMode): void {
+  const estimatedTokens = (tools: Tool[]) =>
+    Math.ceil(tools.reduce((sum, tool) => sum + JSON.stringify(tool).length, 0) / 4);
+  console.log(`\n${modeDisplayName(mode)} MCP tool interface:`);
+  console.log(
+    `  Upstream catalog: ${upstreamTools.length} tools (~${estimatedTokens(upstreamTools)} estimated tokens)`,
+  );
+  console.log(`  Host-facing catalog: ${hostTools.length} tools (~${estimatedTokens(hostTools)} estimated tokens)`);
+}
+
+function projectToolsForDisplay(rawTools: Tool[], config: GuardConfig, mode: GuardMode = "compact"): Tool[] {
+  const visible = authorizedTools(
+    config.tools.allow.length === 0 ? [] : rawTools,
+    config.tools.allow,
+    config.tools.deny,
+  );
+  return mode === "native" ? visible : new SecureProjectionKernel(visible).listTools();
 }
 
 /**
@@ -317,27 +312,70 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .name("mcp-slim-guard")
     .version(VERSION)
-    .description("MCP context compression runtime — compress what agents see, preserve what tools do");
+    .description("Protected MCP tool access modes with recoverable result delivery");
 
   program
     .command("plan")
     .description("Generate a Host configuration plan without writing it")
     .addOption(new Option("--host <host>", "Target Host").choices(["codex", "claude-code"]).makeOptionMandatory())
-    .action((options: { host: "codex" | "claude-code" }) => {
-      const plan =
-        options.host === "codex" ? buildCodexConfigPlan(process.cwd()) : buildClaudeConfigPlan(process.cwd());
-      console.log(JSON.stringify(plan, null, 2));
+    .addOption(new Option("--mode <mode>", "Model-facing mode").choices(["compact", "native", "extreme"]))
+    .action((options: { host: "codex" | "claude-code"; mode?: GuardMode }) => {
+      try {
+        const plan =
+          options.host === "codex"
+            ? buildCodexConfigPlan(process.cwd(), options.mode ?? "native")
+            : (() => {
+                const mode = options.mode ?? "compact";
+                assertClaudeInstallationMode(mode);
+                return buildClaudeConfigPlan(process.cwd(), mode);
+              })();
+        console.log(JSON.stringify(plan, null, 2));
+      } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : "Could not create installation plan."}`);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("verify")
+    .description("Read-only check of one selected Host mode; never invokes an upstream Tool")
+    .addOption(new Option("--host <host>", "Target Host").choices(["codex", "claude-code"]).makeOptionMandatory())
+    .addOption(new Option("--mode <mode>", "Model-facing mode").choices(["compact", "native", "extreme"]))
+    .option("--json", "Emit machine-readable acceptance evidence")
+    .action(async (options: { host: "codex" | "claude-code"; mode?: GuardMode; json?: boolean }) => {
+      const cwd = process.cwd();
+      const config = ConfigLoader.findAndLoad(cwd);
+      if (!config) {
+        console.error("Error: mcp-slim-guard.yml not found. Run 'mcp-slim-guard init' first.");
+        process.exit(1);
+        return;
+      }
+      try {
+        const mode = options.mode ?? (options.host === "codex" ? "native" : "compact");
+        if (options.host === "claude-code") assertClaudeInstallationMode(mode);
+        const report = await verifyModeAcceptance(config, mode, {
+          manager: new ServerManager(config.servers),
+          pipeline: new PolicyPipeline(createPolicies(config)),
+          audit: new AuditLogger({ output: "stderr", level: "silent" }),
+        });
+        if (options.json) console.log(JSON.stringify({ ...report, host: options.host }, null, 2));
+        else displayModeAcceptance(report, options.host);
+      } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : "Mode verification failed."}`);
+        process.exit(1);
+      }
     });
 
   program
     .command("install")
     .description("Apply one bounded Host configuration transaction with a pre-write backup")
     .addOption(new Option("--host <host>", "Target Host").choices(["codex", "claude-code"]).makeOptionMandatory())
+    .addOption(new Option("--mode <mode>", "Model-facing mode").choices(["compact", "native", "extreme"]))
     .option("--json", "Emit machine-readable transaction evidence")
-    .action((options: { host: InstallationHost; json?: boolean }) => {
+    .action((options: { host: InstallationHost; mode?: GuardMode; json?: boolean }) => {
       const cwd = process.cwd();
       try {
-        const spec = buildHostInstallationSpec(cwd, options.host);
+        const spec = buildHostInstallationSpec(cwd, options.host, options.mode);
         if (!spec.plan.preconditions.guardConfigExists) {
           throw new Error(
             `Guard configuration not found at ${spec.plan.preconditions.guardConfigPath}. Run 'mcp-slim-guard init' first.`,
@@ -472,12 +510,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   program
     .command("init")
     .description("Auto-discover MCP config and generate mcp-slim-guard.yml")
-    .addOption(
-      new Option("--compressor [level]", "Legacy compatibility: override the automatic compact interface").hideHelp(),
-    )
-    .addOption(new Option("--lazy", "Legacy compatibility: enable lazy schema loading").hideHelp())
-    .addOption(new Option("--lazy-budget <n>", "Legacy compatibility: lazy schema budget").default("8").hideHelp())
-    .action((options: { compressor?: string; lazy?: boolean; lazyBudget?: string }) => {
+    .action(() => {
       const cwd = process.cwd();
       const mcpConfigPath = ConfigLoader.discoverMCPConfig(cwd);
 
@@ -491,23 +524,6 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       }
 
       const guardConfig = ConfigLoader.generateGuardConfig(mcpConfigPath);
-
-      // Apply compressor setting
-      if (options.compressor) {
-        if (options.compressor === "off") {
-          guardConfig.compressor = { enabled: false, level: "off" };
-        } else {
-          const level = options.compressor as "light" | "normal" | "extreme" | "maximum";
-          guardConfig.compressor = { enabled: true, level };
-        }
-      }
-
-      // Apply lazy loading
-      if (options.lazy) {
-        guardConfig.compressor.lazy_loading = true;
-        const budget = parseInt(options.lazyBudget ?? "8", 10);
-        if (!isNaN(budget)) guardConfig.compressor.lazy_budget = budget;
-      }
 
       const ymlPath = path.join(cwd, "mcp-slim-guard.yml");
       const ymlContent = ConfigLoader.serializeGeneratedConfig(guardConfig);
@@ -527,9 +543,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     .option("--http", "Use HTTP transport instead of STDIO")
     .option("--port <port>", "HTTP port (default: 3000)", "3000")
     .addOption(
-      new Option("--surface <surface>", "Model-facing Tool surface").choices(["generic", "native"]).default("generic"),
+      new Option("--mode <mode>", "Model-facing mode").choices(["compact", "native", "extreme"]).default("compact"),
     )
-    .action(async (options: { http?: boolean; port: string; surface: "generic" | "native" }) => {
+    .action(async (options: { http?: boolean; port: string; mode: GuardMode }) => {
       const cwd = process.cwd();
       const config = ConfigLoader.findAndLoad(cwd);
       if (!config) {
@@ -550,7 +566,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       const policies = createPolicies(config);
       const pipeline = new PolicyPipeline(policies);
       const proxy = new GuardProxy(config, pipeline, audit, serverManager, {
-        surface: options.surface,
+        mode: options.mode,
       });
 
       // Choose transport
@@ -569,12 +585,12 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       // Get tools for schema stats (serverManager already started by proxy.start)
       try {
         const startTools = serverManager.getTools();
-        if (startTools && startTools.length > 0 && config.compressor?.enabled && config.compressor.level !== "off") {
-          const compressed = projectToolsForDisplay(startTools, config);
-          const stats = computeSchemaStats(startTools, compressed);
+        if (startTools && startTools.length > 0) {
+          const modelTools = projectToolsForDisplay(startTools, config, options.mode);
+          const stats = computeSchemaStats(startTools, modelTools);
           const estTokens = (chars: number) => Math.ceil(chars / 4);
           runtimeLog(
-            `   ${serverCount} servers, ${stats.totalTools} tools (${estTokens(stats.compressedChars)} est. tokens, ${stats.reductionPct}% saved)`,
+            `   ${serverCount} servers; ${modeDisplayName(options.mode)} exposes ${stats.totalTools} host-facing tools (~${estTokens(stats.compressedChars)} estimated tokens)`,
           );
         }
       } catch {
@@ -775,13 +791,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       console.log(`   SSRF: ${config.ssrf.mode}`);
       console.log(`   Rate limit: ${config.rate_limit.default}`);
       console.log(`   Injection detection: ${config.injection_detection.enabled ? "enabled" : "disabled"}`);
-      if (usesSecureProjection(config.compressor)) {
-        console.log(`   Model interface: ${FIND_TOOL}, ${CALL_TOOL}, ${READ_RESULT}`);
-      } else if (config.compressor?.enabled && config.compressor.level !== "off") {
-        console.log(`   Legacy compressor: ${config.compressor.level}`);
-      } else {
-        console.log("   Compact interface: disabled by legacy config");
-      }
+      console.log("   Model modes: Native, Compact, Extreme (select with start --mode)");
       const auditOut = config.audit?.output ?? "file";
       const auditPath = config.audit?.filePath ?? "mcp-slim-guard-audit.log";
       const auditMax = config.audit?.maxSize ?? "10MB";
@@ -845,17 +855,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
             continue;
           }
 
-          const stats = computeSchemaStats(
-            tools,
-            config.compressor?.enabled && config.compressor.level !== "off"
-              ? projectToolsForDisplay(tools, config)
-              : tools,
-          );
+          const stats = computeSchemaStats(tools, projectToolsForDisplay(tools, config, "compact"));
           const estTokens = (chars: number) => Math.ceil(chars / 4);
-          const tokenInfo =
-            config.compressor?.enabled && config.compressor.level !== "off"
-              ? `, ${estTokens(stats.compressedChars)} est. tokens (${stats.reductionPct}% saved)`
-              : "";
+          const tokenInfo = `; Compact exposes ${stats.totalTools} host-facing tools (~${estTokens(stats.compressedChars)} estimated tokens)`;
           console.log(`✅ OK (${tools.length} tools${tokenInfo}: ${tools.map((t) => t.name).join(", ")})`);
           okCount++;
         } catch (err) {
@@ -895,22 +897,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         console.log("  ℹ️  Injection detection: disabled");
       }
 
-      // Compressor status
-      if (usesSecureProjection(config.compressor)) {
-        console.log(`  📦 Model interface: ${FIND_TOOL} → ${CALL_TOOL} → ${READ_RESULT}`);
-      } else if (config.compressor?.enabled && config.compressor.level !== "off") {
-        const lazyTag = config.compressor.lazy_loading ? " +lazy" : "";
-        const mode =
-          config.compressor.level === "extreme" || config.compressor.level === "maximum"
-            ? "schema transformation"
-            : "wrapper tools";
-        console.log(`  📦 Schema compressor: ${config.compressor.level}${lazyTag} (${mode})`);
-        if (config.compressor.lazy_loading) {
-          console.log(`     Lazy loading: budget=${config.compressor.lazy_budget ?? 8}`);
-        }
-      } else {
-        console.log("  ℹ️  Schema compressor: off");
-      }
+      console.log(
+        "  📦 Modes: Native (original tools), Compact (three tools), Extreme (Compact with smaller recoverable previews)",
+      );
 
       console.log(`\n🏁 Result: ${okCount} server(s) OK, ${failCount} failed`);
 
@@ -1029,11 +1018,10 @@ export async function main(argv: string[] = process.argv): Promise<void> {
         for (const t of allowed) console.log(`   ${t.prefixedName}`);
       }
 
-      // Schema stats (only when compressor is enabled)
-      if (config.compressor?.enabled && config.compressor.level !== "off" && allToolsRaw.length > 0) {
+      // Compact-mode catalog preview (the default public mode).
+      if (allToolsRaw.length > 0) {
         const compressedTools = projectToolsForDisplay(allToolsRaw, config);
-        const schemaStats = computeSchemaStats(allToolsRaw, compressedTools);
-        displaySchemaStats(schemaStats);
+        displayModeCatalogStats(allToolsRaw, compressedTools, "compact");
       }
 
       console.log(

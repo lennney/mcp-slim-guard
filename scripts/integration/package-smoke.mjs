@@ -406,12 +406,11 @@ try {
   WhitelistPolicy
 } from "mcp-slim-guard";
 const config = {
-  version: 1,
+  version: 2,
   tools: { allow: [], deny: [] },
   ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] },
   rate_limit: { default: "" },
   injection_detection: { enabled: false },
-  compressor: { enabled: false, level: "off" },
   servers: {}
 };
 const proxy = new GuardProxy(
@@ -419,7 +418,7 @@ const proxy = new GuardProxy(
   new PolicyPipeline([new WhitelistPolicy(config.tools)]),
   new AuditLogger({ output: "stderr", level: "silent" }),
   new ServerManager({}),
-  { surface: "native" }
+  { mode: "native" }
 );
 process.stdout.write(JSON.stringify({
   constructed: proxy.constructor.name === "GuardProxy",
@@ -445,7 +444,7 @@ process.stdout.write(JSON.stringify({
   fs.writeFileSync(fixture, fixtureSource(), "utf8");
   fs.writeFileSync(
     path.join(runtimeDirectory, "mcp-slim-guard.yml"),
-    `version: 1
+    `version: 2
 tools:
   allow: ["fixture_*"]
   deny: []
@@ -458,9 +457,6 @@ rate_limit:
   default: "1000/min"
 injection_detection:
   enabled: false
-compressor:
-  enabled: true
-  level: light
 audit:
   output: file
   filePath: ${JSON.stringify(path.join(runtimeDirectory, "audit.log"))}
@@ -507,14 +503,21 @@ servers:
     throw new Error("Catalog projection dropped unknown MCP tool metadata");
   }
 
+  const largeFound = await client.callTool({
+    name: "find_tool",
+    arguments: { query: "native large package result" },
+  });
+  const largeMatch = textJson(largeFound).matches?.find((candidate) => candidate.name === "fixture_native_large");
+  if (!largeMatch?.tool_ref) throw new Error("Installed package could not discover fixture_native_large");
+
   const called = await client.callTool({
     name: "call_tool",
     arguments: {
-      tool_ref: match.tool_ref,
+      tool_ref: largeMatch.tool_ref,
       arguments: { value: "alpha" },
     },
   });
-  const marker = "PACKAGE_SMOKE:alpha:CALLS:1";
+  const marker = "NATIVE_PACKAGE_LARGE:alpha:CALLS:1";
   if (!JSON.stringify(called).includes(marker)) {
     throw new Error("Installed package did not return the once-only fixture marker");
   }
@@ -534,7 +537,7 @@ servers:
 
   await client.close();
   client = undefined;
-  const audit = verifyAuditTrace(path.join(runtimeDirectory, "audit.log"), match.tool_ref, capsule.result_ref);
+  const audit = verifyAuditTrace(path.join(runtimeDirectory, "audit.log"), largeMatch.tool_ref, capsule.result_ref);
   const shareRun = run(process.execPath, [cli, "profile", "--share", "--json"], { cwd: runtimeDirectory });
   const shareReport = JSON.parse(shareRun.stdout);
   if (

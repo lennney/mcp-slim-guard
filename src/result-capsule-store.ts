@@ -11,11 +11,33 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { ResultSecurityInspector, type ResultSecurityAssessment } from "./result-security.js";
+import {
+  selectStructuredResult,
+  validateResultStructureSelector,
+  type ResultStructureSelector,
+  type StructuredResultMatch,
+} from "./result-structure-selector.js";
 
-const RESULT_BUDGET_CHARS = 12_000;
-const RESULT_PROJECTION_WEIGHT = 1_200;
+interface ResultDeliveryPolicy {
+  budgetChars: number;
+  previewWeight: number;
+  minimumSavingsRatio?: number;
+}
+
+const COMPACT_DELIVERY_POLICY: ResultDeliveryPolicy = {
+  budgetChars: 12_000,
+  previewWeight: 1_200,
+};
+const EXTREME_DELIVERY_POLICY: ResultDeliveryPolicy = {
+  budgetChars: 2_400,
+  previewWeight: 480,
+  minimumSavingsRatio: 0.5,
+};
 const RESULT_CHUNK_WEIGHT = 24_000;
 const RESULT_CHUNK_MAX_CHARS = 24_000;
+const RESULT_SEARCH_MAX_MATCHES = 3;
+const RESULT_SEARCH_QUERY_MAX_CODE_POINTS = 256;
+const RESULT_SEARCH_MAX_OCCURRENCES_PER_TERM = 64;
 const RESULT_TTL_MS = 5 * 60 * 1000;
 const MAX_STORED_RESULTS = 64;
 const MAX_RESULT_PAYLOAD_BYTES = 8 * 1024 * 1024;
@@ -52,7 +74,7 @@ interface ResultContentClassifier {
 
 interface ResultProjectionStrategy {
   readonly kind: ResultContentKind;
-  project(snapshot: ResultSnapshot): ResultProjection;
+  project(snapshot: ResultSnapshot, previewWeight: number): ResultProjection;
 }
 
 interface StoredResult extends ResultSnapshot {
@@ -99,6 +121,42 @@ interface ResultChunkStructuredContent extends ResultChunkMetadata {
   chunk: string;
 }
 
+interface ResultSearchMatch {
+  start: number;
+  end: number;
+  text: string;
+}
+
+interface ResultSearchMetadata extends Record<string, unknown> {
+  result_ref: string;
+  encoding: ResultEncoding;
+  content_kind: ResultContentKind;
+  retrieval: "search";
+  match_count: number;
+  next_cursor: null;
+  done: true;
+}
+
+interface ResultSearchStructuredContent extends ResultSearchMetadata {
+  matches: ResultSearchMatch[];
+}
+
+interface ResultStructuredMetadata extends Record<string, unknown> {
+  result_ref: string;
+  encoding: ResultEncoding;
+  content_kind: ResultContentKind;
+  retrieval: "structured";
+  selector_kind: ResultStructureSelector["kind"];
+  match_count: number;
+  truncated: boolean;
+  next_cursor: null;
+  done: true;
+}
+
+interface ResultStructuredContent extends ResultStructuredMetadata {
+  matches: StructuredResultMatch[];
+}
+
 export type ResultDeliveryReason =
   | "within_budget"
   | "source_like"
@@ -108,6 +166,7 @@ export type ResultDeliveryReason =
   | "metadata_bound"
   | "mixed_or_uncertain"
   | "capacity_exceeded"
+  | "insufficient_savings"
   | "snapshot_verification_failed"
   | "delivery_verification_failed"
   | "internal_error";
@@ -129,24 +188,40 @@ export interface ResultDeliveryObservation {
 
 export interface ResultRecoveryObservation {
   phase: "recovery";
-  outcome: "chunk" | "complete" | "rejected";
+  outcome: "chunk" | "complete" | "search" | "structured" | "rejected";
   reason?:
     | "missing_result_ref"
     | "invalid_cursor"
+    | "invalid_query"
+    | "query_with_cursor"
+    | "query_too_large"
+    | "no_match"
     | "unknown_result_ref"
     | "expired"
     | "cursor_out_of_range"
-    | "unicode_boundary";
+    | "unicode_boundary"
+    | "invalid_selector"
+    | "selector_with_cursor_or_query"
+    | "structured_no_match";
   referenceId?: string;
   encoding?: ResultEncoding;
   contentKind?: ResultContentKind;
   cursor?: number;
   nextCursor?: number | null;
   chunkChars?: number;
+  matchCount?: number;
+  selectorKind?: ResultStructureSelector["kind"];
+  truncated?: boolean;
+  fallbackReason?: "invalid_json" | "unsupported_encoding" | "unsupported_shape";
 }
 
 export type ResultCapsuleObservation = ResultDeliveryObservation | ResultRecoveryObservation;
 export type ResultCapsuleObserver = (observation: ResultCapsuleObservation) => void;
+
+/** Internal delivery tuning selected by the public compact or extreme mode. */
+export interface ResultCapsuleStoreOptions {
+  mode?: "compact" | "extreme";
+}
 
 function errorResult(message: string): CallToolResult {
   return {
@@ -222,6 +297,86 @@ function weightedStart(value: string, end: number, budget: number): number {
   return start;
 }
 
+/**
+ * Case-fold only ASCII. This preserves JavaScript string offsets, which keeps
+ * every returned fragment anchored to the immutable snapshot without a lossy
+ * Unicode normalization map.
+ */
+function asciiFold(value: string): string {
+  return value.replace(/[A-Z]/gu, (character) => character.toLowerCase());
+}
+
+const SEARCH_STOP_WORDS = new Set(["a", "an", "and", "has", "the", "with"]);
+
+function searchTerms(query: string): { phrase: string; terms: string[] } {
+  const phrase = asciiFold(query.trim());
+  const terms = (phrase.match(/[\p{L}\p{N}_.:/-]+/gu) ?? [])
+    .map((term) => term.trim())
+    .filter(
+      (term) =>
+        term.length > 0 &&
+        !SEARCH_STOP_WORDS.has(term) &&
+        (Array.from(term).length >= 2 || (term.codePointAt(0) ?? 0) > 0x7f),
+    );
+  return { phrase, terms: [...new Set(terms)].slice(0, 12) };
+}
+
+function occurrenceOffsets(value: string, term: string): number[] {
+  const offsets: number[] = [];
+  let cursor = 0;
+  while (cursor < value.length && offsets.length < RESULT_SEARCH_MAX_OCCURRENCES_PER_TERM) {
+    const offset = value.indexOf(term, cursor);
+    if (offset < 0) break;
+    offsets.push(offset);
+    cursor = offset + Math.max(1, term.length);
+  }
+  return offsets;
+}
+
+function searchMatches(payload: string, query: string, previewWeight: number): ResultSearchMatch[] {
+  const { phrase, terms } = searchTerms(query);
+  if (!phrase) return [];
+
+  const foldedPayload = asciiFold(payload);
+  const phraseOffsets = occurrenceOffsets(foldedPayload, phrase);
+  const anchors = new Set<number>();
+  for (const offset of phraseOffsets) anchors.add(offset);
+  if (phraseOffsets.length === 0) {
+    for (const term of terms) {
+      for (const offset of occurrenceOffsets(foldedPayload, term)) anchors.add(offset);
+    }
+  }
+  if (anchors.size === 0) return [];
+
+  const perMatchWeight = Math.max(96, Math.floor(previewWeight / RESULT_SEARCH_MAX_MATCHES) - 32);
+  const candidates = [...anchors]
+    .map((anchor) => {
+      const start = weightedStart(payload, anchor, Math.floor(perMatchWeight * 0.4));
+      const end = weightedEnd(payload, anchor + 1, Math.ceil(perMatchWeight * 0.6));
+      const foldedFragment = foldedPayload.slice(start, end);
+      const phraseMatch = foldedFragment.includes(phrase);
+      const termsMatch = terms.length > 0 && terms.every((term) => foldedFragment.includes(term));
+      const score =
+        (phraseMatch ? phrase.length * 2 : 0) +
+        terms.reduce((total, term) => total + (foldedFragment.includes(term) ? term.length : 0), 0);
+      return { start, end, score, matched: phraseMatch || termsMatch };
+    })
+    .filter((candidate) => candidate.matched);
+
+  candidates.sort((left, right) => right.score - left.score || left.start - right.start || left.end - right.end);
+  const selected: ResultSearchMatch[] = [];
+  for (const candidate of candidates) {
+    if (selected.some((match) => candidate.start < match.end && candidate.end > match.start)) continue;
+    selected.push({
+      start: candidate.start,
+      end: candidate.end,
+      text: payload.slice(candidate.start, candidate.end),
+    });
+    if (selected.length === RESULT_SEARCH_MAX_MATCHES) break;
+  }
+  return selected.sort((left, right) => left.start - right.start);
+}
+
 function hasOnlyKeys(value: object, allowed: readonly string[]): boolean {
   const allowedKeys = new Set(allowed);
   return Object.keys(value).every((key) => allowedKeys.has(key));
@@ -247,10 +402,10 @@ function simpleTextPayload(result: CallToolResult): { text: string; resultShape:
  * A lossy envelope cannot replace an advertised output contract or a result
  * whose shape the Host may interpret beyond one plain text block.
  */
-function nativePassThroughReason(result: CallToolResult, tool: Tool): ResultDeliveryReason | null {
-  const toolRecord = tool as Tool & Record<string, unknown>;
-  if (toolRecord.outputSchema !== undefined) return "schema_bound";
+function exactPassThroughReason(result: CallToolResult, tool?: Tool): ResultDeliveryReason | null {
+  const toolRecord = tool as (Tool & Record<string, unknown>) | undefined;
   if (result.isError === true) return "upstream_error";
+  if (toolRecord?.outputSchema !== undefined) return "schema_bound";
   if (result.structuredContent !== undefined) return "structured_result";
   if (result._meta !== undefined) return "metadata_bound";
   if (!hasOnlyKeys(result, ["content", "isError", "resultType"])) return "mixed_or_uncertain";
@@ -318,8 +473,12 @@ class DeterministicResultContentClassifier implements ResultContentClassifier {
   }
 }
 
-function headTailProjection(snapshot: ResultSnapshot, name: ProjectionName = "head-tail-v1"): ResultProjection {
-  const sideBudget = Math.floor((RESULT_PROJECTION_WEIGHT - 160) / 2);
+function headTailProjection(
+  snapshot: ResultSnapshot,
+  previewWeight: number,
+  name: ProjectionName = "head-tail-v1",
+): ResultProjection {
+  const sideBudget = Math.floor((previewWeight - 160) / 2);
   const headEnd = weightedEnd(snapshot.payload, 0, sideBudget);
   const tailStart = weightedStart(snapshot.payload, snapshot.payload.length, sideBudget);
   if (headEnd >= tailStart) {
@@ -345,29 +504,29 @@ function headTailProjection(snapshot: ResultSnapshot, name: ProjectionName = "he
 class PlainTextProjectionStrategy implements ResultProjectionStrategy {
   readonly kind = "plain-text" as const;
 
-  project(snapshot: ResultSnapshot): ResultProjection {
-    return headTailProjection(snapshot);
+  project(snapshot: ResultSnapshot, previewWeight: number): ResultProjection {
+    return headTailProjection(snapshot, previewWeight);
   }
 }
 
 class UniformJsonProjectionStrategy implements ResultProjectionStrategy {
   readonly kind = "uniform-json" as const;
 
-  project(snapshot: ResultSnapshot): ResultProjection {
+  project(snapshot: ResultSnapshot, previewWeight: number): ResultProjection {
     const rows = parseUniformArray(snapshot.payload);
-    if (!rows) return headTailProjection(snapshot);
+    if (!rows) return headTailProjection(snapshot, previewWeight);
     const fields = Object.keys(rows[0]);
     const header = `JSON table (${rows.length} rows) fields=${JSON.stringify(fields)}\n`;
     let preview = header;
     let included = 0;
     for (const row of rows) {
       const line = `${fields.map((field) => JSON.stringify(row[field])).join("\t")}\n`;
-      if (weightedEnd(preview + line, 0, RESULT_PROJECTION_WEIGHT) < preview.length + line.length) break;
+      if (weightedEnd(preview + line, 0, previewWeight) < preview.length + line.length) break;
       preview += line;
       included += 1;
     }
     if (included === rows.length || included === 0 || preview.length >= snapshot.payload.length) {
-      return headTailProjection(snapshot);
+      return headTailProjection(snapshot, previewWeight);
     }
     preview += `[${rows.length - included} rows omitted; exact JSON available via read_result]`;
     return {
@@ -405,7 +564,7 @@ function collapseRepeatedLines(lines: string[]): Array<{ index: number; end: num
 class LogProjectionStrategy implements ResultProjectionStrategy {
   readonly kind = "log-like" as const;
 
-  project(snapshot: ResultSnapshot): ResultProjection {
+  project(snapshot: ResultSnapshot, previewWeight: number): ResultProjection {
     const collapsed = collapseRepeatedLines(normalizeLogLines(snapshot.payload));
     const selected = new Set<number>();
     for (const entry of collapsed.slice(0, 3)) selected.add(entry.index);
@@ -426,11 +585,8 @@ class LogProjectionStrategy implements ResultProjectionStrategy {
       previousEnd = entry.end;
     }
     const preview = output.join("\n");
-    if (
-      weightedEnd(preview, 0, RESULT_PROJECTION_WEIGHT) < preview.length ||
-      preview.length >= snapshot.payload.length
-    ) {
-      return headTailProjection(snapshot);
+    if (weightedEnd(preview, 0, previewWeight) < preview.length || preview.length >= snapshot.payload.length) {
+      return headTailProjection(snapshot, previewWeight);
     }
     return {
       name: "log-summary-v1",
@@ -444,8 +600,8 @@ class LogProjectionStrategy implements ResultProjectionStrategy {
 class OpaqueProjectionStrategy implements ResultProjectionStrategy {
   readonly kind = "opaque-result" as const;
 
-  project(snapshot: ResultSnapshot): ResultProjection {
-    const end = weightedEnd(snapshot.payload, 0, RESULT_PROJECTION_WEIGHT);
+  project(snapshot: ResultSnapshot, previewWeight: number): ResultProjection {
+    const end = weightedEnd(snapshot.payload, 0, previewWeight);
     return {
       name: "json-prefix-v1",
       preview: snapshot.payload.slice(0, end),
@@ -533,6 +689,7 @@ export class ResultCapsuleStore {
   // the latest capacity eviction until they can reject the new projection.
   private pendingProjectionWrite: PendingProjectionWrite | null = null;
   private security = new ResultSecurityInspector();
+  private readonly deliveryPolicy: ResultDeliveryPolicy;
   private classifier: ResultContentClassifier = new DeterministicResultContentClassifier();
   private strategies: Record<ResultContentKind, ResultProjectionStrategy> = {
     "plain-text": new PlainTextProjectionStrategy(),
@@ -541,8 +698,21 @@ export class ResultCapsuleStore {
     "opaque-result": new OpaqueProjectionStrategy(),
   };
 
-  capture(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult {
+  constructor(options: ResultCapsuleStoreOptions = {}) {
+    this.deliveryPolicy = options.mode === "extreme" ? EXTREME_DELIVERY_POLICY : COMPACT_DELIVERY_POLICY;
+  }
+
+  capture(result: CallToolResult, observer?: ResultCapsuleObserver, tool?: Tool): CallToolResult {
     this.commitPendingProjection();
+    const passThroughReason = exactPassThroughReason(result, tool);
+    if (passThroughReason) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: passThroughReason,
+      });
+      return result;
+    }
     try {
       return this.captureVerified(result, observer);
     } catch {
@@ -565,23 +735,13 @@ export class ResultCapsuleStore {
    * and uncertain results stay byte-for-byte on the original path.
    */
   captureNative(result: CallToolResult, tool: Tool, observer?: ResultCapsuleObserver): CallToolResult {
-    const passThroughReason = nativePassThroughReason(result, tool);
-    if (passThroughReason) {
-      this.commitPendingProjection();
-      emit(observer, {
-        phase: "delivery",
-        outcome: "pass_through",
-        reason: passThroughReason,
-      });
-      return result;
-    }
-    return this.capture(result, observer);
+    return this.capture(result, observer, tool);
   }
 
   private captureVerified(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult {
     const security = this.security.inspect(result);
     const serialized = JSON.stringify(result);
-    if (serialized.length <= RESULT_BUDGET_CHARS) {
+    if (serialized.length <= this.deliveryPolicy.budgetChars) {
       emit(observer, {
         phase: "delivery",
         outcome: "pass_through",
@@ -631,7 +791,7 @@ export class ResultCapsuleStore {
     }
     snapshot.contentKind = this.classifier.classify(result, snapshot);
 
-    const projection = this.strategies[snapshot.contentKind].project(snapshot);
+    const projection = this.strategies[snapshot.contentKind].project(snapshot, this.deliveryPolicy.previewWeight);
 
     const resultRef = `result_${randomBytes(16).toString("hex")}`;
     const metadata: ResultCapsuleMetadata = {
@@ -687,6 +847,25 @@ export class ResultCapsuleStore {
       });
       return result;
     }
+    const deliveredSerialized = JSON.stringify(delivered);
+    if (
+      this.deliveryPolicy.minimumSavingsRatio !== undefined &&
+      deliveredSerialized.length > serialized.length * (1 - this.deliveryPolicy.minimumSavingsRatio)
+    ) {
+      emit(observer, {
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: "insufficient_savings",
+        encoding: snapshot.encoding,
+        contentKind: snapshot.contentKind,
+        projection: projection.name,
+        originalChars: snapshot.originalChars,
+        payloadChars: snapshot.payload.length,
+        previewChars: projection.preview.length,
+        securityFindings: security.findings.length,
+      });
+      return result;
+    }
     const evictedReferenceId = this.store(resultRef, snapshot);
     const observed = emit(observer, {
       phase: "delivery",
@@ -711,7 +890,6 @@ export class ResultCapsuleStore {
   read(args: Record<string, unknown>, observer?: ResultCapsuleObserver): CallToolResult {
     this.commitPendingProjection();
     const resultRef = typeof args.result_ref === "string" ? args.result_ref : "";
-    const cursor = args.cursor === undefined ? 0 : args.cursor;
     if (!resultRef) {
       emit(observer, {
         phase: "recovery",
@@ -721,16 +899,6 @@ export class ResultCapsuleStore {
       return errorResult("Missing required parameter: result_ref");
     }
     const resultReferenceId = referenceId(resultRef);
-    if (typeof cursor !== "number" || !Number.isInteger(cursor) || cursor < 0) {
-      emit(observer, {
-        phase: "recovery",
-        outcome: "rejected",
-        reason: "invalid_cursor",
-        referenceId: resultReferenceId,
-      });
-      return errorResult("cursor must be a non-negative integer");
-    }
-
     const stored = this.results.get(resultRef);
     if (!stored) {
       emit(observer, {
@@ -750,6 +918,147 @@ export class ResultCapsuleStore {
         referenceId: resultReferenceId,
       });
       return errorResult("Unknown or expired result_ref.");
+    }
+    const selector = args.selector;
+    const fallbackQuery = args.fallback_query;
+    if (selector !== undefined || fallbackQuery !== undefined) {
+      if (selector === undefined || fallbackQuery === undefined) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "invalid_selector",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("selector and fallback_query must be provided together.");
+      }
+      if (args.cursor !== undefined || args.query !== undefined) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "selector_with_cursor_or_query",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("Use selector, query, or cursor, not more than one.");
+      }
+      if (!validateResultStructureSelector(selector)) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "invalid_selector",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("selector does not match a supported structure.");
+      }
+      if (typeof fallbackQuery !== "string" || !fallbackQuery.trim()) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "invalid_selector",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("fallback_query must be a non-empty string.");
+      }
+      if (Array.from(fallbackQuery).length > RESULT_SEARCH_QUERY_MAX_CODE_POINTS) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "query_too_large",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("fallback_query is too large.");
+      }
+      if (stored.encoding !== "single-text-v1") {
+        return this.readSearch(resultRef, stored, fallbackQuery, observer, "unsupported_encoding");
+      }
+      const selection = selectStructuredResult(stored.payload, selector);
+      if (selection.status === "fallback") {
+        return this.readSearch(resultRef, stored, fallbackQuery, observer, selection.reason);
+      }
+      if (selection.status === "no_match") {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "structured_no_match",
+          referenceId: resultReferenceId,
+          selectorKind: selection.selectorKind,
+        });
+        return errorResult("No structured matches found. Use cursor-based recovery for the exact snapshot.");
+      }
+      const selectionMatches = selection.matches;
+      const metadata: ResultStructuredMetadata = {
+        result_ref: resultRef,
+        encoding: stored.encoding,
+        content_kind: stored.contentKind,
+        retrieval: "structured",
+        selector_kind: selection.selectorKind,
+        match_count: selectionMatches.length,
+        truncated: selection.truncated,
+        next_cursor: null,
+        done: true,
+      };
+      const structuredContent: ResultStructuredContent = { ...metadata, matches: selectionMatches };
+      const text = selectionMatches
+        .map((match, index) => `[match ${index + 1}; chars ${match.start}-${match.end}]\n${match.text}`)
+        .join("\n\n");
+      emit(observer, {
+        phase: "recovery",
+        outcome: "structured",
+        referenceId: resultReferenceId,
+        encoding: stored.encoding,
+        contentKind: stored.contentKind,
+        selectorKind: selection.selectorKind,
+        matchCount: selectionMatches.length,
+        truncated: selection.truncated,
+      });
+      return {
+        content: [
+          { type: "text", text },
+          { type: "text", text: JSON.stringify(metadata) },
+        ],
+        structuredContent,
+      };
+    }
+    const query = args.query;
+    if (query !== undefined) {
+      if (typeof query !== "string" || !query.trim()) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "invalid_query",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("query must be a non-empty string");
+      }
+      if (Array.from(query).length > RESULT_SEARCH_QUERY_MAX_CODE_POINTS) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "query_too_large",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("query is too large");
+      }
+      if (args.cursor !== undefined) {
+        emit(observer, {
+          phase: "recovery",
+          outcome: "rejected",
+          reason: "query_with_cursor",
+          referenceId: resultReferenceId,
+        });
+        return errorResult("Use query or cursor, not both.");
+      }
+      return this.readSearch(resultRef, stored, query, observer);
+    }
+
+    const cursor = args.cursor === undefined ? 0 : args.cursor;
+    if (typeof cursor !== "number" || !Number.isInteger(cursor) || cursor < 0) {
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "invalid_cursor",
+        referenceId: resultReferenceId,
+      });
+      return errorResult("cursor must be a non-negative integer");
     }
     if (cursor > stored.payload.length) {
       emit(observer, {
@@ -799,6 +1108,64 @@ export class ResultCapsuleStore {
     return {
       content: [
         { type: "text", text: chunk },
+        { type: "text", text: JSON.stringify(metadata) },
+      ],
+      structuredContent,
+    };
+  }
+
+  /**
+   * Find bounded fragments in the already verified local snapshot. This never
+   * invokes the upstream Tool and leaves cursor-based exact recovery unchanged.
+   */
+  private readSearch(
+    resultRef: string,
+    stored: StoredResult,
+    query: string,
+    observer?: ResultCapsuleObserver,
+    fallbackReason?: "invalid_json" | "unsupported_encoding" | "unsupported_shape",
+  ): CallToolResult {
+    const matches = searchMatches(stored.payload, query, this.deliveryPolicy.previewWeight);
+    const resultReferenceId = referenceId(resultRef);
+    if (matches.length === 0) {
+      emit(observer, {
+        phase: "recovery",
+        outcome: "rejected",
+        reason: "no_match",
+        referenceId: resultReferenceId,
+        encoding: stored.encoding,
+        contentKind: stored.contentKind,
+        ...(fallbackReason ? { fallbackReason } : {}),
+      });
+      return errorResult("No local matches found. Use cursor-based recovery for the exact snapshot.");
+    }
+
+    const metadata: ResultSearchMetadata = {
+      result_ref: resultRef,
+      encoding: stored.encoding,
+      content_kind: stored.contentKind,
+      retrieval: "search",
+      match_count: matches.length,
+      next_cursor: null,
+      done: true,
+    };
+    const text = matches
+      .map((match, index) => `[match ${index + 1}; chars ${match.start}-${match.end}]\n${match.text}`)
+      .join("\n\n");
+    const structuredContent: ResultSearchStructuredContent = { ...metadata, matches };
+    emit(observer, {
+      phase: "recovery",
+      outcome: "search",
+      referenceId: resultReferenceId,
+      encoding: stored.encoding,
+      contentKind: stored.contentKind,
+      nextCursor: null,
+      matchCount: matches.length,
+      ...(fallbackReason ? { fallbackReason } : {}),
+    });
+    return {
+      content: [
+        { type: "text", text },
         { type: "text", text: JSON.stringify(metadata) },
       ],
       structuredContent,

@@ -4,78 +4,23 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildClaudeConfigPlan } from "../../src/claude-config-plan.js";
 
+const directories: string[] = [];
+function temporaryDirectory(): string {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "slim-guard-claude-"));
+  directories.push(directory);
+  return directory;
+}
+afterEach(() => directories.splice(0).forEach((directory) => fs.rmSync(directory, { recursive: true, force: true })));
+
 describe("buildClaudeConfigPlan", () => {
-  const temporaryDirectories: string[] = [];
-
-  afterEach(() => {
-    for (const directory of temporaryDirectories.splice(0)) {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
+  it("defaults Claude Code to compact without writing configuration", () => {
+    const plan = buildClaudeConfigPlan(temporaryDirectory());
+    expect(plan.server).toMatchObject({ mode: "compact", args: ["start", "--mode", "compact"] });
+    expect(plan.writesPerformed).toBe(0);
   });
 
-  it("replaces direct project servers with the verified generic Slim Guard surface", () => {
-    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "slim-guard-claude-plan-"));
-    temporaryDirectories.push(projectRoot);
-    fs.writeFileSync(
-      path.join(projectRoot, ".mcp.json"),
-      JSON.stringify({
-        mcpServers: {
-          github: { command: "github-mcp", env: { TOKEN: "do-not-report" } },
-          filesystem: { command: "filesystem-mcp" },
-        },
-      }),
-    );
-
-    const plan = buildClaudeConfigPlan(projectRoot);
-
-    expect(plan).toMatchObject({
-      schemaVersion: 1,
-      kind: "mcp-slim-guard/config-plan",
-      mode: "dry-run",
-      host: "claude-code",
-      support: "supported",
-      target: {
-        scope: "project",
-        exists: true,
-        slimGuardEntry: "absent",
-      },
-      server: {
-        surface: "generic",
-        command: "mcp-slim-guard",
-        args: ["start"],
-      },
-      proposedChange: {
-        operation: "replace-mcp-servers",
-        displacedServerNames: ["filesystem", "github"],
-      },
-      verification: {
-        command: ["claude", "mcp", "list"],
-      },
-      writesPerformed: 0,
-    });
-    expect(JSON.stringify(plan)).not.toContain("do-not-report");
-    expect(JSON.parse(plan.proposedChange.json)).toEqual({
-      mcpServers: {
-        slim_guard: {
-          type: "stdio",
-          command: "mcp-slim-guard",
-          args: ["start"],
-        },
-      },
-    });
-  });
-
-  it("reports whether the generated Guard configuration exists", () => {
-    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "slim-guard-claude-plan-"));
-    temporaryDirectories.push(projectRoot);
-    fs.writeFileSync(path.join(projectRoot, "mcp-slim-guard.yml"), "version: 1\n");
-
-    const plan = buildClaudeConfigPlan(projectRoot);
-
-    expect(plan.preconditions).toEqual({
-      guardConfigPath: path.join(projectRoot, "mcp-slim-guard.yml"),
-      guardConfigExists: true,
-    });
-    expect(fs.existsSync(path.join(projectRoot, ".mcp.json"))).toBe(false);
+  it("supports the verified extreme Claude Code plan", () => {
+    const plan = buildClaudeConfigPlan(temporaryDirectory(), "extreme");
+    expect(plan.server.args).toEqual(["start", "--mode", "extreme"]);
   });
 });

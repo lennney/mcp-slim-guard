@@ -18,12 +18,11 @@ import { InMemoryUpstreamConnector } from "../helpers/in-memory-upstream.js";
 
 function config(): GuardConfig {
   return {
-    version: 1,
+    version: 2,
     tools: { allow: ["fixture_*"], deny: [] },
     ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] },
     rate_limit: { default: "" },
     injection_detection: { enabled: false },
-    compressor: { enabled: false, level: "off" },
     servers: { fixture: { command: "test-fixture" } },
   };
 }
@@ -61,7 +60,7 @@ async function startNativeRuntime(
     new PolicyPipeline([new WhitelistPolicy(currentConfig.tools)]),
     audit,
     manager,
-    { surface: "native" },
+    { mode: "native" },
   );
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   prepareServerTransport?.(serverTransport);
@@ -120,13 +119,22 @@ describe("Host-native MCP Tool surface", () => {
     const runtime = await startNativeRuntime(config(), connector);
 
     try {
-      for (const invalidArguments of [{}, { payload: 42 }, { payload: "ok", extra: true }]) {
-        await expect(
-          runtime.client.callTool({
-            name: "exact",
-            arguments: invalidArguments,
-          }),
-        ).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+      const validationSecret = "VALIDATION_ARGUMENT_SECRET_17d82a";
+      for (const invalidArguments of [{}, { payload: 42 }, { payload: "ok", extra: validationSecret }]) {
+        const result = await runtime.client.callTool({
+          name: "exact",
+          arguments: invalidArguments,
+        });
+        expect(result).toMatchObject({
+          isError: true,
+          structuredContent: {
+            kind: "mcp-slim-guard/argument-validation",
+            error: "input_schema_invalid",
+            tool: "exact",
+            upstream_invoked: false,
+          },
+        });
+        expect(JSON.stringify(result)).not.toContain(validationSecret);
       }
       expect(connector.state("fixture").calls).toHaveLength(0);
     } finally {
@@ -611,7 +619,6 @@ describe("Generic compatibility Tool surface", () => {
     const currentConfig: GuardConfig = {
       ...config(),
       tools: { allow: ["fixture_*"], deny: [] },
-      compressor: { enabled: true, level: "light" },
     };
     const exactTool: Tool = {
       name: "exact",
@@ -649,15 +656,22 @@ describe("Generic compatibility Tool surface", () => {
       const discovery = JSON.parse((found.content[0] as { type: "text"; text: string }).text) as {
         matches: Array<{ tool_ref: string }>;
       };
-      await expect(
-        client.callTool({
-          name: "call_tool",
-          arguments: {
-            tool_ref: discovery.matches[0]?.tool_ref,
-            arguments: {},
-          },
-        }),
-      ).rejects.toMatchObject({ code: ErrorCode.InvalidParams });
+      const result = await client.callTool({
+        name: "call_tool",
+        arguments: {
+          tool_ref: discovery.matches[0]?.tool_ref,
+          arguments: {},
+        },
+      });
+      expect(result).toMatchObject({
+        isError: true,
+        structuredContent: {
+          kind: "mcp-slim-guard/argument-validation",
+          error: "input_schema_invalid",
+          tool: "fixture_exact",
+          upstream_invoked: false,
+        },
+      });
       expect(connector.state("fixture").calls).toHaveLength(0);
     } finally {
       await client.close().catch(() => {});
@@ -665,11 +679,10 @@ describe("Generic compatibility Tool surface", () => {
     }
   });
 
-  it("keeps a real Tool reachable when its catalog name occupies the wrapper namespace", async () => {
+  it("keeps a wrapper-shaped upstream tool reachable through Compact discovery", async () => {
     const currentConfig: GuardConfig = {
       ...config(),
       tools: { allow: ["*"], deny: [] },
-      compressor: { enabled: true, level: "off", lazy_loading: true },
       servers: { mcp_: { command: "test-fixture" } },
     };
     const connector = new InMemoryUpstreamConnector({
@@ -695,27 +708,24 @@ describe("Generic compatibility Tool surface", () => {
     try {
       const listed = await client.listTools();
       const names = listed.tools.map(({ name }) => name);
-      expect(new Set(names).size).toBe(names.length);
-      expect(names).toContain("mcp__get_schema");
-      const catalogName = names.find((name) => name.startsWith("mcp__get_schema__sg_"));
-      expect(catalogName).toBeDefined();
+      expect(names).toEqual(["find_tool", "call_tool", "read_result"]);
+      const found = await client.callTool({ name: "find_tool", arguments: { query: "get schema" } });
+      const discovery = JSON.parse((found.content[0] as { type: "text"; text: string }).text) as {
+        matches: Array<{ tool_ref: string; input_schema: unknown }>;
+      };
+      expect(discovery.matches[0]?.input_schema).toEqual({
+        type: "object",
+        properties: { marker: { type: "string" } },
+        additionalProperties: false,
+      });
 
       await expect(
         client.callTool({
-          name: catalogName!,
-          arguments: { marker: "real-tool" },
+          name: "call_tool",
+          arguments: { tool_ref: discovery.matches[0]?.tool_ref, arguments: { marker: "real-tool" } },
         }),
-      ).resolves.toEqual({
-        content: [{ type: "text", text: "upstream:real-tool" }],
-      });
+      ).resolves.toEqual({ content: [{ type: "text", text: "upstream:real-tool" }] });
       expect(connector.state("mcp_").calls).toEqual([{ toolName: "get_schema", args: { marker: "real-tool" } }]);
-
-      const schema = await client.callTool({
-        name: "mcp__get_schema",
-        arguments: { tool_name: catalogName },
-      });
-      expect(schema.isError).not.toBe(true);
-      expect(connector.state("mcp_").calls).toHaveLength(1);
     } finally {
       await client.close().catch(() => {});
       await proxy.stop().catch(() => {});

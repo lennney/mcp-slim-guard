@@ -16,7 +16,7 @@ assignees: ""
 
 ## Reproduction
 
-1. Host and surface:
+1. Host and mode:
 2. Upstream MCP Server and transport:
 3. Redacted configuration:
 4. Command or MCP call:
@@ -28,7 +28,7 @@ assignees: ""
 - Node.js version:
 - Operating system:
 - MCP Host and version: <!-- Codex or Claude Code; VS Code config preview if applicable -->
-- Surface: <!-- Generic or Host-native -->
+- Mode: <!-- Native, Compact, or Extreme -->
 
 ## Redacted logs
 

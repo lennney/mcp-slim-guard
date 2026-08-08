@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ${{ matrix.os }}
@@ -24,12 +27,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      - run: npm run build
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run format:check
-      - run: npm test
-      - run: npm run test:coverage
+      - run: npm run ci
 
   smoke-test:
     runs-on: ubuntu-latest

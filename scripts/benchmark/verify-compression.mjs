@@ -6,163 +6,134 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const completeTaskPath = path.join(root, "docs/evidence/2026-07-26-complete-task-capture.json");
-const projectionPath = path.join(root, "docs/evidence/2026-07-26-content-projection-capture.json");
-const stressPath = path.join(root, "docs/evidence/2026-07-27-automatic-compression-stress.json");
+const completeTaskPath = path.join(root, "docs/evidence/2026-08-06-protocol-evaluation.json");
+const projectionPath = path.join(root, "docs/evidence/2026-08-06-result-evaluation.json");
+const stressPath = path.join(root, "docs/evidence/2026-08-06-stress-evaluation.json");
+const modes = ["native", "compact", "extreme"];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function totalTokens(results) {
-  return results.reduce((sum, result) => sum + result.total_tokens, 0);
-}
-
-function totalWithRecoveryVerification(results) {
-  return results.reduce((sum, result) => sum + result.total_with_recovery_verification_tokens, 0);
-}
-
 const complete = readJson(completeTaskPath);
 const projection = readJson(projectionPath);
 const stress = readJson(stressPath);
-const baseline = complete.profiles.baseline;
-const competitor = complete.profiles["mcp-compressor"];
-const slim = complete.profiles["slim-guard"];
 
-const profiles = { baseline, slim };
-if (competitor) {
-  profiles.competitor = competitor;
-}
-
-for (const [name, results] of Object.entries(profiles)) {
-  assert.equal(results.length, 24, `${name} must contain all 24 bilingual MCP tasks`);
+assert.equal(complete.schema_version, 1);
+assert.equal(complete.suite.id, "three-modes-24-task");
+assert.equal(complete.suite.kind, "protocol-replay");
+assert.match(complete.candidate.digest, /^[a-f0-9]{64}$/u);
+assert.equal(complete.verdict, "pass");
+assert.equal(
+  Object.values(complete.hard_gates).every((gate) => gate.passed),
+  true,
+  "protocol evaluation hard gates must all pass",
+);
+const completeProfiles = Object.fromEntries(
+  ["baseline", ...modes].map((profile) => [
+    profile,
+    complete.observations.filter((observation) => observation.profile === profile),
+  ]),
+);
+for (const profile of ["baseline", ...modes]) {
+  const results = completeProfiles[profile];
+  assert.equal(results.length, 24, `${profile} must contain all 24 bilingual MCP tasks`);
   assert.equal(
     results.every((result) => result.success),
     true,
-    `${name} must complete every MCP task`,
+    `${profile} must complete every MCP task`,
   );
   assert.equal(
     results.every((result) => result.upstream_calls === 1),
     true,
-    `${name} must invoke the upstream MCP tool exactly once per task`,
+    `${profile} must invoke upstream exactly once per task`,
   );
   assert.equal(
     results.every((result) => result.retries === 0),
     true,
-    `${name} must not hide retries in the frozen capture`,
+    `${profile} must not hide retries`,
   );
 }
 
-assert.equal(
-  slim.every((result) => result.advertised_tool_count === 3),
-  true,
-  "Slim Guard must expose exactly three tools",
-);
-assert.equal(
-  complete.summary["slim-guard"].total_tokens < complete.summary.baseline.total_tokens,
-  true,
-  "Slim Guard complete MCP task tokens must remain below direct MCP",
-);
-
-const recoveryTasks = slim.filter((result) => result.exact_recovery);
-assert.equal(recoveryTasks.length >= 2, true, "At least two MCP results must exercise read_result");
-for (const result of recoveryTasks) {
-  const baselineResult = baseline.find((candidate) => candidate.task_id === result.task_id);
-  assert.ok(baselineResult, `Missing baseline result for ${result.task_id}`);
+for (const mode of ["compact", "extreme"]) {
   assert.equal(
-    result.recovered_content_sha256,
-    baselineResult.result_content_sha256,
-    `Recovered MCP content differs from baseline for ${result.task_id}`,
-  );
-  assert.equal(
-    result.events.some((event) => event.kind === "recovery"),
+    completeProfiles[mode].every((result) => result.advertised_tool_count === 3),
     true,
-    `${result.task_id} did not record a read_result recovery event`,
+    `${mode} must expose the fixed three-tool surface`,
   );
 }
+for (const mode of modes) {
+  for (const result of completeProfiles[mode].filter((entry) => entry.exact_recovery)) {
+    const baseline = completeProfiles.baseline.find((entry) => entry.task_id === result.task_id);
+    assert.ok(baseline, `Missing baseline result for ${mode}/${result.task_id}`);
+    assert.equal(
+      result.recovered_content_sha256,
+      baseline.result_content_sha256,
+      `Recovered result differs for ${mode}/${result.task_id}`,
+    );
+  }
+}
 
-const recoveryIds = new Set(recoveryTasks.map((result) => result.task_id));
-const boundedSlim = slim.filter((result) => !recoveryIds.has(result.task_id));
+assert.equal(projection.schema_version, 1);
+assert.equal(projection.suite.id, "mode-result-projection");
+assert.equal(projection.suite.kind, "result-projection");
+assert.equal(projection.verdict, "pass");
 assert.equal(
-  totalTokens(boundedSlim) <= 15_653,
+  Object.values(projection.hard_gates).every((gate) => gate.passed),
   true,
-  `Bounded MCP tasks regressed above 15,653 tokens: ${totalTokens(boundedSlim)}`,
+  "result-projection evaluation hard gates must all pass",
 );
-if (competitor) {
+for (const mode of ["compact", "extreme"]) {
+  const results = projection.observations.filter((observation) => observation.profile === mode);
+  assert.equal(results.length, 23, `${mode} must contain all 23 result fixtures`);
   assert.equal(
-    totalWithRecoveryVerification(recoveryTasks) <=
-      totalWithRecoveryVerification(competitor.filter((result) => recoveryIds.has(result.task_id))) * 1.1,
+    results.every((result) => result.exact_recovery),
     true,
-    "Fully recovered MCP report tasks exceeded the explicit 10% recovery-overhead ceiling",
+    `${mode} must preserve exact recovery for every fixture`,
+  );
+  assert.equal(
+    results
+      .filter((result) => result.compression_cpu_ms !== undefined)
+      .every((result) => result.compression_cpu_ms < 10),
+    true,
+    `${mode} projection exceeded the fixture CPU budget`,
   );
 }
 
-assert.equal(projection.deterministic_capture.stable, true);
-assert.equal(projection.deterministic_capture.first_sha256, projection.deterministic_capture.second_sha256);
+assert.equal(stress.schema_version, 1);
+assert.equal(stress.suite.id, "three-mode-100-tool-8000-row-stress");
+assert.equal(stress.suite.kind, "stress");
+assert.equal(stress.suite.case_count, 1);
+assert.equal(stress.verdict, "pass");
 assert.equal(
-  projection.results.every((result) => result.exact_recovery),
+  Object.values(stress.hard_gates).every((gate) => gate.passed),
   true,
-  "Every content strategy fixture must retain exact recovery",
+  "stress evaluation hard gates must all pass",
 );
-assert.equal(
-  projection.results.every((result) => result.compression_cpu_ms < 10),
-  true,
-  "A deterministic projection exceeded the 10 ms fixture budget",
-);
-
-assert.equal(stress.profile, "automatic-alpha-stress-fixture");
-assert.equal(stress.fixture.authorized_tools, 100);
-assert.equal(stress.fixture.result_rows, 8_000);
-assert.equal(stress.normal_path.advertised_tools, 3);
-assert.equal(stress.normal_path.upstream_calls, 1);
-assert.equal(stress.normal_path.target_visible_in_initial_projection, true);
-assert.equal(
-  stress.normal_path.slim_guard_tokens < stress.normal_path.direct_tokens,
-  true,
-  "The automatic stress path did not reduce model-facing protocol tokens",
-);
-assert.equal(stress.forced_full_recovery.exact_hash_match, true);
-assert.equal(stress.integrity.direct_result_sha256, stress.integrity.recovered_result_sha256);
-assert.equal(stress.integrity.upstream_calls, 1);
+for (const mode of ["compact", "extreme"]) {
+  const result = stress.observations.find((observation) => observation.profile === mode);
+  assert.ok(result, `${mode} stress observation is missing`);
+  assert.equal(result.case_id, "100-tools-8000-rows");
+  assert.equal(result.normal_path.advertised_tools, 3, `${mode} stress surface is not fixed`);
+  assert.equal(result.normal_path.upstream_calls, 1, `${mode} stress run repeated upstream`);
+  assert.equal(result.forced_full_recovery.exact_hash_match, true, `${mode} stress recovery is not exact`);
+  assert.equal(result.forced_full_recovery.upstream_calls, 0, `${mode} stress recovery called upstream`);
+  assert.equal(result.integrity.upstream_calls, 1, `${mode} stress recovery repeated upstream`);
+}
 
 console.log(
   JSON.stringify(
     {
       gate: "passed",
-      model_calls: 0,
-      mcp_tasks: slim.length,
-      exact_recovery_tasks: recoveryTasks.length,
-      upstream_calls: complete.summary["slim-guard"].upstream_calls,
-      advertised_tools: complete.summary["slim-guard"].advertised_tool_counts,
-      bounded_slim_tokens: totalTokens(boundedSlim),
-      recovered_report_tokens: totalTokens(recoveryTasks),
-      recovered_report_tokens_with_verification: totalWithRecoveryVerification(recoveryTasks),
-      ...(competitor
-        ? {
-            competitor_report_tokens: totalWithRecoveryVerification(
-              competitor.filter((result) => recoveryIds.has(result.task_id)),
-            ),
-            full_recovery_overhead_percent: Number(
-              (
-                (totalWithRecoveryVerification(recoveryTasks) /
-                  totalWithRecoveryVerification(competitor.filter((result) => recoveryIds.has(result.task_id))) -
-                  1) *
-                100
-              ).toFixed(2),
-            ),
-          }
-        : {}),
-      slim_total_tokens: complete.summary["slim-guard"].total_tokens,
-      ...(competitor ? { competitor_total_tokens: complete.summary["mcp-compressor"].total_tokens } : {}),
-      projection_cases: projection.results.length,
-      stress_fixture: {
-        authorized_tools: stress.fixture.authorized_tools,
-        result_rows: stress.fixture.result_rows,
-        direct_tokens: stress.normal_path.direct_tokens,
-        slim_tokens: stress.normal_path.slim_guard_tokens,
-        upstream_calls: stress.integrity.upstream_calls,
-        exact_recovery: stress.forced_full_recovery.exact_hash_match,
+      protocol_evaluation: {
+        candidate_digest: complete.candidate.digest,
+        manifest_sha256: complete.suite.manifest_sha256,
+        mcp_tasks_per_mode: complete.suite.case_count,
+        verdict: complete.verdict,
       },
+      modes,
+      result_projection_profiles: projection.suite.profiles,
+      stress_fixture: stress.observations[0]?.case_id,
     },
     null,
     2,

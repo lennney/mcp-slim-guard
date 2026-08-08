@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lennney/mcp-slim-guard/schemas/evaluation-suite-v1.json",
+  "title": "MCP Slim Guard evaluation suite manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "kind", "fixture_digest", "profiles", "cases"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "kind": {
+      "enum": ["protocol-replay", "result-projection", "selective-retrieval", "tool-retrieval", "stress", "host-task"]
+    },
+    "fixture_digest": { "$ref": "#/$defs/sha256" },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "expected_advertised_tool_counts": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "repetitions": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 1, "maximum": 10 }
+    },
+    "order_seed": { "type": "string", "minLength": 1 },
+    "corpus_digest": { "$ref": "#/$defs/sha256" },
+    "pool_sizes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "limits": { "$ref": "#/$defs/limits" },
+    "required_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_search_arms"],
+      "properties": {
+        "tool_search_arms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["direct", "oracle", "native", "compact", "extreme"] }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "protocol-replay" } } },
+      "then": { "required": ["expected_advertised_tool_counts"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "tool-retrieval" } }, "required": ["kind"] },
+      "then": { "required": ["corpus_digest", "pool_sizes"] }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "language": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string", "minLength": 1 },
+        "expected_tool": { "type": "string", "minLength": 1 },
+        "expected_marker": { "type": "string", "minLength": 1 },
+        "expected_content_kind": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "minLength": 1 },
+        "retrieval_cohort": {
+          "enum": ["exact-identifier", "task-language", "multilingual", "near-neighbor", "schema-only", "no-match"]
+        },
+        "catalog_digests": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^[1-9][0-9]*$" },
+          "additionalProperties": { "$ref": "#/$defs/sha256" }
+        },
+        "expected_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "query_cohort": {
+          "enum": [
+            "exact",
+            "multiple-terms",
+            "punctuation-case",
+            "ambiguous",
+            "zero-match",
+            "paraphrase",
+            "not-applicable"
+          ]
+        },
+        "expected_query_outcome": { "enum": ["match", "no-match", "not-applicable"] },
+        "expected_delivery": { "enum": ["projected", "pass-through"] },
+        "expected_delivery_by_profile": {
+          "type": "object",
+          "additionalProperties": { "enum": ["projected", "pass-through"] }
+        },
+        "minimum_target_reduction_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "task_digest": { "$ref": "#/$defs/sha256" },
+        "side_effecting": { "type": "boolean" },
+        "expected_no_match": { "type": "boolean" },
+        "expected_final_state_sha256": { "$ref": "#/$defs/sha256" },
+        "expected_final_state": {},
+        "tool_schemas": {
+          "type": "object",
+          "additionalProperties": { "type": "object" }
+        },
+        "denied_tools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "server_definitions": {
+          "type": "object",
+          "additionalProperties": { "type": ["object", "null"] }
+        },
+        "output_schema": { "type": ["object", "null"] },
+        "limits": { "$ref": "#/$defs/limits" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["retrieval_cohort"],
+            "properties": { "retrieval_cohort": { "const": "no-match" } }
+          },
+          "then": {
+            "required": ["expected_no_match"],
+            "properties": { "expected_no_match": { "const": true } },
+            "not": { "anyOf": [{ "required": ["expected_tool"] }, { "required": ["expected_schema_sha256"] }] }
+          }
+        },
+        {
+          "if": {
+            "required": ["retrieval_cohort"],
+            "properties": {
+              "retrieval_cohort": {
+                "enum": ["exact-identifier", "task-language", "multilingual", "near-neighbor", "schema-only"]
+              }
+            }
+          },
+          "then": { "required": ["expected_tool", "expected_schema_sha256"] }
+        }
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": { "type": "integer", "minimum": 1 },
+        "max_mcp_calls": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

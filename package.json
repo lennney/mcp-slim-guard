@@ -1,8 +1,8 @@
 {
   "name": "mcp-slim-guard",
-  "version": "0.1.1-alpha.2",
+  "version": "0.2.0-alpha.1",
   "mcpName": "io.github.lennney/mcp-slim-guard",
-  "description": "MCP context compression with 76.18% fewer normal-path tokens in a frozen standard benchmark. Same upstream call. Exact recovery.",
+  "description": "MCP tool access modes with on-demand full schemas and recoverable result delivery.",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -52,26 +52,25 @@
     "dev": "tsc --watch",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"*.{json,md,yml,yaml}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"*.{json,md,yml,yaml}\"",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/candidate/**/*.mjs\" \"docs/**/*.md\" \".github/**/*.{md,yml,yaml}\" \"*.{json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/candidate/**/*.mjs\" \"docs/**/*.md\" \".github/**/*.{md,yml,yaml}\" \"*.{json,md,yml,yaml}\"",
+    "verify:governance": "node scripts/candidate/verify-agent-guidance.mjs",
     "metadata:set": "node scripts/release/metadata.mjs",
     "metadata:check": "node scripts/release/metadata.mjs --check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "npm run typecheck && npm run lint && npm run test",
-    "prepublishOnly": "npm run metadata:check && npm run build && npm run check && npm run verify:package-boundary",
-    "bench": "node scripts/benchmark/bench.mjs",
-    "bench:tokens": "node scripts/benchmark/tokens.mjs",
+    "validate": "npm run verify:governance && npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "ci": "npm run build && npm run validate && npm run test:coverage && npm run verify:package-boundary",
+    "check": "npm run validate",
+    "prepublishOnly": "npm run metadata:check && npm run ci",
     "bench:result": "node scripts/benchmark/result-delivery.mjs",
     "bench:compression": "node scripts/benchmark/content-projection.mjs",
     "bench:compression:verify": "node scripts/benchmark/complete-task.mjs && node scripts/benchmark/content-projection.mjs && node scripts/benchmark/automatic-stress.mjs && node scripts/benchmark/verify-compression.mjs",
     "bench:stress": "npm run build && node scripts/benchmark/automatic-stress.mjs",
     "bench:task": "node scripts/benchmark/complete-task.mjs",
-    "bench:schema": "node scripts/benchmark/schema.mjs",
-    "bench:accuracy": "node scripts/benchmark/accuracy.mjs",
-    "bench:model-selection": "node scripts/evaluation/model-selection.mjs",
+    "eval": "node scripts/evaluation/evaluation-cli.mjs",
     "bench:security-accuracy": "node scripts/evaluation/security-accuracy.mjs",
     "demo:alpha": "npm run build && node scripts/demo/alpha-demo.mjs",
     "smoke:protocol": "node scripts/integration/protocol-smoke.mjs",
@@ -82,8 +81,28 @@
     "smoke:package-native-real": "node scripts/integration/package-native-real-server-smoke.mjs",
     "verify:package-boundary": "node scripts/candidate/verify-npm-package.mjs",
     "snapshot:source": "node scripts/candidate/create-source-snapshot.mjs",
-    "bench:latency": "node scripts/benchmark/latency.mjs",
     "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "tests/**/*.ts": [
+      "prettier --write"
+    ],
+    "scripts/candidate/**/*.mjs": [
+      "prettier --write"
+    ],
+    "docs/**/*.md": [
+      "prettier --write"
+    ],
+    ".github/**/*.{md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

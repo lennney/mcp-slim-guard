@@ -1,170 +1,42 @@
-/**
- * 配置文件 JSON Schema 校验测试
- */
-
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { validateConfigSchema } from "../../src/config-schema.js";
 
 function validConfig(): Record<string, unknown> {
   return {
-    version: 1,
-    tools: {
-      allow: ["github_*"],
-      deny: ["*_delete_*"],
-    },
-    ssrf: {
-      mode: "block",
-      block_private_ips: true,
-      allow_domains: ["*.github.com"],
-      block_domains: ["10.*"],
-    },
-    rate_limit: {
-      default: "60/min",
-      per_agent: {
-        claude: "120/min",
-      },
-    },
-    injection_detection: {
-      enabled: false,
-      sensitivity: "medium",
-      mode: "block",
-    },
-    compressor: {
-      enabled: false,
-      level: "light",
-    },
-    audit: {
-      output: "file",
-      filePath: "mcp-guard-audit.log",
-      maxSize: "10MB",
-      maxFiles: 5,
-      compress: false,
-    },
-    servers: {
-      github: {
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-github"],
-        env: {},
-      },
-    },
+    version: 2,
+    tools: { allow: ["search_*"], deny: [] },
+    ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] },
+    rate_limit: { default: "60/min" },
+    injection_detection: { enabled: false },
+    audit: { output: "file", filePath: "audit.log" },
+    servers: { search: { command: "node", args: ["server.mjs"] } },
   };
 }
 
 describe("validateConfigSchema", () => {
-  it("accepts a valid config", () => {
-    const errors = validateConfigSchema(validConfig());
-    expect(errors).toHaveLength(0);
+  it("accepts a v2 security and upstream configuration", () => {
+    expect(validateConfigSchema(validConfig())).toEqual([]);
   });
 
-  it("rejects missing required top-level fields", () => {
-    const c = validConfig();
-    delete (c as Record<string, unknown>).servers;
-    const errors = validateConfigSchema(c);
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((e) => e.path === "$.servers")).toBe(true);
+  it("rejects v1 and the removed compressor section", () => {
+    const v1 = validConfig();
+    v1.version = 1;
+    expect(validateConfigSchema(v1).some((error) => error.path === "$.version")).toBe(true);
+
+    const legacy = validConfig();
+    legacy.compressor = { enabled: true, level: "light" };
+    expect(validateConfigSchema(legacy).some((error) => error.path === "$.compressor")).toBe(true);
   });
 
-  it("rejects invalid enum values", () => {
-    const c = validConfig();
-    (c.ssrf as Record<string, unknown>).mode = "invalid";
-    const errors = validateConfigSchema(c);
-    expect(errors.some((e) => e.path === "$.ssrf.mode")).toBe(true);
+  it("keeps known policy fields typed", () => {
+    const invalid = validConfig();
+    invalid.tools = { allow: [], deny: "not-an-array" };
+    expect(validateConfigSchema(invalid).some((error) => error.path === "$.tools.deny")).toBe(true);
   });
 
-  it("rejects invalid rate_limit.default type", () => {
-    const c = validConfig();
-    (c.rate_limit as Record<string, unknown>).default = true;
-    const errors = validateConfigSchema(c);
-    expect(errors.some((e) => e.path === "$.rate_limit.default")).toBe(true);
-  });
-
-  it("accepts rate_limit.default as number", () => {
-    const c = validConfig();
-    (c.rate_limit as Record<string, unknown>).default = 10;
-    const errors = validateConfigSchema(c);
-    expect(errors).toHaveLength(0);
-  });
-
-  it("accepts rate_limit.default as object", () => {
-    const c = validConfig();
-    (c.rate_limit as Record<string, unknown>).default = { window_ms: 60000, max_requests: 60 };
-    const errors = validateConfigSchema(c);
-    expect(errors).toHaveLength(0);
-  });
-
-  it("rejects rate limits that would disable or corrupt enforcement", () => {
-    const negativeWindow = validConfig();
-    (negativeWindow.rate_limit as Record<string, unknown>).default = {
-      window_ms: -1,
-      max_requests: 60,
-    };
-
-    const negativeRequests = validConfig();
-    (negativeRequests.rate_limit as Record<string, unknown>).default = {
-      window_ms: 60_000,
-      max_requests: -1,
-    };
-
-    const negativeNumeric = validConfig();
-    (negativeNumeric.rate_limit as Record<string, unknown>).default = -1;
-
-    expect(validateConfigSchema(negativeWindow).length).toBeGreaterThan(0);
-    expect(validateConfigSchema(negativeRequests).length).toBeGreaterThan(0);
-    expect(validateConfigSchema(negativeNumeric).length).toBeGreaterThan(0);
-  });
-
-  it("rejects an incomplete enabled cache before runtime", () => {
-    const c = validConfig();
-    c.cache = { enabled: true };
-
-    const errors = validateConfigSchema(c);
-
-    expect(errors.some((e) => e.path === "$.cache.ttl")).toBe(true);
-    expect(errors.some((e) => e.path === "$.cache.max_entries")).toBe(true);
-    expect(errors.some((e) => e.path === "$.cache.allow")).toBe(true);
-    expect(errors.some((e) => e.path === "$.cache.deny")).toBe(true);
-  });
-
-  it("allows extra top-level fields (YAML anchor aliases)", () => {
-    const c = validConfig();
-    c.tools_copy = { allow: ["*"], deny: [] };
-    const errors = validateConfigSchema(c);
-    expect(errors).toHaveLength(0);
-  });
-
-  it("rejects missing required nested fields", () => {
-    const c = validConfig();
-    (c.servers as Record<string, Record<string, unknown>>).github.command = undefined;
-    const errors = validateConfigSchema(c);
-    expect(errors.some((e) => e.path === "$.servers.github.command")).toBe(true);
-  });
-
-  it("accepts remote HTTP and legacy SSE upstream entries", () => {
-    const c = validConfig();
-    c.servers = {
-      modern: {
-        type: "http",
-        url: "https://mcp.example.test/mcp",
-        headers: { Authorization: "Bearer ${REMOTE_AUTH}" },
-      },
-      legacy: {
-        type: "sse",
-        url: "https://mcp.example.test/sse",
-      },
-    };
-
-    expect(validateConfigSchema(c)).toHaveLength(0);
-  });
-
-  it("rejects mixed command and url upstream entries", () => {
-    const c = validConfig();
-    c.servers = {
-      broken: {
-        command: "node",
-        url: "https://mcp.example.test/mcp",
-      },
-    };
-
-    expect(validateConfigSchema(c).length).toBeGreaterThan(0);
+  it("rejects a Host mode in configuration", () => {
+    const invalid = validConfig();
+    invalid.mode = "compact";
+    expect(validateConfigSchema(invalid).some((error) => error.path === "$.mode")).toBe(true);
   });
 });

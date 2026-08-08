@@ -12,7 +12,7 @@ body:
     id: slim_guard_version
     attributes:
       label: Slim Guard version
-      placeholder: 0.1.1-alpha.2
+      placeholder: 0.2.0-alpha.1
     validations:
       required: true
   - type: input
@@ -36,12 +36,13 @@ body:
     validations:
       required: true
   - type: dropdown
-    id: surface
+    id: mode
     attributes:
-      label: Slim Guard surface
+      label: Slim Guard mode
       options:
-        - Generic (find_tool, call_tool, read_result)
-        - Host-native (authorized original Tools, read_result)
+        - Native (authorized original Tools, read_result)
+        - Compact (find_tool, call_tool, read_result)
+        - Extreme (Compact tools with shorter recoverable first delivery)
     validations:
       required: true
   - type: dropdown

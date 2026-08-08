@@ -15,12 +15,11 @@ describe("mcp-guard HTTP transport", () => {
   it("listens on the configured HTTP port", async () => {
     // Polling + spawn can exceed vitest default 5s testTimeout under load.
     const config: GuardConfig = {
-      version: 1,
+      version: 2,
       tools: { allow: ["mock_*"], deny: [] },
       ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] },
       rate_limit: { default: "1000/min" },
       injection_detection: { enabled: false },
-      compressor: { enabled: false, level: "light" },
       audit: { output: "stdout", filePath: "mcp-guard-audit.log" },
       servers: {
         mock: {

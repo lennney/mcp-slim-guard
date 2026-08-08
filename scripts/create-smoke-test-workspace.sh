@@ -6,7 +6,7 @@ WORKSPACE_DIR="$(dirname "$0")/../test-workspace"
 mkdir -p "$WORKSPACE_DIR"
 
 cat > "$WORKSPACE_DIR/micro-mcp.yml" << 'YAML'
-version: 1
+version: 2
 tools:
   allow:
     - "*"
@@ -21,9 +21,6 @@ rate_limit:
   default: ""
 injection_detection:
   enabled: false
-compressor:
-  enabled: false
-  level: "light"
 servers:
   mock:
     command: node

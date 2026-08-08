@@ -5,7 +5,23 @@ numbers are intentionally omitted.
 
 ## [Unreleased]
 
-No unreleased public changes.
+### Changed
+
+- The public product line now has Native, Compact, and Extreme modes.
+- Configuration is version 2. The legacy `compressor` configuration block and
+  five-level schema surface are removed; version 1 is rejected.
+- `start`, `plan`, and `install` select a mode. Codex defaults to Native;
+  Claude Code defaults to Compact and accepts Compact or Extreme.
+- Compact and Extreme return full original input schemas on discovery. Extreme
+  changes only eligible oversized result delivery and always preserves exact
+  `read_result` recovery.
+- `verify --host <codex|claude-code>` checks a selected mode without changing
+  Host configuration or calling an upstream business Tool.
+- Invalid arguments now return a structured local tool error. The error
+  confirms that Slim Guard did not invoke the upstream Tool.
+- `read_result` can now locate up to three bounded local fragments from an
+  immutable captured result. Exact cursor-based recovery remains available and
+  neither path invokes the upstream Tool again.
 
 ## [0.1.1-alpha.2] - 2026-08-02
 

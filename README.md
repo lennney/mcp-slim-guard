@@ -1,259 +1,158 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-lockup.svg" alt="MCP Slim Guard" width="640">
-</p>
+# MCP Slim Guard
 
-<p align="center"><strong>Cut MCP context before it reaches the agent.</strong></p>
+MCP Slim Guard gives a host one deliberate way to reach authorized upstream
+tools. It keeps input schemas intact, validates calls before the upstream is
+invoked, and can recover an oversized result exactly without repeating that
+invocation.
 
-<p align="center">
-  <strong>76% fewer MCP tokens in our standard benchmark</strong><br>
-  <strong>Up to 99.7% in synthetic stress testing</strong><br>
-  Same upstream call. Exact recovery.
-</p>
+## Choose a mode
 
-MCP Slim Guard reduces Tool catalogs on the Generic surface and eligible
-oversized results on both surfaces. The Host receives less context. MCP Slim
-Guard forwards selected arguments unchanged and executes the upstream Tool at
-most once.
+| Mode    | What the host sees                                                                                                 | Best fit                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| Native  | Authorized original tool names and full schemas, plus `read_result`                                                | Hosts that work well with a normal MCP catalog, including Codex  |
+| Compact | `find_tool`, `call_tool`, and `read_result`; discovery returns each match's full original schema                   | A small, predictable host surface                                |
+| Extreme | The Compact tool surface and schemas; only sufficiently large results receive a shorter recoverable first delivery | Context-sensitive hosts where a smaller first result is valuable |
 
-| Token reduction | Tokens removed | Tasks completed | Upstream calls |
-| --------------: | -------------: | --------------: | -------------: |
-|      **76.18%** |     **54,381** |       **24/24** |         **24** |
+Compact is the default for `start`. Native is the default installation plan for
+Codex. Compact is the default for Claude Code; Claude Code supports Compact and
+Extreme installation plans, not Native.
 
-<p align="center"><sub>Current Alpha · local stdio · Node.js 20+</sub></p>
+All modes apply the same allow/deny authorization. Compact and Extreme return at
+most three discovery matches, each with the original required fields, enums, and
+nested schema. A call is validated against that original schema before the
+upstream server is contacted.
 
-<p align="center">
-  <a href="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml"><img src="https://github.com/lennney/mcp-slim-guard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://www.npmjs.com/package/mcp-slim-guard"><img src="https://img.shields.io/npm/v/mcp-slim-guard.svg?label=npm" alt="npm"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-ff5a1f.svg" alt="MIT license"></a>
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-282b2d.svg" alt="Node.js 20 or newer"></a>
-</p>
-
-<p align="center">
-  <a href="#get-started-4-commands">Install</a> ·
-  <a href="#proof">Proof</a> ·
-  <a href="#host-compatibility-matrix">Hosts</a> ·
-  <a href="https://take-a-deep-breath0.com/en/mcp-slim-guard">Product page</a> ·
-  <a href="#try-slim-guard-and-contribute">Contribute</a> ·
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md">Docs</a> ·
-  <a href="https://github.com/lennney/mcp-slim-guard/blob/main/README_CN.md">中文</a>
-</p>
-
-![Slim Guard runtime demo: 12 MCP Tools become three Generic entries, one large result becomes a compact projection, and exact recovery keeps the upstream count at one](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/slim-guard-demo.gif)
-
-<p align="center"><sub>Generic runtime demo: 12 Tools → 3 entries · 73,507 characters → compact projection · exact recovery · 1 upstream execution</sub></p>
-
-## What it does
-
-- **Cuts catalog context.** The Generic surface exposes `find_tool`,
-  `call_tool`, and `read_result`. The Native surface preserves authorized
-  original Tool names.
-- **Cuts eligible result context.** Slim Guard routes long text, uniform JSON,
-  and logs through local deterministic projectors.
-- **Keeps exact recovery.** Every lossy delivery stores one immutable snapshot.
-  `read_result` reads it without executing upstream again.
-- **Makes trials reversible.** `analyze`, `plan`, `install`, `profile`, and
-  `rollback` cover the trial from assessment to restoration.
-
-## How it works (30 seconds)
-
-![Slim Guard calls an authorized Tool at most once, delivers a compact result, and recovers the exact snapshot without another upstream execution](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/mcp-context-flow-v2.svg)
-
-- **Catalog projection** reduces the Tool definitions loaded by the Generic
-  surface.
-- **Payload routing** reduces only result shapes with a safe local strategy.
-- **Result capsules** preserve the original result content for bounded
-  recovery.
-- **Fail-open delivery** returns the exact upstream result when projection,
-  storage, observation, or audit fails.
-
-## Get started (4 commands)
-
-Install the current Alpha:
+## Quick start
 
 ```bash
-npm install -g mcp-slim-guard@alpha
-cd /absolute/path/to/your-project
-
-# 1. Import upstream Servers. No manual YAML editing required.
+npm install -g mcp-slim-guard@0.2.0-alpha.1
+cd /path/to/project-with-mcp-config
 mcp-slim-guard init
+mcp-slim-guard validate
 
-# 2. Back up and install one Host configuration change.
-mcp-slim-guard install --host codex
-
-# 3. Use MCP normally, then create a safe report for the latest runtime segment.
-mcp-slim-guard profile --share
-
-# 4. Restore the recorded pre-install Host configuration.
-mcp-slim-guard rollback
+# Run the default Compact mode.
+mcp-slim-guard start
 ```
 
-Use `--host claude-code` for Claude Code. A Codex-only project with no supported
-JSON MCP configuration must first create `mcp-slim-guard.yml` from the
-[upstream template](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md#codex-cli).
-
-`install` creates a pre-write backup. `rollback` refuses to overwrite edits
-made after installation.
-
-`profile --share` prints a fixed, screenshot-ready report. It excludes paths,
-arguments, Tool and Server names, result contents, references, result or call
-identifiers, and billing estimates. Use `profile --open-report` to print the same evidence and
-open a prefilled compatibility Issue.
-
-<details>
-<summary><b>Advanced validation and troubleshooting</b></summary>
-
-Use `analyze` for a read-only catalog comparison, `plan --host ...` to preview
-the Host edit, and `validate`, `doctor`, or `status` for deeper checks.
-`profile` keeps the diagnostic view; `profile --json` emits its raw local
-profile JSON. The legacy `profile --last` spelling remains accepted.
-
-</details>
-
-## Proof
-
-### Frozen standard fixture
-
-![Slim Guard frozen benchmark: 76.18% fewer normal-path tokens, from 71,388 to 17,007, with 24 tasks and 24 upstream calls](https://raw.githubusercontent.com/lennney/mcp-slim-guard/main/docs/assets/benchmark-alpha-v2.svg)
-
-| Path       | Normal-path tokens | Tasks | Upstream calls |
-| ---------- | -----------------: | ----: | -------------: |
-| Direct MCP |             71,388 | 24/24 |             24 |
-| Slim Guard |         **17,007** | 24/24 |         **24** |
-
-The fixture uses 12 deterministic Tools and 24 English and Chinese protocol
-tasks. It counts tokens with `o200k_base` and makes no model or API calls. All
-23 oversized projection cases reconstructed exactly.
-
-The 76.18% reduction applies to this fixture. It does not measure model answer
-quality, provider caching, or billing.
-
-Run the current fixture gate. The table above remains the dated frozen
-snapshot:
+`init` writes `mcp-slim-guard.yml` with version `2`. The file contains upstream
+and security settings only. Select a mode in the host command, not in YAML.
 
 ```bash
-npm install
+# Inspect a host-specific plan without changing host files.
+mcp-slim-guard plan --host codex
+mcp-slim-guard plan --host claude-code --mode extreme
+
+# Verify the configured runtime without changing Host configuration or calling a business Tool.
+mcp-slim-guard verify --host codex
+
+# Apply a reviewed plan.
+mcp-slim-guard install --host codex --mode native
+```
+
+## Host entries
+
+For Codex, use Native when you want the normal authorized MCP catalog:
+
+```toml
+[mcp_servers.slim_guard]
+command = "mcp-slim-guard"
+args = ["start", "--mode", "native"]
+cwd = "/absolute/path/to/project"
+```
+
+For Claude Code, use Compact by default:
+
+```json
+{
+  "mcpServers": {
+    "slim-guard": {
+      "command": "mcp-slim-guard",
+      "args": ["start", "--mode", "compact"],
+      "cwd": "/absolute/path/to/project"
+    }
+  }
+}
+```
+
+See [host setup](docs/host-setup.md) for the full configuration and verification
+steps.
+
+## Configuration
+
+```yaml
+version: 2
+tools:
+  allow:
+    - "upstream_*"
+  deny:
+    - "*_delete_*"
+ssrf:
+  mode: block
+  block_private_ips: true
+  allow_domains: []
+  block_domains: []
+rate_limit:
+  default: "60/min"
+injection_detection:
+  enabled: true
+  sensitivity: medium
+  mode: block
+audit:
+  output: file
+  filePath: mcp-slim-guard-audit.log
+servers:
+  upstream:
+    command: npx
+    args: ["-y", "@your/mcp-server"]
+```
+
+Version 1 configuration is intentionally unsupported. The removed `compressor`
+section is rejected rather than migrated automatically.
+
+## Repair an invalid call
+
+If arguments do not match an authorized tool's original schema, Slim Guard
+returns a normal MCP tool error with `structuredContent` that identifies the
+schema failure and confirms that the upstream tool was not invoked. Correct the
+arguments and retry; submitted argument values are not echoed in that error.
+
+## Result recovery
+
+When a response needs recoverable delivery, the first response includes a
+`result_ref`. Use `read_result` with `query` to locate up to three bounded local
+fragments, or omit `query` and follow `next_cursor` to recover the exact snapshot.
+Both paths use the same immutable capture and never invoke the upstream tool again.
+Do not combine `query` with `cursor`. Native and Compact use the standard delivery
+boundary. Extreme uses a smaller boundary only when the initial delivered response
+is at least half the size of the exact response; otherwise it passes the exact
+response through unchanged.
+
+## Evidence and checks
+
+The repository includes a 24-task mode comparison, result-recovery fixtures,
+and a 100-tool / 8,000-row stress fixture. Run the current artifacts with:
+
+```bash
 npm run build
+npm run bench:task
+npm run bench:compression
+npm run bench:stress
 npm run bench:compression:verify
 ```
 
-Read the
-[benchmark method](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-alpha-benchmark-bilingual.md)
-and
-[real MCP Server smoke](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-26-real-mcp-server-smoke.md).
+Their reports are mode-specific and are generated locally; do not treat older
+alpha benchmark figures as claims for this product line.
 
-### Stress-test upper bound
+## Development
 
-An intentionally extreme fixture with 100 synthetic Tools and one 8,000-row
-result reduced normal-path protocol tokens from 499,556 to 1,437. The Tool ran
-once and exact full recovery matched.
+```bash
+npm run build
+npm run typecheck
+npm run lint
+npm test
+npm run verify:package-boundary
+npm run smoke:package
+```
 
-The 99.71% result is a stress-test upper bound. See the
-[stress-test evidence](https://github.com/lennney/mcp-slim-guard/blob/main/docs/evidence/2026-07-27-automatic-compression-stress.md).
-
-## What gets reduced
-
-| MCP content                                    | Slim Guard delivery                                   |
-| ---------------------------------------------- | ----------------------------------------------------- |
-| Authorized Tool catalog                        | Three Generic entries, or original names on Native    |
-| Eligible long text                             | Head and tail view plus an exact snapshot             |
-| Eligible uniform JSON array                    | Field-once table when it is smaller                   |
-| Eligible log-like text                         | Errors and boundaries retained; repeated noise marked |
-| Small, code, diff, or uncertain data           | Original result                                       |
-| Structured, mixed, error, or schema-bound data | Original result                                       |
-
-Projection starts after the upstream `CallToolResult` exists. Pass-through
-preserves `isError`, content order and types, `structuredContent`, `_meta`,
-`outputSchema`, and unknown fields.
-
-## Host compatibility matrix
-
-| Host        | Current Alpha status | Surface                            | Configuration        |
-| ----------- | -------------------- | ---------------------------------- | -------------------- |
-| Codex       | Supported            | Native preferred; Generic fallback | `.codex/config.toml` |
-| Claude Code | Supported            | Generic                            | `.mcp.json`          |
-| VS Code     | Preview only         | Native configuration preview       | `.vscode/mcp.json`   |
-| OpenCode    | Not included         | Not released                       | N/A                  |
-
-The release gate covers Codex and Claude Code installation and exact rollback
-through the public CLI. It also covers packaged Generic and Native runtime
-paths, recovery, protocol stdout, and audit privacy. The exact tagged package
-must pass these checks before publication.
-
-## Try Slim Guard and contribute
-
-Contributions and real-world compatibility reports are welcome. Use Slim Guard
-with a Host and MCP Server you rely on, then share the exact versions,
-transport, result shape, and recovery outcome.
-
-Run `mcp-slim-guard profile --open-report` after the test to attach the safe,
-versioned evidence automatically. You only need to add the Server version,
-transport, result shape, and reproduction details.
-
-- Found a reproducible problem? Open a
-  [bug report](https://github.com/lennney/mcp-slim-guard/issues/new?template=bug-report.md).
-- Tested a new Host and Server combination? Submit a
-  [compatibility report](https://github.com/lennney/mcp-slim-guard/issues/new?template=compatibility-report.yml).
-- Need a focused behavior change? Open a
-  [feature request](https://github.com/lennney/mcp-slim-guard/issues/new?template=feature-request.md)
-  or send a pull request.
-
-Documentation fixes, result-shape fixtures, and Host compatibility tests are
-useful first contributions. Read the
-[contribution guide](https://github.com/lennney/mcp-slim-guard/blob/main/CONTRIBUTING.md)
-before you start.
-
-## When to use · When to skip
-
-**Use Slim Guard when you:**
-
-- load many MCP Tools into one Host;
-- receive long reports, JSON arrays, or logs;
-- need compact first delivery with exact recovery;
-- want a local trial that can restore the earlier Host configuration.
-
-**Skip Slim Guard when you:**
-
-- use only a few small Tool definitions and short results;
-- require compression of conversation history, provider prompts, or source
-  files;
-- require durable cross-session recovery;
-- require a production remote HTTP service or hosted control plane.
-
-<details>
-<summary><b>Delivery and recovery contract</b></summary>
-
-- Slim Guard binds every call to one exact current catalog entry.
-- Selected arguments pass upstream unchanged.
-- A selected upstream Tool executes at most once.
-- Lossy delivery stores one immutable snapshot before returning `result_ref`.
-- `read_result` reads the snapshot without executing upstream.
-- Recovery references belong to the current runtime generation.
-
-</details>
-
-<details>
-<summary><b>Safety and failure behavior</b></summary>
-
-- Unauthorized Tools stay out of discovery, schema, and call paths.
-- Delivery, storage, observer, or audit failure returns the exact upstream
-  result.
-- Stdio stdout contains MCP protocol data only.
-- Audit records exclude credentials, arguments, result bodies, and raw
-  capability references by default.
-- Installation creates a pre-write backup.
-- Rollback refuses later-edit conflicts.
-
-</details>
-
-## Project links
-
-- [Host setup](https://github.com/lennney/mcp-slim-guard/blob/main/docs/host-setup.md)
-- [Architecture](https://github.com/lennney/mcp-slim-guard/blob/main/docs/architecture-mcp-slim-guard.md)
-- [Roadmap](https://github.com/lennney/mcp-slim-guard/blob/main/docs/ROADMAP.md)
-- [Contributing](https://github.com/lennney/mcp-slim-guard/blob/main/CONTRIBUTING.md)
-- [Support](https://github.com/lennney/mcp-slim-guard/blob/main/SUPPORT.md)
-- [Security policy](https://github.com/lennney/mcp-slim-guard/blob/main/SECURITY.md)
-
-## License
-
-[MIT](https://github.com/lennney/mcp-slim-guard/blob/main/LICENSE)
+This project is an alpha. Review authorization patterns and upstream settings
+before using it with privileged tools.

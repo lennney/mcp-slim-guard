@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "candidate": {
+    "kind": "working-tree",
+    "digest": "d730e5f91ccf392a85a1f7231ff8668aaa3f921fe262adb1efbebcee64ed8bb1",
+    "package_version": "0.2.0-alpha.1",
+    "git_head": "8ee4f67c371d1837d1a7ca75e0e93496f07832b4",
+    "dirty": true,
+    "file_count": 199
+  },
+  "suite": {
+    "schema_version": 1,
+    "id": "three-mode-100-tool-8000-row-stress",
+    "kind": "stress",
+    "manifest_sha256": "570a6e304694d66d90cde88116cbb3528847cca1d92f828ef9e74f02f4dc39be",
+    "fixture_sha256": "17db57477e0c47205204836489c4048aef2a9f3d0121a7d34eb0f74fe35eb8cd",
+    "case_count": 1,
+    "profiles": ["compact", "extreme"]
+  },
+  "environment": {
+    "node": "v24.14.1",
+    "platform": "win32",
+    "arch": "x64",
+    "tokenizer": "o200k_base"
+  },
+  "methodology": {
+    "kind": "deterministic 100-tool and 8,000-row protocol stress replay",
+    "adapter": "in-process-100-tool-8000-row-fixture",
+    "accounting": "prompt plus every model-visible MCP request and response payload",
+    "exact_recovery": "The Runner requires the recovered result hash to equal the immutable direct-result hash.",
+    "upstream_call_accounting": "The Runner requires one business call and zero additional calls during recovery.",
+    "limitation": "The synthetic stress fixture does not measure model tool selection or a typical session."
+  },
+  "observations": [
+    {
+      "profile": "compact",
+      "case_id": "100-tools-8000-rows",
+      "normal_path": {
+        "direct_tokens": 352157,
+        "mode_tokens": 1451,
+        "reduction_percent": 99.59,
+        "advertised_tools": 3,
+        "upstream_calls": 1,
+        "target_visible_in_initial_delivery": true
+      },
+      "forced_full_recovery": {
+        "direct_tokens": 352157,
+        "mode_tokens": 687741,
+        "read_result_calls": 50,
+        "exact_hash_match": true,
+        "upstream_calls": 0
+      },
+      "integrity": {
+        "direct_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "recovered_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "upstream_calls": 1
+      }
+    },
+    {
+      "profile": "extreme",
+      "case_id": "100-tools-8000-rows",
+      "normal_path": {
+        "direct_tokens": 352157,
+        "mode_tokens": 1134,
+        "reduction_percent": 99.68,
+        "advertised_tools": 3,
+        "upstream_calls": 1,
+        "target_visible_in_initial_delivery": true
+      },
+      "forced_full_recovery": {
+        "direct_tokens": 352157,
+        "mode_tokens": 687424,
+        "read_result_calls": 50,
+        "exact_hash_match": true,
+        "upstream_calls": 0
+      },
+      "integrity": {
+        "direct_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "recovered_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "upstream_calls": 1
+      }
+    }
+  ],
+  "comparisons": {
+    "compact_normal_reduction_percent": 99.59,
+    "extreme_normal_reduction_percent": 99.68
+  },
+  "hard_gates": {
+    "complete_matrix": {
+      "passed": true,
+      "expected": 2,
+      "actual": 2
+    },
+    "fixed_three_tool_surface": {
+      "passed": true,
+      "expected": 2,
+      "actual": 2
+    },
+    "one_upstream_call": {
+      "passed": true,
+      "expected": 2,
+      "actual": 2
+    },
+    "exact_recovery": {
+      "passed": true,
+      "expected": 2,
+      "actual": 2
+    },
+    "target_visible": {
+      "passed": true,
+      "expected": 2,
+      "actual": 2
+    }
+  },
+  "verdict": "pass",
+  "summary": {
+    "compact": {
+      "normal_path": {
+        "direct_tokens": 352157,
+        "mode_tokens": 1451,
+        "reduction_percent": 99.59,
+        "advertised_tools": 3,
+        "upstream_calls": 1,
+        "target_visible_in_initial_delivery": true
+      },
+      "forced_full_recovery": {
+        "direct_tokens": 352157,
+        "mode_tokens": 687741,
+        "read_result_calls": 50,
+        "exact_hash_match": true,
+        "upstream_calls": 0
+      },
+      "integrity": {
+        "direct_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "recovered_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "upstream_calls": 1
+      }
+    },
+    "extreme": {
+      "normal_path": {
+        "direct_tokens": 352157,
+        "mode_tokens": 1134,
+        "reduction_percent": 99.68,
+        "advertised_tools": 3,
+        "upstream_calls": 1,
+        "target_visible_in_initial_delivery": true
+      },
+      "forced_full_recovery": {
+        "direct_tokens": 352157,
+        "mode_tokens": 687424,
+        "read_result_calls": 50,
+        "exact_hash_match": true,
+        "upstream_calls": 0
+      },
+      "integrity": {
+        "direct_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "recovered_result_sha256": "87dfc6cbb0884520a2ce1a54822c8848bb9e43fdc5331776792d820e4351e183",
+        "upstream_calls": 1
+      }
+    }
+  }
+}

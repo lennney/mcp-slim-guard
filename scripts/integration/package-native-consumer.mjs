@@ -14,12 +14,11 @@ const largeMarker = `NATIVE_PACKAGE_LARGE:${argumentSecret}:CALLS:1`;
 const largeText = `${largeMarker}\n${"native package payload\n".repeat(3_000)}`;
 const structuredMarker = "NATIVE_PACKAGE_STRUCTURED:beta:CALLS:2";
 const config = {
-  version: 1,
+  version: 2,
   tools: { allow: ["fixture_native_*"], deny: [] },
   ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] },
   rate_limit: { default: "1000/min" },
   injection_detection: { enabled: false },
-  compressor: { enabled: true, level: "light" },
   servers: {
     fixture: {
       command: process.execPath,
@@ -32,7 +31,7 @@ const config = {
 const audit = new AuditLogger();
 const manager = new ServerManager(config.servers);
 const proxy = new GuardProxy(config, new PolicyPipeline([new WhitelistPolicy(config.tools)]), audit, manager, {
-  surface: "native",
+  mode: "native",
 });
 const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 const client = new Client(

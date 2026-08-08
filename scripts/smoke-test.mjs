@@ -44,7 +44,7 @@ async function test() {
   fs.writeFileSync(
     path.join(TEST_DIR, "mcp-slim-guard.yml"),
     [
-      "version: 1",
+      "version: 2",
       "",
       "tools:",
       "  allow:",

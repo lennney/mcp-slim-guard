@@ -11,9 +11,9 @@ Expected sequence:
 
 ```text
 1. Upstream catalog: 12 tools
-2. Agent catalog: 3 tools -> find_tool, call_tool, read_result
+2. Compact catalog: 3 tools -> find_tool, call_tool, read_result
 3. Discovery: fixture_generate_report -> tool_...
-4. Large result: head-tail-v1, ... chars -> capsule
+4. Large result: ... chars -> recoverable preview
 5. On-demand recovery: 24000 exact chars
 6. Upstream execution count: 1
 PASS: Compress what agents see. Preserve what tools do.

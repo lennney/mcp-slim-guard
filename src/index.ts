@@ -6,11 +6,11 @@ export {
   READ_RESULT,
   SecureProjectionKernel,
   readResultToolDefinition,
-  usesSecureProjection,
 } from "./secure-projection.js";
 export type { ProjectionInvoker } from "./secure-projection.js";
 export { GuardProxy } from "./proxy.js";
-export type { GuardProxyOptions, GuardSurface } from "./proxy.js";
+export type { GuardProxyOptions, GuardMode } from "./proxy.js";
+export { GUARD_MODES } from "./modes.js";
 export { ServerManager } from "./server-manager.js";
 export type {
   ConnectedUpstreamLifecycle,
@@ -26,6 +26,8 @@ export type { GuardConfig, ToolsConfig, UpstreamServer } from "./config-types.js
 export type { Policy, PolicyContext, PolicyResult } from "./types.js";
 export { NativeToolAdapter } from "./native-tool-adapter.js";
 export type { NativeDeliveryResult, NativeToolRoute } from "./native-tool-adapter.js";
+export { verifyModeAcceptance } from "./mode-acceptance.js";
+export type { ModeAcceptanceDependencies, ModeAcceptanceReport } from "./mode-acceptance.js";
 export {
   ResultSecurityInspector,
   type ResultFindingKind,

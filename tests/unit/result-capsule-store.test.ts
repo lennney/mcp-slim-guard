@@ -38,6 +38,206 @@ function reconstruct(capsule: Record<string, unknown>, payload: string): CallToo
 }
 
 describe("ResultCapsuleStore", () => {
+  it("locates bounded local fragments without changing cursor-based exact recovery", () => {
+    const store = new ResultCapsuleStore();
+    const marker = "UNIQUE-RESULT-FRAGMENT-73";
+    const original = `start\n${"ordinary context\n".repeat(4_000)}${marker}\n${"tail context\n".repeat(4_000)}`;
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: original }] }));
+    const observer = vi.fn();
+
+    const response = store.read({ result_ref: capsule.result_ref, query: marker }, observer);
+    const structured = response.structuredContent as Record<string, unknown>;
+    const matches = structured.matches as Array<Record<string, unknown>>;
+
+    expect(response.isError).not.toBe(true);
+    expect(textChunk(response)).toContain(marker);
+    expect(structured).toMatchObject({ retrieval: "search", match_count: 1, next_cursor: null, done: true });
+    expect(matches[0]?.text).toContain(marker);
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: "recovery", outcome: "search", matchCount: 1 }),
+    );
+    expect(recoverPayload(store, capsule)).toBe(original);
+  });
+
+  it("keeps local result search bounded and separate from cursor recovery", () => {
+    const store = new ResultCapsuleStore();
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: "x".repeat(20_000) }] }));
+
+    expect(store.read({ result_ref: capsule.result_ref, query: "missing" }).isError).toBe(true);
+    expect(store.read({ result_ref: capsule.result_ref, query: "x", cursor: 0 }).isError).toBe(true);
+    expect(store.read({ result_ref: capsule.result_ref, query: "x".repeat(257) }).isError).toBe(true);
+  });
+
+  it("selects an exact JSON Pointer value with Host-compatible structured text", () => {
+    const store = new ResultCapsuleStore();
+    const target = { marker: "R3C-PRODUCTION-POINTER", emoji: "😀", state: "ready" };
+    const original = JSON.stringify({
+      padding: Array.from({ length: 1_500 }, (_, index) => `padding-${index}`),
+      payload: { target },
+    });
+    const expected = JSON.stringify(target);
+    const expectedStart = original.indexOf(expected);
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: original }] }));
+
+    const response = store.read({
+      result_ref: capsule.result_ref,
+      selector: { kind: "json_pointer", pointer: "/payload/target" },
+      fallback_query: "R3C-PRODUCTION-POINTER",
+    });
+    const structured = response.structuredContent as Record<string, unknown>;
+    const matches = structured.matches as Array<Record<string, unknown>>;
+
+    expect(response.isError).not.toBe(true);
+    expect(structured).toMatchObject({
+      retrieval: "structured",
+      selector_kind: "json_pointer",
+      match_count: 1,
+      truncated: false,
+      next_cursor: null,
+      done: true,
+    });
+    expect(matches[0]).toMatchObject({
+      start: expectedStart,
+      end: expectedStart + expected.length,
+      text: expected,
+    });
+    expect(textChunk(response)).toContain(expected);
+    expect(recoverPayload(store, capsule)).toBe(original);
+  });
+
+  it("returns the first three row matches in source order and reports truncation", () => {
+    const store = new ResultCapsuleStore();
+    const original = JSON.stringify(
+      Array.from({ length: 600 }, (_, index) => ({
+        id: index,
+        state: [20, 120, 220, 320].includes(index) ? "target" : "ordinary",
+        padding: "x".repeat(24),
+      })),
+    );
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: original }] }));
+
+    const response = store.read({
+      result_ref: capsule.result_ref,
+      selector: { kind: "row_field_equals", field: "state", value: "target" },
+      fallback_query: "target",
+    });
+    const structured = response.structuredContent as Record<string, unknown>;
+    const matches = structured.matches as Array<Record<string, unknown>>;
+
+    expect(structured).toMatchObject({
+      retrieval: "structured",
+      selector_kind: "row_field_equals",
+      match_count: 3,
+      truncated: true,
+    });
+    expect(matches.map((match) => (JSON.parse(match.text as string) as { id: number }).id)).toEqual([20, 120, 220]);
+  });
+
+  it("preserves CRLF in exact bounded log windows", () => {
+    const store = new ResultCapsuleStore();
+    const lines = Array.from({ length: 700 }, (_, index) => `INFO line ${index} ${"context ".repeat(4)}`);
+    lines[350] = "ERROR R3C-PRODUCTION-LOG failed";
+    const original = lines.join("\r\n");
+    const expected = lines.slice(349, 352).join("\r\n") + "\r\n";
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: original }] }));
+
+    const response = store.read({
+      result_ref: capsule.result_ref,
+      selector: { kind: "log_anchor_window", anchor: "R3C-PRODUCTION-LOG", before: 1, after: 1 },
+      fallback_query: "R3C-PRODUCTION-LOG",
+    });
+    const matches = (response.structuredContent as Record<string, unknown>).matches as Array<Record<string, unknown>>;
+
+    expect(matches[0]?.text).toBe(expected);
+    expect(textChunk(response)).toContain(expected);
+  });
+
+  it("uses unchanged literal search only for invalid or unsupported structure", () => {
+    const store = new ResultCapsuleStore();
+    const invalid = `${'{"value":"ordinary"},'.repeat(1_000)}BROKEN R3C-FALLBACK-MARKER`;
+    const invalidCapsule = parseText(store.capture({ content: [{ type: "text", text: invalid }] }));
+    const observer = vi.fn();
+
+    const fallback = store.read(
+      {
+        result_ref: invalidCapsule.result_ref,
+        selector: { kind: "json_pointer", pointer: "/value" },
+        fallback_query: "R3C-FALLBACK-MARKER",
+      },
+      observer,
+    );
+
+    expect((fallback.structuredContent as Record<string, unknown>).retrieval).toBe("search");
+    expect(textChunk(fallback)).toContain("R3C-FALLBACK-MARKER");
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "recovery",
+        outcome: "search",
+        fallbackReason: "invalid_json",
+      }),
+    );
+
+    const valid = JSON.stringify({
+      padding: Array.from({ length: 2_000 }, () => "R3C-NO-BROADEN-FALLBACK"),
+      payload: { present: true },
+    });
+    const validCapsule = parseText(store.capture({ content: [{ type: "text", text: valid }] }));
+    const noMatch = store.read({
+      result_ref: validCapsule.result_ref,
+      selector: { kind: "json_pointer", pointer: "/payload/absent" },
+      fallback_query: "R3C-NO-BROADEN-FALLBACK",
+    });
+
+    expect(noMatch.isError).toBe(true);
+    expect(textChunk(noMatch)).toContain("No structured matches found");
+    expect(textChunk(noMatch)).not.toContain("R3C-NO-BROADEN-FALLBACK");
+  });
+
+  it("rejects invalid selector access combinations locally without echoing values", () => {
+    const store = new ResultCapsuleStore();
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: "x".repeat(20_000) }] }));
+    const secret = "PRIVATE-SELECTOR-VALUE";
+    const invalidCalls = [
+      {
+        result_ref: capsule.result_ref,
+        selector: { kind: "json_pointer", pointer: `/${secret}` },
+      },
+      {
+        result_ref: capsule.result_ref,
+        selector: { kind: "json_pointer", pointer: `/${secret}` },
+        fallback_query: secret,
+        cursor: 0,
+      },
+      { result_ref: capsule.result_ref, fallback_query: secret },
+      {
+        result_ref: capsule.result_ref,
+        selector: { kind: "unknown", value: secret },
+        fallback_query: secret,
+      },
+    ];
+
+    for (const args of invalidCalls) {
+      const response = store.read(args);
+      expect(response.isError).toBe(true);
+      expect(JSON.stringify(response)).not.toContain(secret);
+    }
+  });
+
+  it("does not treat an unrelated natural-language paraphrase as a literal match", () => {
+    const store = new ResultCapsuleStore();
+    const original = `${"Deterministic selective-result retrieval context. ".repeat(1_100)}build checksum mismatch`;
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: original }] }));
+
+    const response = store.read({
+      result_ref: capsule.result_ref,
+      query: "the compiled artifact has a different digest",
+    });
+
+    expect(response.isError).toBe(true);
+    expect(textChunk(response)).toContain("No local matches found");
+    expect(recoverPayload(store, capsule)).toBe(original);
+  });
+
   it("includes the exact chunk in structured recovery content for structured-only Hosts", () => {
     const store = new ResultCapsuleStore();
     const original = "structured-host-recovery".repeat(2_000);
@@ -68,7 +268,7 @@ describe("ResultCapsuleStore", () => {
       expect.objectContaining({
         phase: "delivery",
         outcome: "pass_through",
-        reason: "within_budget",
+        reason: "structured_result",
       }),
     );
   });
@@ -295,8 +495,9 @@ describe("ResultCapsuleStore", () => {
     expect(reconstruct(capsule, recoverPayload(store, capsule))).toEqual(original);
   });
 
-  it("preserves complex MCP results through the generic JSON snapshot", () => {
+  it("keeps structured and mixed MCP results on the exact pass-through path", () => {
     const store = new ResultCapsuleStore();
+    const observer = vi.fn();
     const original = {
       content: [
         { type: "text" as const, text: "large".repeat(4_000), annotations: { audience: ["assistant" as const] } },
@@ -308,14 +509,12 @@ describe("ResultCapsuleStore", () => {
       extension: { preserved: true },
     };
 
-    const capsule = parseText(store.capture(original));
-
-    expect(capsule).toMatchObject({
-      encoding: "call-tool-result-json-v1",
-      content_kind: "opaque-result",
-      projection: "json-prefix-v1",
+    expect(store.capture(original, observer)).toBe(original);
+    expect(observer).toHaveBeenCalledWith({
+      phase: "delivery",
+      outcome: "pass_through",
+      reason: "structured_result",
     });
-    expect(reconstruct(capsule, recoverPayload(store, capsule))).toEqual(original);
   });
 
   it("never splits Unicode characters in projections or adaptive chunks", () => {
@@ -629,6 +828,29 @@ describe("ResultCapsuleStore", () => {
         outcome: "rejected",
         reason: "unknown_result_ref",
       }),
+    );
+  });
+
+  it("uses a smaller recoverable preview for extreme delivery and restores the exact snapshot", () => {
+    const store = new ResultCapsuleStore({ mode: "extreme" });
+    const original = "unicode: 你好 ".repeat(2_000);
+    const capsule = parseText(store.capture({ content: [{ type: "text", text: original }] }));
+
+    expect(capsule.preview).toBeTypeOf("string");
+    expect(String(capsule.preview).length).toBeLessThan(700);
+    expect(recoverPayload(store, capsule)).toBe(original);
+  });
+
+  it("passes through an extreme candidate that cannot reduce the serialized first delivery by half", () => {
+    const store = new ResultCapsuleStore({ mode: "extreme" });
+    const original = { content: [{ type: "text" as const, text: "x".repeat(2_401) }] };
+    const observer = vi.fn();
+
+    const delivered = store.capture(original, observer);
+
+    expect(delivered).toBe(original);
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: "delivery", outcome: "pass_through", reason: "insufficient_savings" }),
     );
   });
 });

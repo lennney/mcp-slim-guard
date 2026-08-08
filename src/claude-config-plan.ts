@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ClaudeInstallationMode } from "./modes.js";
 
 export interface ClaudeConfigPlan {
   schemaVersion: 1;
@@ -16,22 +17,13 @@ export interface ClaudeConfigPlan {
   server: {
     name: "slim_guard";
     transport: "stdio";
-    surface: "generic";
+    mode: ClaudeInstallationMode;
     command: "mcp-slim-guard";
-    args: ["start"];
+    args: ["start", "--mode", ClaudeInstallationMode];
   };
-  proposedChange: {
-    operation: "replace-mcp-servers";
-    json: string;
-    displacedServerNames: string[];
-  };
-  preconditions: {
-    guardConfigPath: string;
-    guardConfigExists: boolean;
-  };
-  verification: {
-    command: ["claude", "mcp", "list"];
-  };
+  proposedChange: { operation: "replace-mcp-servers"; json: string; displacedServerNames: string[] };
+  preconditions: { guardConfigPath: string; guardConfigExists: boolean };
+  verification: { command: ["claude", "mcp", "list"] };
   writesPerformed: 0;
 }
 
@@ -39,13 +31,12 @@ interface ClaudeProjectConfig {
   mcpServers?: Record<string, unknown>;
 }
 
-export function buildClaudeConfigPlan(projectRoot: string): ClaudeConfigPlan {
+export function buildClaudeConfigPlan(projectRoot: string, mode: ClaudeInstallationMode = "compact"): ClaudeConfigPlan {
   const cwd = path.resolve(projectRoot);
   const targetPath = path.join(cwd, ".mcp.json");
   const guardConfigPath = path.join(cwd, "mcp-slim-guard.yml");
   const exists = fs.existsSync(targetPath);
   let currentServers: Record<string, unknown> = {};
-
   if (exists) {
     const parsed = JSON.parse(fs.readFileSync(targetPath, "utf8")) as ClaudeProjectConfig;
     if (parsed.mcpServers !== undefined && (typeof parsed.mcpServers !== "object" || parsed.mcpServers === null)) {
@@ -53,17 +44,10 @@ export function buildClaudeConfigPlan(projectRoot: string): ClaudeConfigPlan {
     }
     currentServers = parsed.mcpServers ?? {};
   }
-
+  const args: ["start", "--mode", ClaudeInstallationMode] = ["start", "--mode", mode];
   const proposedConfig = {
-    mcpServers: {
-      slim_guard: {
-        type: "stdio",
-        command: "mcp-slim-guard",
-        args: ["start"],
-      },
-    },
+    mcpServers: { slim_guard: { type: "stdio", command: "mcp-slim-guard", args } },
   };
-
   return {
     schemaVersion: 1,
     kind: "mcp-slim-guard/config-plan",
@@ -76,13 +60,7 @@ export function buildClaudeConfigPlan(projectRoot: string): ClaudeConfigPlan {
       exists,
       slimGuardEntry: Object.hasOwn(currentServers, "slim_guard") ? "present" : "absent",
     },
-    server: {
-      name: "slim_guard",
-      transport: "stdio",
-      surface: "generic",
-      command: "mcp-slim-guard",
-      args: ["start"],
-    },
+    server: { name: "slim_guard", transport: "stdio", mode, command: "mcp-slim-guard", args },
     proposedChange: {
       operation: "replace-mcp-servers",
       json: JSON.stringify(proposedConfig, null, 2),
@@ -90,13 +68,8 @@ export function buildClaudeConfigPlan(projectRoot: string): ClaudeConfigPlan {
         .filter((name) => name !== "slim_guard")
         .sort(),
     },
-    preconditions: {
-      guardConfigPath,
-      guardConfigExists: fs.existsSync(guardConfigPath),
-    },
-    verification: {
-      command: ["claude", "mcp", "list"],
-    },
+    preconditions: { guardConfigPath, guardConfigExists: fs.existsSync(guardConfigPath) },
+    verification: { command: ["claude", "mcp", "list"] },
     writesPerformed: 0,
   };
 }

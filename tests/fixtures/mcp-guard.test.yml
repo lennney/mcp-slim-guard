@@ -1,4 +1,4 @@
-version: 1
+version: 2
 tools:
   allow:
     - "github_*"
@@ -26,9 +26,6 @@ injection_detection:
   enabled: true
   sensitivity: medium
   mode: block
-compressor:
-  enabled: false
-  level: light
 servers:
   github:
     command: npx

@@ -84,7 +84,7 @@ function createFixture() {
 
 function writeConfig(binaryPath) {
   const config = {
-    version: 1,
+    version: 2,
     tools: {
       allow: ["github_get_file_contents", "filesystem_read_text_file", "everything_get-structured-content"],
       deny: [],
@@ -97,7 +97,6 @@ function writeConfig(binaryPath) {
     },
     rate_limit: { default: "1000/min" },
     injection_detection: { enabled: false },
-    compressor: { enabled: true, level: "light" },
     audit: {
       output: "file",
       filePath: path.join(temporaryDirectory, "audit.log"),

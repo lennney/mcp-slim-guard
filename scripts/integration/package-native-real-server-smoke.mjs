@@ -168,7 +168,7 @@ async function runInstalledNativeRuntime() {
     new PolicyPipeline([new WhitelistPolicy(config.tools)]),
     new AuditLogger(),
     new ServerManager(config.servers),
-    { surface: "native" },
+    { mode: "native" },
   );
 
   let stopping;
@@ -261,7 +261,7 @@ async function runSmoke() {
     fs.writeFileSync(fixturePath, largePayload, "utf8");
 
     const config = {
-      version: 1,
+      version: 2,
       tools: {
         allow: ["filesystem_read_text_file", "everything_echo", "everything_get-structured-content"],
         deny: [],
@@ -274,7 +274,6 @@ async function runSmoke() {
       },
       rate_limit: { default: "1000/min" },
       injection_detection: { enabled: false },
-      compressor: { enabled: true, level: "light" },
       servers: {
         filesystem: {
           command: process.execPath,

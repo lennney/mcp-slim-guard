@@ -1,4 +1,4 @@
-version: 1
+version: 2
 tools:
   allow:
     - fixture_*
@@ -12,9 +12,6 @@ rate_limit:
   default: "1000/min"
 injection_detection:
   enabled: false
-compressor:
-  enabled: true
-  level: light
 audit:
   output: file
   filePath: host-smoke-audit.log

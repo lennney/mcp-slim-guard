@@ -25,7 +25,7 @@ describe.sequential("installation CLI", () => {
       ) + "\n";
     const target = path.join(project, ".mcp.json");
     fs.writeFileSync(target, original, "utf8");
-    fs.writeFileSync(path.join(project, "mcp-slim-guard.yml"), "version: 1\n", "utf8");
+    fs.writeFileSync(path.join(project, "mcp-slim-guard.yml"), "version: 2\n", "utf8");
 
     const previousCwd = process.cwd();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -72,7 +72,7 @@ describe.sequential("installation CLI", () => {
     const original = '[mcp_servers.other]\ncommand = "other-mcp"\n';
     const target = path.join(codexDirectory, "config.toml");
     fs.writeFileSync(target, original, "utf8");
-    fs.writeFileSync(path.join(project, "mcp-slim-guard.yml"), "version: 1\n", "utf8");
+    fs.writeFileSync(path.join(project, "mcp-slim-guard.yml"), "version: 2\n", "utf8");
 
     const previousCwd = process.cwd();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -91,7 +91,7 @@ describe.sequential("installation CLI", () => {
       const installed = fs.readFileSync(target, "utf8");
       expect(installed).toContain('[mcp_servers.other]\ncommand = "other-mcp"');
       expect(installed).toContain("[mcp_servers.slim_guard]");
-      expect(installed).toContain('args = ["start", "--surface", "native"]');
+      expect(installed).toContain('args = ["start","--mode","native"]');
 
       await main(["node", "cli.js", "rollback", "--host", "codex", "--json"]);
 

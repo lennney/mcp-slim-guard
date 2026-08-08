@@ -42,30 +42,8 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
   properties: {
     version: {
       type: "number",
-      enum: [1],
-      description: "配置文件版本（当前仅支持 1）",
-    },
-    compressor: {
-      type: "object",
-      required: ["enabled", "level"],
-      properties: {
-        enabled: { type: "boolean" },
-        level: { type: "string", enum: ["off", "light", "normal", "tight", "extreme", "maximum"] },
-        lazy_loading: {
-          type: "boolean",
-          default: false,
-          description: "按需展开 schema，通过 mcp__get_schema 按需获取",
-        },
-        lazy_budget: {
-          type: "number",
-          minimum: 0,
-          maximum: 100,
-          default: 8,
-          description: "lazy loading 预暴露完整 schema 的工具数上限",
-        },
-      },
-      additionalProperties: false,
-      description: "Schema 压缩配置",
+      enum: [2],
+      description: "配置文件版本（当前仅支持 2）",
     },
     cache: {
       type: "object",
@@ -83,6 +61,19 @@ export const GUARD_CONFIG_SCHEMA: SchemaNode = {
       },
       additionalProperties: false,
       description: "请求缓存配置",
+    },
+    audit: {
+      type: "object",
+      required: ["output", "filePath"],
+      properties: {
+        output: { type: "string", enum: ["stdout", "file"] },
+        filePath: { type: "string" },
+        maxSize: { type: "string" },
+        maxFiles: { type: "number", minimum: 1 },
+        compress: { type: "boolean" },
+        maxMemoryEntries: { type: "number", minimum: 1 },
+      },
+      additionalProperties: false,
     },
     injection_detection: {
       type: "object",
@@ -468,6 +459,15 @@ function validateNode(value: unknown, schema: SchemaNode, path: string, errors: 
 export function validateConfigSchema(config: Record<string, unknown>): SchemaError[] {
   const errors: SchemaError[] = [];
   validateNode(config, GUARD_CONFIG_SCHEMA, "$", errors);
+  if (Object.hasOwn(config, "compressor")) {
+    errors.push({ path: "$.compressor", message: "removed in configuration version 2" });
+  }
+  if (Object.hasOwn(config, "mode") || Object.hasOwn(config, "surface")) {
+    errors.push({
+      path: "$.mode",
+      message: "select the Host mode with start, plan, or install; do not store it in YAML",
+    });
+  }
   return errors;
 }
 

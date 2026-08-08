@@ -48,9 +48,11 @@ export type AuditOutcome =
   | "degraded"
   | "projected"
   | "pass_through"
+  | "structured"
   | "fail_open"
   | "chunk"
   | "complete"
+  | "search"
   | "rejected";
 
 export interface AuditEventDetails {

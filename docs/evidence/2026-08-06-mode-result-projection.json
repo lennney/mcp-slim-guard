@@ -1,0 +1,1924 @@
+{
+  "schema_version": 2,
+  "benchmark_date": "2026-08-06",
+  "methodology": {
+    "kind": "deterministic quota-free content projection and exact recovery",
+    "tokenizer": "o200k_base",
+    "accounting": "MCP response payloads for initial delivery, targeted retrieval, and full recovery",
+    "model_calls": 0
+  },
+  "corpus": {
+    "cases": 23,
+    "categories": {
+      "plain-text": 10,
+      "json": 4,
+      "log": 4,
+      "mcp-result": 5
+    }
+  },
+  "deterministic_capture": {
+    "first_sha256": "08a1135982374172a05236ceb5c44b89dc8f1369f41ecb55348694164bf1a7b9",
+    "second_sha256": "08a1135982374172a05236ceb5c44b89dc8f1369f41ecb55348694164bf1a7b9",
+    "stable": true
+  },
+  "profiles": {
+    "compact": [
+      {
+        "id": "plain-en-0",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 575,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 7590,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 575,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 804,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13421,
+        "compression_cpu_ms": 2.969,
+        "observed_peak_heap_bytes": 7367952,
+        "heap_delta_bytes": 320120,
+        "exact_recovery": true,
+        "payload_sha256": "8c299cc146015293b84b50f1150ce5f796544de390fb032c28c8df2755bcd975",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "NEEDLE:plain-en-0Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Determin\n[... 39477 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 39997,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-1",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 569,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 7588,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 8161,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 848,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13413,
+        "compression_cpu_ms": 0.786,
+        "observed_peak_heap_bytes": 8221184,
+        "heap_delta_bytes": 192376,
+        "exact_recovery": true,
+        "payload_sha256": "4e3e0f357318dafab24fb841fbfe03a7643e94f780b30fa73d7d5b66c800cf9a",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 39477 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 39997,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-2",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 569,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 7588,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 8161,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 848,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13413,
+        "compression_cpu_ms": 0.616,
+        "observed_peak_heap_bytes": 7869888,
+        "heap_delta_bytes": 185672,
+        "exact_recovery": true,
+        "payload_sha256": "70f8a7788049750944259c0d639a688e6d04f0ddecc6ca043d4d2eb9ec183233",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 39477 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 39997,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-3",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 569,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 7584,
+        "target_retrieval_calls": 2,
+        "target_total_tokens": 13253,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 848,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13417,
+        "compression_cpu_ms": 0.663,
+        "observed_peak_heap_bytes": 8799704,
+        "heap_delta_bytes": 187296,
+        "exact_recovery": true,
+        "payload_sha256": "ea8b008b5df7525167077ac6942b15fbe67f670592f4fcfbb3a1a966a38c6e30",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 39477 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 39997,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-4",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 571,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 7584,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 571,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 786,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13417,
+        "compression_cpu_ms": 0.6,
+        "observed_peak_heap_bytes": 8072664,
+        "heap_delta_bytes": 180184,
+        "exact_recovery": true,
+        "payload_sha256": "2563136b3a2d4513f91d06be50681d49a8ed1fa203a755163018ed032fb2df58",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 39477 chars omitted; exact result available via read_result ...]\nontext. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. NEEDLE:plain-en-4",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 39997,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-0",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 794,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18118,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 794,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1113,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 46160,
+        "compression_cpu_ms": 3.779,
+        "observed_peak_heap_bytes": 8596008,
+        "heap_delta_bytes": -1660048,
+        "exact_recovery": true,
+        "payload_sha256": "b32c2401e685560596c53c04746192184b430c60ccfdeb3eb47cde154ec86101",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "NEEDLE:plain-zh-0这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文\n[... 29489 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 268
+            },
+            {
+              "start": 29757,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 268,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-1",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 792,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18118,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 18910,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1225,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 46158,
+        "compression_cpu_ms": 0.432,
+        "observed_peak_heap_bytes": 7928648,
+        "heap_delta_bytes": 265480,
+        "exact_recovery": true,
+        "payload_sha256": "bb3347778905e9d783d9fe4335d3956105c655477cd9b0c9f4c9cd09a9798ab6",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29497 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 260
+            },
+            {
+              "start": 29757,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 260,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-2",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 792,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18114,
+        "target_retrieval_calls": 2,
+        "target_total_tokens": 37026,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1225,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 46156,
+        "compression_cpu_ms": 0.538,
+        "observed_peak_heap_bytes": 9172704,
+        "heap_delta_bytes": 315384,
+        "exact_recovery": true,
+        "payload_sha256": "609e5a919713a03e8fa1d4fac6bae06b653b21c27a610ac9d86d2579b7e7b72b",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29497 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 260
+            },
+            {
+              "start": 29757,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 260,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-3",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 792,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18114,
+        "target_retrieval_calls": 2,
+        "target_total_tokens": 37026,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1225,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 46156,
+        "compression_cpu_ms": 0.495,
+        "observed_peak_heap_bytes": 10766336,
+        "heap_delta_bytes": 522424,
+        "exact_recovery": true,
+        "payload_sha256": "4229ea1f73790249301b0824a00278686555b264e676f1568b9d17c0f9dca15f",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29497 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 260
+            },
+            {
+              "start": 29757,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 260,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-4",
+        "category": "plain-text",
+        "mode": "compact",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 794,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18114,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 794,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1075,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 46156,
+        "compression_cpu_ms": 0.452,
+        "observed_peak_heap_bytes": 7936744,
+        "heap_delta_bytes": 161424,
+        "exact_recovery": true,
+        "payload_sha256": "0542673c4b18df339197f0611707ff384bd8919036aba1dd9cb1918e2b8dee31",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29489 chars omitted; exact result available via read_result ...]\n是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。NEEDLE:plain-zh-4",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 260
+            },
+            {
+              "start": 29749,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 260,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "uniform-json",
+        "category": "json",
+        "mode": "compact",
+        "source_chars": 54109,
+        "encoding": "single-text-v1",
+        "content_kind": "uniform-json",
+        "projection": "json-table-v1",
+        "fallback_reason": null,
+        "initial_tokens": 1448,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 17582,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 19030,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1868,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 33689,
+        "compression_cpu_ms": 1.976,
+        "observed_peak_heap_bytes": 9741216,
+        "heap_delta_bytes": 1144936,
+        "exact_recovery": true,
+        "payload_sha256": "7e7fe641800f4a8d7e0f26344be07880a3c71e09ec70379f9ee212a28683fd6e",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "uniform-json",
+          "projection": "json-table-v1",
+          "preview": "JSON table (1000 rows) fields=[\"id\",\"state\",\"owner\"]\n0\t\"open\"\t\"team-0\"\n1\t\"closed\"\t\"team-1\"\n2\t\"open\"\t\"team-2\"\n3\t\"closed\"\t\"team-3\"\n4\t\"open\"\t\"team-4\"\n5\t\"closed\"\t\"team-5\"\n6\t\"open\"\t\"team-6\"\n7\t\"closed\"\t\"team-7\"\n8\t\"open\"\t\"team-8\"\n9\t\"closed\"\t\"team-9\"\n10\t\"open\"\t\"team-10\"\n11\t\"closed\"\t\"team-11\"\n12\t\"open\"\t\"team-0\"\n13\t\"closed\"\t\"team-1\"\n14\t\"open\"\t\"team-2\"\n15\t\"closed\"\t\"team-3\"\n16\t\"open\"\t\"team-4\"\n17\t\"closed\"\t\"team-5\"\n18\t\"open\"\t\"team-6\"\n19\t\"closed\"\t\"team-7\"\n20\t\"open\"\t\"team-8\"\n21\t\"closed\"\t\"team-9\"\n22\t\"open\"\t\"team-10\"\n23\t\"closed\"\t\"team-11\"\n24\t\"open\"\t\"team-0\"\n25\t\"closed\"\t\"team-1\"\n26\t\"open\"\t\"team-2\"\n27\t\"closed\"\t\"team-3\"\n28\t\"open\"\t\"team-4\"\n29\t\"closed\"\t\"team-5\"\n30\t\"open\"\t\"team-6\"\n31\t\"closed\"\t\"team-7\"\n32\t\"open\"\t\"team-8\"\n33\t\"closed\"\t\"team-9\"\n34\t\"open\"\t\"team-10\"\n35\t\"closed\"\t\"team-11\"\n36\t\"open\"\t\"team-0\"\n37\t\"closed\"\t\"team-1\"\n38\t\"open\"\t\"team-2\"\n39\t\"closed\"\t\"team-3\"\n40\t\"open\"\t\"team-4\"\n41\t\"closed\"\t\"team-5\"\n42\t\"open\"\t\"team-6\"\n43\t\"closed\"\t\"team-7\"\n44\t\"open\"\t\"team-8\"\n45\t\"closed\"\t\"team-9\"\n46\t\"open\"\t\"team-10\"\n47\t\"closed\"\t\"team-11\"\n48\t\"open\"\t\"team-0\"\n49\t\"closed\"\t\"team-1\"\n50\t\"open\"\t\"team-2\"\n51\t\"closed\"\t\"team-3\"\n52\t\"open\"\t\"team-4\"\n53\t\"closed\"\t\"team-5\"\n54\t\"open\"\t\"team-6\"\n55\t\"closed\"\t\"team-7\"\n56\t\"open\"\t\"team-8\"\n[943 rows omitted; exact JSON available via read_result]",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 44070,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "heterogeneous-json",
+        "category": "json",
+        "mode": "compact",
+        "source_chars": 31061,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": "json-not-uniform",
+        "initial_tokens": 1156,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 19030,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 20140,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1594,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 21409,
+        "compression_cpu_ms": 0.809,
+        "observed_peak_heap_bytes": 10994424,
+        "heap_delta_bytes": 329968,
+        "exact_recovery": true,
+        "payload_sha256": "57dea00e241bbae31e9eb044b530333f3db14a8b7a5e12e355976ac7f764617c",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "[{\"id\":0,\"value\":\"v-0\"},{\"id\":1,\"status\":\"ok\",\"extra\":1},{\"id\":2,\"value\":\"v-2\"},{\"id\":3,\"status\":\"ok\",\"extra\":3},{\"id\":4,\"value\":\"v-4\"},{\"id\":5,\"status\":\"ok\",\"extra\":5},{\"id\":6,\"value\":\"v-6\"},{\"id\":7,\"status\":\"ok\",\"extra\":7},{\"id\":8,\"value\":\"v-8\"},{\"id\":9,\"status\":\"ok\",\"extra\":9},{\"id\":10,\"value\":\"v-10\"},{\"id\":11,\"status\":\"ok\",\"extra\":11},{\"id\":12,\"value\":\"v-12\"},{\"id\":13,\"status\":\"ok\",\"extra\":13},{\"id\":14,\"value\":\"v-14\"},{\"id\":15,\"status\":\"ok\",\"extra\":15},{\"id\":16,\"value\":\"v-16\"},{\"id\":17,\"status\":\"ok\",\"extra\":17}\n[... 24378 chars omitted; exact result available via read_result ...]\na\":783},{\"id\":784,\"value\":\"v-784\"},{\"id\":785,\"status\":\"ok\",\"extra\":785},{\"id\":786,\"value\":\"v-786\"},{\"id\":787,\"status\":\"ok\",\"extra\":787},{\"id\":788,\"value\":\"v-788\"},{\"id\":789,\"status\":\"ok\",\"extra\":789},{\"id\":790,\"value\":\"v-790\"},{\"id\":791,\"status\":\"ok\",\"extra\":791},{\"id\":792,\"value\":\"v-792\"},{\"id\":793,\"status\":\"ok\",\"extra\":793},{\"id\":794,\"value\":\"v-794\"},{\"id\":795,\"status\":\"ok\",\"extra\":795},{\"id\":796,\"value\":\"v-796\"},{\"id\":797,\"status\":\"ok\",\"extra\":797},{\"id\":798,\"value\":\"v-798\"},{\"id\":799,\"status\":\"ok\",\"extra\":799}]",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 24898,
+              "end": 25418
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 25418,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "deep-json",
+        "category": "json",
+        "mode": "compact",
+        "source_chars": 43973,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": "json-not-uniform",
+        "initial_tokens": 1062,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 17424,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 18506,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1499,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 29316,
+        "compression_cpu_ms": 0.829,
+        "observed_peak_heap_bytes": 7837752,
+        "heap_delta_bytes": 281368,
+        "exact_recovery": true,
+        "payload_sha256": "cbd6906e5fb98e3fbc10c081131f9b8871019c894f682e363f117af51f824b3a",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "{\"root\":{\"nested\":{\"values\":[\"value-0\",\"value-1\",\"value-2\",\"value-3\",\"value-4\",\"value-5\",\"value-6\",\"value-7\",\"value-8\",\"value-9\",\"value-10\",\"value-11\",\"value-12\",\"value-13\",\"value-14\",\"value-15\",\"value-16\",\"value-17\",\"value-18\",\"value-19\",\"value-20\",\"value-21\",\"value-22\",\"value-23\",\"value-24\",\"value-25\",\"value-26\",\"value-27\",\"value-28\",\"value-29\",\"value-30\",\"value-31\",\"value-32\",\"value-33\",\"value-34\",\"value-35\",\"value-36\",\"value-37\",\"value-38\",\"value-39\",\"value-40\",\"value-41\",\"value-42\",\"value-43\",\"value-44\",\"value\n[... 36888 chars omitted; exact result available via read_result ...]\nlue-2960\",\"value-2961\",\"value-2962\",\"value-2963\",\"value-2964\",\"value-2965\",\"value-2966\",\"value-2967\",\"value-2968\",\"value-2969\",\"value-2970\",\"value-2971\",\"value-2972\",\"value-2973\",\"value-2974\",\"value-2975\",\"value-2976\",\"value-2977\",\"value-2978\",\"value-2979\",\"value-2980\",\"value-2981\",\"value-2982\",\"value-2983\",\"value-2984\",\"value-2985\",\"value-2986\",\"value-2987\",\"value-2988\",\"value-2989\",\"value-2990\",\"value-2991\",\"value-2992\",\"value-2993\",\"value-2994\",\"value-2995\",\"value-2996\",\"value-2997\",\"value-2998\",\"value-2999\"]}}}",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 37408,
+              "end": 37928
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 37928,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "invalid-json",
+        "category": "json",
+        "mode": "compact",
+        "source_chars": 58967,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": "json-not-uniform",
+        "initial_tokens": 1054,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 17430,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 1054,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1332,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 39426,
+        "compression_cpu_ms": 1.049,
+        "observed_peak_heap_bytes": 9054712,
+        "heap_delta_bytes": 378336,
+        "exact_recovery": true,
+        "payload_sha256": "fb801d0463aee169d4c3a74bd15c3636dba7071570a009be6ad546f1af257e62",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "{\"items\":[\"value-0\",\"value-1\",\"value-2\",\"value-3\",\"value-4\",\"value-5\",\"value-6\",\"value-7\",\"value-8\",\"value-9\",\"value-10\",\"value-11\",\"value-12\",\"value-13\",\"value-14\",\"value-15\",\"value-16\",\"value-17\",\"value-18\",\"value-19\",\"value-20\",\"value-21\",\"value-22\",\"value-23\",\"value-24\",\"value-25\",\"value-26\",\"value-27\",\"value-28\",\"value-29\",\"value-30\",\"value-31\",\"value-32\",\"value-33\",\"value-34\",\"value-35\",\"value-36\",\"value-37\",\"value-38\",\"value-39\",\"value-40\",\"value-41\",\"value-42\",\"value-43\",\"value-44\",\"value-45\",\"value-46\",\"va\n[... 49886 chars omitted; exact result available via read_result ...]\n\"value-3962\",\"value-3963\",\"value-3964\",\"value-3965\",\"value-3966\",\"value-3967\",\"value-3968\",\"value-3969\",\"value-3970\",\"value-3971\",\"value-3972\",\"value-3973\",\"value-3974\",\"value-3975\",\"value-3976\",\"value-3977\",\"value-3978\",\"value-3979\",\"value-3980\",\"value-3981\",\"value-3982\",\"value-3983\",\"value-3984\",\"value-3985\",\"value-3986\",\"value-3987\",\"value-3988\",\"value-3989\",\"value-3990\",\"value-3991\",\"value-3992\",\"value-3993\",\"value-3994\",\"value-3995\",\"value-3996\",\"value-3997\",\"value-3998\",\"value-3999\" BROKEN NEEDLE:invalid-json",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 520
+            },
+            {
+              "start": 50406,
+              "end": 50926
+            }
+          ],
+          "next_cursor": 520,
+          "payload_chars": 50926,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "repeated-log",
+        "category": "log",
+        "mode": "compact",
+        "source_chars": 24120,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 370,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 8146,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 370,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 601,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 8516,
+        "compression_cpu_ms": 1.229,
+        "observed_peak_heap_bytes": 10220728,
+        "heap_delta_bytes": 540864,
+        "exact_recovery": true,
+        "payload_sha256": "1883d83028016789014b636655259a02521d12d49887a0e431a004f7292fb798",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO build started\nINFO dependency cached [repeated 1000 times]\nWARN NEEDLE:repeated-log retry scheduled\nINFO build finished",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 23079,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "progress-log",
+        "category": "log",
+        "mode": "compact",
+        "source_chars": 24909,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 381,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 16144,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 381,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 647,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 16525,
+        "compression_cpu_ms": 0.935,
+        "observed_peak_heap_bytes": 11459600,
+        "heap_delta_bytes": 600680,
+        "exact_recovery": true,
+        "payload_sha256": "b07323cc54c8b28afa8b743ab01950891a05d22271c4c7d7850a9d1a13ddfc49",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO download started\nINFO download complete\nDEBUG file 0\n[997 lines omitted]\nDEBUG file 998\nDEBUG file 999\nERROR NEEDLE:progress-log checksum mismatch",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 23368,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "stack-log",
+        "category": "log",
+        "mode": "compact",
+        "source_chars": 24566,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 394,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 16176,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 394,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 711,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 16570,
+        "compression_cpu_ms": 0.939,
+        "observed_peak_heap_bytes": 8940504,
+        "heap_delta_bytes": 1011664,
+        "exact_recovery": true,
+        "payload_sha256": "42b8df63dea8b64b06336d5197fbd469405d150cf74878ec96e460ee4456ae34",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO request accepted\nDEBUG step 0\nDEBUG step 1\n[1498 lines omitted]\nERROR NEEDLE:stack-log request failed\nException: synthetic failure\n  at fixture (fixture.ts:10:2)\nINFO shutdown",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 23023,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "bilingual-log",
+        "category": "log",
+        "mode": "compact",
+        "source_chars": 24493,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 387,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18198,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 387,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 692,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 22659,
+        "compression_cpu_ms": 1.139,
+        "observed_peak_heap_bytes": 10940776,
+        "heap_delta_bytes": 1090952,
+        "exact_recovery": true,
+        "payload_sha256": "cf232f857fa2bc989ebc51c92801c0d2f7e501b475d782abd1c4d24bc5d2b6f3",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO 服务启动\nDEBUG 处理记录 0\nDEBUG 处理记录 1\n[1498 lines omitted]\nWARN NEEDLE:bilingual-log 正在重试\nERROR 请求失败\nINFO 服务停止",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 22951,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "multi-block",
+        "category": "mcp-result",
+        "mode": "compact",
+        "source_chars": 18135,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 971,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18198,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 971,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1362,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 19169,
+        "compression_cpu_ms": 0.438,
+        "observed_peak_heap_bytes": 7753000,
+        "heap_delta_bytes": 72464,
+        "exact_recovery": true,
+        "payload_sha256": "45980eec856a8bbff92b6adc87308ecc76d971e921bfaed6e3ee18dbdad97c07",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"NEEDLE:multi-block\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 1200
+            }
+          ],
+          "next_cursor": 1200,
+          "payload_chars": 18135,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "image-block",
+        "category": "mcp-result",
+        "mode": "compact",
+        "source_chars": 20107,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 1256,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 30184,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 1256,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1725,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 31440,
+        "compression_cpu_ms": 0.29,
+        "observed_peak_heap_bytes": 8137760,
+        "heap_delta_bytes": 79120,
+        "exact_recovery": true,
+        "payload_sha256": "088427b82c0176107f54de5cd218b61879f32e30b869045b93a3f7c7b61edbe7",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"NEEDLE:image-block\"},{\"type\":\"image\",\"data\":\"YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 1200
+            }
+          ],
+          "next_cursor": 1200,
+          "payload_chars": 20107,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "structured-content",
+        "category": "mcp-result",
+        "mode": "compact",
+        "source_chars": 20984,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 1273,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18166,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 18409,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1738,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 19439,
+        "compression_cpu_ms": 1.838,
+        "observed_peak_heap_bytes": 10984224,
+        "heap_delta_bytes": 1825656,
+        "exact_recovery": true,
+        "payload_sha256": "f43cb2c7a5008ad8151188f3bd35b01c4fcb1bc103265aef95bd6ed2935e1243",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"summary\"}],\"structuredContent\":{\"rows\":[\"row-0\",\"row-1\",\"row-2\",\"row-3\",\"row-4\",\"row-5\",\"row-6\",\"row-7\",\"row-8\",\"row-9\",\"row-10\",\"row-11\",\"row-12\",\"row-13\",\"row-14\",\"row-15\",\"row-16\",\"row-17\",\"row-18\",\"row-19\",\"row-20\",\"row-21\",\"row-22\",\"row-23\",\"row-24\",\"row-25\",\"row-26\",\"row-27\",\"row-28\",\"row-29\",\"row-30\",\"row-31\",\"row-32\",\"row-33\",\"row-34\",\"row-35\",\"row-36\",\"row-37\",\"row-38\",\"row-39\",\"row-40\",\"row-41\",\"row-42\",\"row-43\",\"row-44\",\"row-45\",\"row-46\",\"row-47\",\"row-48\",\"row-49\",\"row-50\",\"row-51\",\"row-52\",\"row-53\",\"row-54\",\"row-55\",\"row-56\",\"row-57\",\"row-58\",\"row-59\",\"row-60\",\"row-61\",\"row-62\",\"row-63\",\"row-64\",\"row-65\",\"row-66\",\"row-67\",\"row-68\",\"row-69\",\"row-70\",\"row-71\",\"row-72\",\"row-73\",\"row-74\",\"row-75\",\"row-76\",\"row-77\",\"row-78\",\"row-79\",\"row-80\",\"row-81\",\"row-82\",\"row-83\",\"row-84\",\"row-85\",\"row-86\",\"row-87\",\"row-88\",\"row-89\",\"row-90\",\"row-91\",\"row-92\",\"row-93\",\"row-94\",\"row-95\",\"row-96\",\"row-97\",\"row-98\",\"row-99\",\"row-100\",\"row-101\",\"row-102\",\"row-103\",\"row-104\",\"row-105\",\"row-106\",\"row-107\",\"row-108\",\"row-109\",\"row-110\",\"row-111\",\"row-112\",\"row-113\",\"row-114\",\"row-115\",\"row-116\",\"row-117\",\"row-118\",\"row-119\",\"row-120\",\"row-121\",\"row-122\",\"row-",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 1200
+            }
+          ],
+          "next_cursor": 1200,
+          "payload_chars": 20984,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "metadata",
+        "category": "mcp-result",
+        "mode": "compact",
+        "source_chars": 14119,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 552,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 3686,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 3918,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 775,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 4238,
+        "compression_cpu_ms": 0.253,
+        "observed_peak_heap_bytes": 11674648,
+        "heap_delta_bytes": 58712,
+        "exact_recovery": true,
+        "payload_sha256": "65fa55aa290cd4155f415103b628c99e167197aafa3511626721f179804c44c4",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"metadata fixture\"}],\"_meta\":{\"trace\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 1200
+            }
+          ],
+          "next_cursor": 1200,
+          "payload_chars": 14119,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "error-result",
+        "category": "mcp-result",
+        "mode": "compact",
+        "source_chars": 17073,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 670,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 8164,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 8270,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 924,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 8834,
+        "compression_cpu_ms": 0.323,
+        "observed_peak_heap_bytes": 7829720,
+        "heap_delta_bytes": 64920,
+        "exact_recovery": true,
+        "payload_sha256": "e754fa25cd44091e1f16dbdd63f54aae57a40b4e0b9d244ffa914a51bf9cdcbb",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"failure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure c",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 1200
+            }
+          ],
+          "next_cursor": 1200,
+          "payload_chars": 17073,
+          "result_shape": null
+        }
+      }
+    ],
+    "extreme": [
+      {
+        "id": "plain-en-0",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 460,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 7590,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 460,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 647,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13306,
+        "compression_cpu_ms": 0.555,
+        "observed_peak_heap_bytes": 8386696,
+        "heap_delta_bytes": 148880,
+        "exact_recovery": true,
+        "payload_sha256": "8c299cc146015293b84b50f1150ce5f796544de390fb032c28c8df2755bcd975",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "NEEDLE:plain-en-0Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Determin\n[... 40197 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 40357,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-1",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 454,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 7588,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 8046,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 661,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13298,
+        "compression_cpu_ms": 0.61,
+        "observed_peak_heap_bytes": 9033904,
+        "heap_delta_bytes": 141368,
+        "exact_recovery": true,
+        "payload_sha256": "4e3e0f357318dafab24fb841fbfe03a7643e94f780b30fa73d7d5b66c800cf9a",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 40197 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 40357,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-2",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 454,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 7588,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 8046,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 661,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13298,
+        "compression_cpu_ms": 0.521,
+        "observed_peak_heap_bytes": 9882432,
+        "heap_delta_bytes": 147344,
+        "exact_recovery": true,
+        "payload_sha256": "70f8a7788049750944259c0d639a688e6d04f0ddecc6ca043d4d2eb9ec183233",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 40197 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 40357,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-3",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 454,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 7584,
+        "target_retrieval_calls": 2,
+        "target_total_tokens": 13250,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 661,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13302,
+        "compression_cpu_ms": 0.535,
+        "observed_peak_heap_bytes": 10752288,
+        "heap_delta_bytes": 153096,
+        "exact_recovery": true,
+        "payload_sha256": "ea8b008b5df7525167077ac6942b15fbe67f670592f4fcfbb3a1a966a38c6e30",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 40197 chars omitted; exact result available via read_result ...]\nssion benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. ",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 40357,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-en-4",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 40556,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 456,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 7584,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 456,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 641,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 13302,
+        "compression_cpu_ms": 1.736,
+        "observed_peak_heap_bytes": 11647848,
+        "heap_delta_bytes": -3837656,
+        "exact_recovery": true,
+        "payload_sha256": "2563136b3a2d4513f91d06be50681d49a8ed1fa203a755163018ed032fb2df58",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression\n[... 40197 chars omitted; exact result available via read_result ...]\nontext. Deterministic compression benchmark context. Deterministic compression benchmark context. Deterministic compression benchmark context. NEEDLE:plain-en-4",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 40357,
+              "end": 40517
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 40517,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-0",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 524,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18118,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 524,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 735,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 45890,
+        "compression_cpu_ms": 0.364,
+        "observed_peak_heap_bytes": 8591976,
+        "heap_delta_bytes": 248680,
+        "exact_recovery": true,
+        "payload_sha256": "b32c2401e685560596c53c04746192184b430c60ccfdeb3eb47cde154ec86101",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "NEEDLE:plain-zh-0这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文\n[... 29849 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 88
+            },
+            {
+              "start": 29937,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 88,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-1",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 522,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18118,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 18640,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 775,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 45888,
+        "compression_cpu_ms": 0.432,
+        "observed_peak_heap_bytes": 9519376,
+        "heap_delta_bytes": 208576,
+        "exact_recovery": true,
+        "payload_sha256": "bb3347778905e9d783d9fe4335d3956105c655477cd9b0c9f4c9cd09a9798ab6",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29857 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 80
+            },
+            {
+              "start": 29937,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 80,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-2",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 522,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18114,
+        "target_retrieval_calls": 2,
+        "target_total_tokens": 36756,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 775,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 45886,
+        "compression_cpu_ms": 0.335,
+        "observed_peak_heap_bytes": 10697176,
+        "heap_delta_bytes": 254904,
+        "exact_recovery": true,
+        "payload_sha256": "609e5a919713a03e8fa1d4fac6bae06b653b21c27a610ac9d86d2579b7e7b72b",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29857 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 80
+            },
+            {
+              "start": 29937,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 80,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-3",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 522,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18114,
+        "target_retrieval_calls": 2,
+        "target_total_tokens": 36756,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 775,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 45886,
+        "compression_cpu_ms": 0.875,
+        "observed_peak_heap_bytes": 11757216,
+        "heap_delta_bytes": -3843000,
+        "exact_recovery": true,
+        "payload_sha256": "4229ea1f73790249301b0824a00278686555b264e676f1568b9d17c0f9dca15f",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29857 chars omitted; exact result available via read_result ...]\n性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 80
+            },
+            {
+              "start": 29937,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 80,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "plain-zh-4",
+        "category": "plain-text",
+        "mode": "extreme",
+        "source_chars": 30056,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": null,
+        "initial_tokens": 524,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18114,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 524,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 733,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 45886,
+        "compression_cpu_ms": 0.343,
+        "observed_peak_heap_bytes": 9164096,
+        "heap_delta_bytes": 197528,
+        "exact_recovery": true,
+        "payload_sha256": "0542673c4b18df339197f0611707ff384bd8919036aba1dd9cb1918e2b8dee31",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评\n[... 29849 chars omitted; exact result available via read_result ...]\n是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。这是确定性压缩评测正文。NEEDLE:plain-zh-4",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 80
+            },
+            {
+              "start": 29929,
+              "end": 30017
+            }
+          ],
+          "next_cursor": 80,
+          "payload_chars": 30017,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "uniform-json",
+        "category": "json",
+        "mode": "extreme",
+        "source_chars": 54109,
+        "encoding": "single-text-v1",
+        "content_kind": "uniform-json",
+        "projection": "json-table-v1",
+        "fallback_reason": null,
+        "initial_tokens": 761,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 17582,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 18343,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 1008,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 33002,
+        "compression_cpu_ms": 1.191,
+        "observed_peak_heap_bytes": 10873864,
+        "heap_delta_bytes": 1000216,
+        "exact_recovery": true,
+        "payload_sha256": "7e7fe641800f4a8d7e0f26344be07880a3c71e09ec70379f9ee212a28683fd6e",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "uniform-json",
+          "projection": "json-table-v1",
+          "preview": "JSON table (1000 rows) fields=[\"id\",\"state\",\"owner\"]\n0\t\"open\"\t\"team-0\"\n1\t\"closed\"\t\"team-1\"\n2\t\"open\"\t\"team-2\"\n3\t\"closed\"\t\"team-3\"\n4\t\"open\"\t\"team-4\"\n5\t\"closed\"\t\"team-5\"\n6\t\"open\"\t\"team-6\"\n7\t\"closed\"\t\"team-7\"\n8\t\"open\"\t\"team-8\"\n9\t\"closed\"\t\"team-9\"\n10\t\"open\"\t\"team-10\"\n11\t\"closed\"\t\"team-11\"\n12\t\"open\"\t\"team-0\"\n13\t\"closed\"\t\"team-1\"\n14\t\"open\"\t\"team-2\"\n15\t\"closed\"\t\"team-3\"\n16\t\"open\"\t\"team-4\"\n17\t\"closed\"\t\"team-5\"\n18\t\"open\"\t\"team-6\"\n19\t\"closed\"\t\"team-7\"\n20\t\"open\"\t\"team-8\"\n[979 rows omitted; exact JSON available via read_result]",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 44070,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "heterogeneous-json",
+        "category": "json",
+        "mode": "extreme",
+        "source_chars": 31061,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": "json-not-uniform",
+        "initial_tokens": 638,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 19030,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 19652,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 883,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 20891,
+        "compression_cpu_ms": 0.656,
+        "observed_peak_heap_bytes": 11828176,
+        "heap_delta_bytes": 40968,
+        "exact_recovery": true,
+        "payload_sha256": "57dea00e241bbae31e9eb044b530333f3db14a8b7a5e12e355976ac7f764617c",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "[{\"id\":0,\"value\":\"v-0\"},{\"id\":1,\"status\":\"ok\",\"extra\":1},{\"id\":2,\"value\":\"v-2\"},{\"id\":3,\"status\":\"ok\",\"extra\":3},{\"id\":4,\"value\":\"v-4\"},{\"id\":5,\"status\":\"ok\",\"e\n[... 25098 chars omitted; exact result available via read_result ...]\n:795,\"status\":\"ok\",\"extra\":795},{\"id\":796,\"value\":\"v-796\"},{\"id\":797,\"status\":\"ok\",\"extra\":797},{\"id\":798,\"value\":\"v-798\"},{\"id\":799,\"status\":\"ok\",\"extra\":799}]",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 25258,
+              "end": 25418
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 25418,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "deep-json",
+        "category": "json",
+        "mode": "extreme",
+        "source_chars": 43973,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": "json-not-uniform",
+        "initial_tokens": 609,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 17424,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 18037,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 862,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 28863,
+        "compression_cpu_ms": 0.774,
+        "observed_peak_heap_bytes": 8588560,
+        "heap_delta_bytes": 265712,
+        "exact_recovery": true,
+        "payload_sha256": "cbd6906e5fb98e3fbc10c081131f9b8871019c894f682e363f117af51f824b3a",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "{\"root\":{\"nested\":{\"values\":[\"value-0\",\"value-1\",\"value-2\",\"value-3\",\"value-4\",\"value-5\",\"value-6\",\"value-7\",\"value-8\",\"value-9\",\"value-10\",\"value-11\",\"value-12\n[... 37608 chars omitted; exact result available via read_result ...]\n,\"value-2988\",\"value-2989\",\"value-2990\",\"value-2991\",\"value-2992\",\"value-2993\",\"value-2994\",\"value-2995\",\"value-2996\",\"value-2997\",\"value-2998\",\"value-2999\"]}}}",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 37768,
+              "end": 37928
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 37928,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "invalid-json",
+        "category": "json",
+        "mode": "extreme",
+        "source_chars": 58967,
+        "encoding": "single-text-v1",
+        "content_kind": "plain-text",
+        "projection": "head-tail-v1",
+        "fallback_reason": "json-not-uniform",
+        "initial_tokens": 599,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 17430,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 599,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 800,
+        "full_retrieval_calls": 3,
+        "full_total_tokens": 38971,
+        "compression_cpu_ms": 0.972,
+        "observed_peak_heap_bytes": 9693192,
+        "heap_delta_bytes": 327912,
+        "exact_recovery": true,
+        "payload_sha256": "fb801d0463aee169d4c3a74bd15c3636dba7071570a009be6ad546f1af257e62",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "plain-text",
+          "projection": "head-tail-v1",
+          "preview": "{\"items\":[\"value-0\",\"value-1\",\"value-2\",\"value-3\",\"value-4\",\"value-5\",\"value-6\",\"value-7\",\"value-8\",\"value-9\",\"value-10\",\"value-11\",\"value-12\",\"value-13\",\"value\n[... 50606 chars omitted; exact result available via read_result ...]\n89\",\"value-3990\",\"value-3991\",\"value-3992\",\"value-3993\",\"value-3994\",\"value-3995\",\"value-3996\",\"value-3997\",\"value-3998\",\"value-3999\" BROKEN NEEDLE:invalid-json",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 160
+            },
+            {
+              "start": 50766,
+              "end": 50926
+            }
+          ],
+          "next_cursor": 160,
+          "payload_chars": 50926,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "repeated-log",
+        "category": "log",
+        "mode": "extreme",
+        "source_chars": 24120,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 370,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 8146,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 370,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 565,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 8516,
+        "compression_cpu_ms": 0.671,
+        "observed_peak_heap_bytes": 10805664,
+        "heap_delta_bytes": 531792,
+        "exact_recovery": true,
+        "payload_sha256": "1883d83028016789014b636655259a02521d12d49887a0e431a004f7292fb798",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO build started\nINFO dependency cached [repeated 1000 times]\nWARN NEEDLE:repeated-log retry scheduled\nINFO build finished",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 23079,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "progress-log",
+        "category": "log",
+        "mode": "extreme",
+        "source_chars": 24909,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 381,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 16144,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 381,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 580,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 16525,
+        "compression_cpu_ms": 1.137,
+        "observed_peak_heap_bytes": 11396584,
+        "heap_delta_bytes": -3509688,
+        "exact_recovery": true,
+        "payload_sha256": "b07323cc54c8b28afa8b743ab01950891a05d22271c4c7d7850a9d1a13ddfc49",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO download started\nINFO download complete\nDEBUG file 0\n[997 lines omitted]\nDEBUG file 998\nDEBUG file 999\nERROR NEEDLE:progress-log checksum mismatch",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 23368,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "stack-log",
+        "category": "log",
+        "mode": "extreme",
+        "source_chars": 24566,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 394,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 16176,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 394,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 621,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 16570,
+        "compression_cpu_ms": 0.865,
+        "observed_peak_heap_bytes": 9533576,
+        "heap_delta_bytes": 1010288,
+        "exact_recovery": true,
+        "payload_sha256": "42b8df63dea8b64b06336d5197fbd469405d150cf74878ec96e460ee4456ae34",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO request accepted\nDEBUG step 0\nDEBUG step 1\n[1498 lines omitted]\nERROR NEEDLE:stack-log request failed\nException: synthetic failure\n  at fixture (fixture.ts:10:2)\nINFO shutdown",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 23023,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "bilingual-log",
+        "category": "log",
+        "mode": "extreme",
+        "source_chars": 24493,
+        "encoding": "single-text-v1",
+        "content_kind": "log-like",
+        "projection": "log-summary-v1",
+        "fallback_reason": null,
+        "initial_tokens": 387,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18198,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 387,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 616,
+        "full_retrieval_calls": 2,
+        "full_total_tokens": 22659,
+        "compression_cpu_ms": 0.94,
+        "observed_peak_heap_bytes": 11457856,
+        "heap_delta_bytes": 1095656,
+        "exact_recovery": true,
+        "payload_sha256": "cf232f857fa2bc989ebc51c92801c0d2f7e501b475d782abd1c4d24bc5d2b6f3",
+        "deterministic_projection": {
+          "encoding": "single-text-v1",
+          "content_kind": "log-like",
+          "projection": "log-summary-v1",
+          "preview": "Log projection (lossy; exact result available via read_result):\nINFO 服务启动\nDEBUG 处理记录 0\nDEBUG 处理记录 1\n[1498 lines omitted]\nWARN NEEDLE:bilingual-log 正在重试\nERROR 请求失败\nINFO 服务停止",
+          "preview_ranges": [],
+          "next_cursor": 0,
+          "payload_chars": 22951,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "multi-block",
+        "category": "mcp-result",
+        "mode": "extreme",
+        "source_chars": 18135,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 602,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 18198,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 602,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 849,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 18800,
+        "compression_cpu_ms": 0.298,
+        "observed_peak_heap_bytes": 8362632,
+        "heap_delta_bytes": 51768,
+        "exact_recovery": true,
+        "payload_sha256": "45980eec856a8bbff92b6adc87308ecc76d971e921bfaed6e3ee18dbdad97c07",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"NEEDLE:multi-block\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\ntext\\",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 480
+            }
+          ],
+          "next_cursor": 480,
+          "payload_chars": 18135,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "image-block",
+        "category": "mcp-result",
+        "mode": "extreme",
+        "source_chars": 20107,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 707,
+        "initial_contains_marker": true,
+        "one_chunk_tokens": 30184,
+        "target_retrieval_calls": 0,
+        "target_total_tokens": 707,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 960,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 30891,
+        "compression_cpu_ms": 0.263,
+        "observed_peak_heap_bytes": 8715976,
+        "heap_delta_bytes": 55464,
+        "exact_recovery": true,
+        "payload_sha256": "088427b82c0176107f54de5cd218b61879f32e30b869045b93a3f7c7b61edbe7",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"NEEDLE:image-block\"},{\"type\":\"image\",\"data\":\"YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==YQ==",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 480
+            }
+          ],
+          "next_cursor": 480,
+          "payload_chars": 20107,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "structured-content",
+        "category": "mcp-result",
+        "mode": "extreme",
+        "source_chars": 20984,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 723,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 18166,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 18477,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 982,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 18889,
+        "compression_cpu_ms": 1.031,
+        "observed_peak_heap_bytes": 11369032,
+        "heap_delta_bytes": 1751304,
+        "exact_recovery": true,
+        "payload_sha256": "f43cb2c7a5008ad8151188f3bd35b01c4fcb1bc103265aef95bd6ed2935e1243",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"summary\"}],\"structuredContent\":{\"rows\":[\"row-0\",\"row-1\",\"row-2\",\"row-3\",\"row-4\",\"row-5\",\"row-6\",\"row-7\",\"row-8\",\"row-9\",\"row-10\",\"row-11\",\"row-12\",\"row-13\",\"row-14\",\"row-15\",\"row-16\",\"row-17\",\"row-18\",\"row-19\",\"row-20\",\"row-21\",\"row-22\",\"row-23\",\"row-24\",\"row-25\",\"row-26\",\"row-27\",\"row-28\",\"row-29\",\"row-30\",\"row-31\",\"row-32\",\"row-33\",\"row-34\",\"row-35\",\"row-36\",\"row-37\",\"row-38\",\"row-39\",\"row-40\",\"row-41\",\"row-42\",\"row-43\",\"row-44\",\"row-45\",\"",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 480
+            }
+          ],
+          "next_cursor": 480,
+          "payload_chars": 20984,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "metadata",
+        "category": "mcp-result",
+        "mode": "extreme",
+        "source_chars": 14119,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 453,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 3686,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 3997,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 652,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 4139,
+        "compression_cpu_ms": 0.266,
+        "observed_peak_heap_bytes": 11937408,
+        "heap_delta_bytes": 42584,
+        "exact_recovery": true,
+        "payload_sha256": "65fa55aa290cd4155f415103b628c99e167197aafa3511626721f179804c44c4",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"metadata fixture\"}],\"_meta\":{\"trace\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 480
+            }
+          ],
+          "next_cursor": 480,
+          "payload_chars": 14119,
+          "result_shape": null
+        }
+      },
+      {
+        "id": "error-result",
+        "category": "mcp-result",
+        "mode": "extreme",
+        "source_chars": 17073,
+        "encoding": "call-tool-result-json-v1",
+        "content_kind": "opaque-result",
+        "projection": "json-prefix-v1",
+        "fallback_reason": "complex-mcp-result",
+        "initial_tokens": 492,
+        "initial_contains_marker": false,
+        "one_chunk_tokens": 8164,
+        "target_retrieval_calls": 1,
+        "target_total_tokens": 8428,
+        "query_contains_marker": true,
+        "query_retrieval_calls": 1,
+        "query_total_tokens": 699,
+        "full_retrieval_calls": 1,
+        "full_total_tokens": 8656,
+        "compression_cpu_ms": 0.3,
+        "observed_peak_heap_bytes": 8111168,
+        "heap_delta_bytes": 46664,
+        "exact_recovery": true,
+        "payload_sha256": "e754fa25cd44091e1f16dbdd63f54aae57a40b4e0b9d244ffa914a51bf9cdcbb",
+        "deterministic_projection": {
+          "encoding": "call-tool-result-json-v1",
+          "content_kind": "opaque-result",
+          "projection": "json-prefix-v1",
+          "preview": "{\"content\":[{\"type\":\"text\",\"text\":\"failure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfailure context\\nfai",
+          "preview_ranges": [
+            {
+              "start": 0,
+              "end": 480
+            }
+          ],
+          "next_cursor": 480,
+          "payload_chars": 17073,
+          "result_shape": null
+        }
+      }
+    ]
+  }
+}

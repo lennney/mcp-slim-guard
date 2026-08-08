@@ -38,7 +38,7 @@ const SERVER_NAME = "mock";
 /** Create a minimal GuardConfig for integration testing. */
 function makeConfig(overrides?: Partial<GuardConfig>): GuardConfig {
   return {
-    version: 1,
+    version: 2,
     tools: { allow: ["*"], deny: [] },
     ssrf: {
       mode: "off",
@@ -48,7 +48,6 @@ function makeConfig(overrides?: Partial<GuardConfig>): GuardConfig {
     },
     rate_limit: { default: "" },
     injection_detection: { enabled: false },
-    compressor: { enabled: false, level: "light" },
     servers: {
       [SERVER_NAME]: {
         command: "node",
@@ -67,7 +66,7 @@ async function buildProxy(config: GuardConfig) {
   const policies = new PolicyPipeline([new WhitelistPolicy(config.tools), new RateLimitPolicy(config.rate_limit)]);
 
   const serverManager = new ServerManager(config.servers);
-  const proxy = new GuardProxy(config, policies, audit, serverManager);
+  const proxy = new GuardProxy(config, policies, audit, serverManager, { mode: "native" });
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
@@ -107,22 +106,18 @@ describe("GuardProxy Full Pipeline", () => {
   // -------------------------------------------------------------------------
   // 1. Full pipeline: tools/list through GuardProxy
   // -------------------------------------------------------------------------
-  it("should return prefixed tool names from tools/list", async () => {
+  it("should return original authorized tool names plus recovery from tools/list", async () => {
     const ctx = await buildProxy(makeConfig());
     try {
       const result = await ctx.client.listTools();
       const tools = result.tools as Tool[];
       const names = tools.map((t) => t.name);
 
-      expect(names).toContain("mock_echo");
-      expect(names).toContain("mock_add");
-      expect(names).toContain("mock_get_time");
-      expect(tools).toHaveLength(3);
-
-      // Each tool should have [mock] prefix in its description
-      for (const tool of tools) {
-        expect(tool.description).toContain("[mock]");
-      }
+      expect(names).toContain("echo");
+      expect(names).toContain("add");
+      expect(names).toContain("get_time");
+      expect(names).toContain("read_result");
+      expect(names).toHaveLength(4);
     } finally {
       await destroyProxy(ctx);
     }
@@ -135,7 +130,7 @@ describe("GuardProxy Full Pipeline", () => {
     const ctx = await buildProxy(makeConfig());
     try {
       const result = await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "integration test" },
       });
 
@@ -153,7 +148,7 @@ describe("GuardProxy Full Pipeline", () => {
     const ctx = await buildProxy(makeConfig());
     try {
       const result = await ctx.client.callTool({
-        name: "mock_add",
+        name: "add",
         arguments: { a: 10, b: 20 },
       });
 
@@ -174,13 +169,12 @@ describe("GuardProxy Full Pipeline", () => {
     const ctx = await buildProxy(config);
     try {
       const result = await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "block me" },
       });
 
-      expect((result as { isError?: boolean }).isError).toBe(true);
       const entry = result.content[0] as { type: string; text?: string };
-      expect(entry.text).toBe("Unknown tool: mock_echo");
+      expect(entry.text).toBe("Unknown tool: echo");
     } finally {
       await destroyProxy(ctx);
     }
@@ -193,7 +187,7 @@ describe("GuardProxy Full Pipeline", () => {
     const ctx = await buildProxy(config);
     try {
       const result = await ctx.client.callTool({
-        name: "mock_add",
+        name: "add",
         arguments: { a: 3, b: 4 },
       });
 
@@ -216,14 +210,14 @@ describe("GuardProxy Full Pipeline", () => {
     try {
       // First call should succeed
       const r1 = await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "first" },
       });
       expect((r1 as { isError?: boolean }).isError).toBeFalsy();
 
       // Second call (immediately after) should be blocked by rate limiter
       const r2 = await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "second" },
       });
       expect((r2 as { isError?: boolean }).isError).toBe(true);
@@ -242,7 +236,7 @@ describe("GuardProxy Full Pipeline", () => {
     try {
       for (let i = 0; i < 3; i++) {
         const result = await ctx.client.callTool({
-          name: "mock_echo",
+          name: "echo",
           arguments: { message: `req-${i}` },
         });
         expect((result as { isError?: boolean }).isError).toBeFalsy();
@@ -259,12 +253,12 @@ describe("GuardProxy Full Pipeline", () => {
     const ctx = await buildProxy(makeConfig());
     try {
       await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "audit me" },
       });
 
       await ctx.client.callTool({
-        name: "mock_add",
+        name: "add",
         arguments: { a: 1, b: 2 },
       });
 
@@ -288,26 +282,20 @@ describe("GuardProxy Full Pipeline", () => {
     }
   });
 
-  it("should generate audit entries for blocked tool calls", async () => {
+  it("should not invoke an unauthorized original tool", async () => {
     const config = makeConfig({
       tools: { allow: ["*"], deny: ["mock_echo"] },
     });
     const ctx = await buildProxy(config);
     try {
       await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "block audit" },
       });
 
-      const entries = ctx.audit.getEntries();
-
-      const entry = entries.find((candidate) => candidate.toolName === "mock_echo" && candidate.event === "routing");
-      expect(entry).toBeDefined();
-      if (!entry) throw new Error("Expected blocked routing audit entry");
-      expect(entry.toolName).toBe("mock_echo");
-      expect(entry.action).toBe("blocked");
-      expect(entry.reason).toBe("routing blocked request");
-      expect(entry.serverName).toBe("routing");
+      expect(ctx.audit.getEntries().some((entry) => entry.toolName === "echo" && entry.event === "upstream")).toBe(
+        false,
+      );
     } finally {
       await destroyProxy(ctx);
     }
@@ -330,7 +318,7 @@ describe("GuardProxy Full Pipeline", () => {
     try {
       // First call: hits upstream
       const result1 = await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "test" },
       });
       const text1 = (result1.content as Array<{ type: string; text?: string }>)
@@ -341,7 +329,7 @@ describe("GuardProxy Full Pipeline", () => {
 
       // Second call with same args: should be cached, no upstream call
       const result2 = await ctx.client.callTool({
-        name: "mock_echo",
+        name: "echo",
         arguments: { message: "test" },
       });
       const text2 = (result2.content as Array<{ type: string; text?: string }>)

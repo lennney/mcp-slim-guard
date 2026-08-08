@@ -6,8 +6,8 @@ import {
   READ_RESULT,
   type ResultDeliveryStore,
   SecureProjectionKernel,
-  usesSecureProjection,
 } from "../../src/secure-projection.js";
+import { ToolInputValidator } from "../../src/tool-input-validator.js";
 
 const tools: Tool[] = [
   {
@@ -82,6 +82,57 @@ function textChunk(result: CallToolResult): string {
 }
 
 describe("SecureProjectionKernel", () => {
+  it("advertises literal and typed local result retrieval without adding a fourth public tool", () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const readResult = kernel.listTools().find((tool) => tool.name === READ_RESULT);
+
+    expect(kernel.listTools().map((tool) => tool.name)).toEqual([FIND_TOOL, CALL_TOOL, READ_RESULT]);
+    expect(readResult?.inputSchema).toMatchObject({
+      properties: {
+        query: { type: "string", maxLength: 256 },
+        fallback_query: { type: "string", maxLength: 256 },
+      },
+      required: ["result_ref"],
+    });
+    const selector = readResult?.inputSchema.properties?.selector as { oneOf?: unknown[] } | undefined;
+    const selectorKinds = (selector?.oneOf ?? []).map(
+      (entry) => (entry as { properties?: { kind?: { const?: string } } }).properties?.kind?.const,
+    );
+    expect(selectorKinds).toEqual(["json_pointer", "row_field_equals", "log_anchor_window"]);
+    expect((selector?.oneOf?.[0] as { properties?: Record<string, unknown> }).properties?.pointer).toMatchObject({
+      type: "string",
+      maxLength: 512,
+    });
+    expect((readResult?.inputSchema as { oneOf?: unknown[] }).oneOf).toHaveLength(4);
+  });
+
+  it("schema-validates exactly one read_result access path", () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const readResult = kernel.listTools().find((tool) => tool.name === READ_RESULT);
+    if (!readResult) throw new Error("read_result missing");
+    const validator = new ToolInputValidator();
+    const ref = "result_" + "a".repeat(32);
+
+    expect(validator.validate(readResult, { result_ref: ref }).valid).toBe(true);
+    expect(validator.validate(readResult, { result_ref: ref, cursor: 0 }).valid).toBe(true);
+    expect(validator.validate(readResult, { result_ref: ref, query: "marker" }).valid).toBe(true);
+    expect(
+      validator.validate(readResult, {
+        result_ref: ref,
+        selector: { kind: "json_pointer", pointer: "/payload" },
+        fallback_query: "marker",
+      }).valid,
+    ).toBe(true);
+    expect(validator.validate(readResult, { result_ref: ref, query: "marker", cursor: 0 }).valid).toBe(false);
+    expect(
+      validator.validate(readResult, {
+        result_ref: ref,
+        selector: { kind: "json_pointer", pointer: "/payload" },
+      }).valid,
+    ).toBe(false);
+    expect(validator.validate(readResult, { result_ref: ref, fallback_query: "marker" }).valid).toBe(false);
+  });
+
   it("exposes exactly the three product tools", () => {
     const kernel = new SecureProjectionKernel(tools);
     expect(kernel.listTools().map((tool) => tool.name)).toEqual([FIND_TOOL, CALL_TOOL, READ_RESULT]);
@@ -251,7 +302,7 @@ describe("SecureProjectionKernel", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(invoke.mock.calls[0]?.[1]).toBe(exactArguments);
     expect(delivery.capture).toHaveBeenCalledTimes(1);
-    expect(delivery.capture).toHaveBeenCalledWith(upstreamResult, expect.any(Function));
+    expect(delivery.capture).toHaveBeenCalledWith(upstreamResult, expect.any(Function), tools[0]);
     expect(result).toBe(upstreamResult);
   });
 
@@ -279,14 +330,43 @@ describe("SecureProjectionKernel", () => {
       capsule: {
         phase: "delivery",
         outcome: "pass_through",
-        reason: "within_budget",
+        reason: "upstream_error",
       },
     });
   });
 
+  it("keeps schema-bound results on the exact pass-through path", async () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const find = parseText(await kernel.call(FIND_TOOL, { query: "search repositories" }, vi.fn()));
+    const match = (find.matches as Array<Record<string, unknown>>)[0];
+    const upstreamResult: CallToolResult = {
+      content: [{ type: "text", text: "x".repeat(25_000) }],
+      structuredContent: { count: 1 },
+    };
+    const invoke = vi.fn().mockResolvedValue(upstreamResult);
+
+    const observed = await kernel.callObserved(
+      CALL_TOOL,
+      { tool_ref: match.tool_ref, arguments: { query: "mcp" } },
+      invoke,
+    );
+
+    expect(observed.result).toBe(upstreamResult);
+    expect(observed.report).toMatchObject({
+      outcome: "pass_through",
+      upstreamInvoked: true,
+      capsule: {
+        phase: "delivery",
+        outcome: "pass_through",
+        reason: "schema_bound",
+      },
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("captures a large result once and retrieves bounded chunks without re-invoking", async () => {
     const kernel = new SecureProjectionKernel(tools);
-    const find = parseText(await kernel.call(FIND_TOOL, { query: "search" }, vi.fn()));
+    const find = parseText(await kernel.call(FIND_TOOL, { query: "advanced web search" }, vi.fn()));
     const match = (find.matches as Array<Record<string, unknown>>)[0];
     const largeText = "x".repeat(25_000);
     const invoke = vi.fn().mockResolvedValue({
@@ -324,9 +404,30 @@ describe("SecureProjectionKernel", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("searches a captured result locally without re-invoking upstream", async () => {
+    const kernel = new SecureProjectionKernel(tools);
+    const find = parseText(await kernel.call(FIND_TOOL, { query: "advanced web search" }, vi.fn()));
+    const match = (find.matches as Array<Record<string, unknown>>)[0];
+    const marker = "LOCAL-RESULT-SEARCH-MARKER";
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: `${"context ".repeat(3_000)}${marker}${" tail".repeat(3_000)}` }],
+    });
+
+    const delivered = parseText(await kernel.call(CALL_TOOL, { tool_ref: match.tool_ref, arguments: {} }, invoke));
+    const searched = await kernel.callObserved(
+      READ_RESULT,
+      { result_ref: delivered.result_ref, query: marker },
+      invoke,
+    );
+
+    expect(textChunk(searched.result)).toContain(marker);
+    expect(searched.report).toMatchObject({ outcome: "search", upstreamInvoked: false });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects an out-of-range cursor without destroying the captured result", async () => {
     const kernel = new SecureProjectionKernel(tools);
-    const find = parseText(await kernel.call(FIND_TOOL, { query: "search" }, vi.fn()));
+    const find = parseText(await kernel.call(FIND_TOOL, { query: "advanced web search" }, vi.fn()));
     const match = (find.matches as Array<Record<string, unknown>>)[0];
     const invoke = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: "x".repeat(25_000) }],
@@ -349,7 +450,7 @@ describe("SecureProjectionKernel", () => {
 
   it("invalidates old references when the catalog is replaced", async () => {
     const kernel = new SecureProjectionKernel(tools);
-    const find = parseText(await kernel.call(FIND_TOOL, { query: "search" }, vi.fn()));
+    const find = parseText(await kernel.call(FIND_TOOL, { query: "advanced web search" }, vi.fn()));
     const oldRef = (find.matches as Array<Record<string, unknown>>)[0].tool_ref;
     const invoke = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: "x".repeat(25_000) }],
@@ -364,14 +465,5 @@ describe("SecureProjectionKernel", () => {
     expect(result.isError).toBe(true);
     expect(recovered.isError).toBe(true);
     expect(invoke).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("usesSecureProjection", () => {
-  it("selects the one normal product path", () => {
-    expect(usesSecureProjection({ enabled: true, level: "light" })).toBe(true);
-    expect(usesSecureProjection({ enabled: true, level: "light", lazy_loading: true })).toBe(false);
-    expect(usesSecureProjection({ enabled: false, level: "light" })).toBe(false);
-    expect(usesSecureProjection({ enabled: true, level: "normal" })).toBe(false);
   });
 });

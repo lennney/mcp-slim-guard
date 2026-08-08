@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import { get_encoding } from "tiktoken";
 import { ResultCapsuleStore } from "../../dist/result-capsule-store.js";
+import { captureCandidateIdentity } from "../evaluation/candidate-identity.mjs";
+import { createEvaluationMeasurement } from "../evaluation/evaluation-measurement.mjs";
+import { evaluate } from "../evaluation/evaluation-runner.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const REPORT_PATH = path.join(ROOT, "docs/evidence/2026-07-26-content-projection-capture.json");
-const RESULT_REF_PATTERN = /result_[a-f0-9]{32}/gu;
-const NORMALIZED_RESULT_REF = `result_${"0".repeat(32)}`;
+const REPORT_PATH = path.join(ROOT, "docs/evidence/2026-08-06-result-evaluation.json");
 const TOKENIZER = "o200k_base";
-const encoding = get_encoding(TOKENIZER);
+const measurement = createEvaluationMeasurement(TOKENIZER);
 
 function parseCapsule(result) {
   assert.equal(result.content[0]?.type, "text");
@@ -22,11 +21,11 @@ function parseCapsule(result) {
 }
 
 function normalizedWire(value) {
-  return JSON.stringify(value).replace(RESULT_REF_PATTERN, NORMALIZED_RESULT_REF);
+  return measurement.normalizedWire(value);
 }
 
 function tokens(value) {
-  return encoding.encode(normalizedWire(value)).length;
+  return measurement.tokens(value);
 }
 
 function readAll(store, capsule) {
@@ -47,20 +46,28 @@ function readAll(store, capsule) {
 
 function readUntilMarker(store, delivered, capsule, marker) {
   const initial = normalizedWire(delivered);
-  if (initial.includes(marker)) return { found: true, calls: 0, responseTokens: 0 };
+  if (initial.includes(marker)) return { found: true, calls: 0, responseTokens: 0, responses: [] };
 
   let cursor = capsule.next_cursor;
   let calls = 0;
   let responseTokens = 0;
+  const responses = [];
   while (cursor !== null) {
     const response = store.read({ result_ref: capsule.result_ref, cursor });
     assert.notEqual(response.isError, true);
+    responses.push(response);
     calls += 1;
     responseTokens += tokens(response);
-    if (normalizedWire(response).includes(marker)) return { found: true, calls, responseTokens };
+    if (normalizedWire(response).includes(marker)) return { found: true, calls, responseTokens, responses };
     cursor = response.structuredContent.next_cursor;
   }
-  return { found: false, calls, responseTokens };
+  return { found: false, calls, responseTokens, responses };
+}
+
+function readByQuery(store, capsule, query) {
+  const response = store.read({ result_ref: capsule.result_ref, query });
+  assert.notEqual(response.isError, true);
+  return { response, responseTokens: tokens(response) };
 }
 
 function reconstruct(capsule, payload) {
@@ -269,25 +276,46 @@ const opaqueCases = [
 
 const CASES = [...plainCases, ...structuredCases, ...logCases, ...opaqueCases];
 
-function runCase(fixture) {
-  const store = new ResultCapsuleStore();
+function runCase(fixture, mode) {
+  const store = new ResultCapsuleStore({ mode });
   const heapBefore = process.memoryUsage().heapUsed;
   const started = performance.now();
   const delivered = store.capture(fixture.result);
   const elapsed = performance.now() - started;
   const heapAfter = process.memoryUsage().heapUsed;
-  const capsule = parseCapsule(delivered);
+  let capsule;
+  try {
+    capsule = parseCapsule(delivered);
+  } catch {
+    return {
+      id: fixture.id,
+      category: fixture.category,
+      mode,
+      source_chars: JSON.stringify(fixture.result).length,
+      delivery: "exact-pass-through",
+      initial_tokens: tokens(delivered),
+      initial_contains_marker: normalizedWire(delivered).includes(fixture.marker),
+      target_retrieval_calls: 0,
+      full_retrieval_calls: 0,
+      payload_sha256: measurement.sha256(fixture.result),
+      _evidence: {
+        source_result: fixture.result,
+        recovered_result: delivered,
+        initial_delivery: delivered,
+        targeted_responses: [],
+      },
+    };
+  }
   const oneChunk = store.read({ result_ref: capsule.result_ref, cursor: capsule.replay_cursor });
   const targeted = readUntilMarker(store, delivered, capsule, fixture.marker);
+  const searched = readByQuery(store, capsule, fixture.marker);
   const recovered = readAll(store, capsule);
   const reconstructed = reconstruct(capsule, recovered.payload);
-  assert.deepEqual(reconstructed, fixture.result);
-  assert.equal(targeted.found, true);
-  assert.equal(capsule.content_kind, fixture.expectedKind);
 
   return {
     id: fixture.id,
     category: fixture.category,
+    mode,
     source_chars: JSON.stringify(fixture.result).length,
     encoding: capsule.encoding,
     content_kind: capsule.content_kind,
@@ -303,13 +331,21 @@ function runCase(fixture) {
     one_chunk_tokens: tokens(oneChunk),
     target_retrieval_calls: targeted.calls,
     target_total_tokens: tokens(delivered) + targeted.responseTokens,
+    query_retrieval_calls: 1,
+    query_total_tokens: tokens(delivered) + searched.responseTokens,
     full_retrieval_calls: recovered.calls,
     full_total_tokens: tokens(delivered) + recovered.responseTokens,
     compression_cpu_ms: Number(elapsed.toFixed(3)),
     observed_peak_heap_bytes: Math.max(heapBefore, heapAfter),
     heap_delta_bytes: heapAfter - heapBefore,
-    exact_recovery: true,
-    payload_sha256: createHash("sha256").update(recovered.payload).digest("hex"),
+    payload_sha256: measurement.sha256(recovered.payload),
+    _evidence: {
+      source_result: fixture.result,
+      recovered_result: reconstructed,
+      initial_delivery: delivered,
+      targeted_responses: targeted.responses,
+      query_response: searched.response,
+    },
     deterministic_projection: {
       encoding: capsule.encoding,
       content_kind: capsule.content_kind,
@@ -323,62 +359,69 @@ function runCase(fixture) {
   };
 }
 
-const firstRun = CASES.map(runCase);
-const secondRun = CASES.map(runCase);
-const stableFirst = firstRun.map(
-  ({ compression_cpu_ms, observed_peak_heap_bytes, heap_delta_bytes, ...entry }) => entry,
-);
-const stableSecond = secondRun.map(
-  ({ compression_cpu_ms, observed_peak_heap_bytes, heap_delta_bytes, ...entry }) => entry,
-);
-const firstHash = createHash("sha256").update(JSON.stringify(stableFirst)).digest("hex");
-const secondHash = createHash("sha256").update(JSON.stringify(stableSecond)).digest("hex");
-assert.equal(firstHash, secondHash);
+function flatten(run) {
+  return Object.entries(run).flatMap(([profile, results]) =>
+    results.map(({ id, mode: _mode, ...result }) => ({ profile, case_id: id, ...result })),
+  );
+}
 
-const report = {
-  schema_version: 1,
-  benchmark_date: "2026-07-26",
-  methodology: {
-    kind: "deterministic quota-free content projection and exact recovery",
-    tokenizer: TOKENIZER,
-    accounting: "MCP response payloads for initial delivery, targeted retrieval, and full recovery",
-    model_calls: 0,
-  },
-  corpus: {
-    cases: CASES.length,
-    categories: Object.fromEntries(
-      [...new Set(CASES.map((fixture) => fixture.category))].map((category) => [
-        category,
-        CASES.filter((fixture) => fixture.category === category).length,
-      ]),
-    ),
-  },
-  deterministic_capture: {
-    first_sha256: firstHash,
-    second_sha256: secondHash,
-    stable: true,
-  },
-  results: firstRun,
-};
-
-fs.writeFileSync(REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-console.log(
-  JSON.stringify(
-    {
-      report: REPORT_PATH,
-      corpus: report.corpus,
-      deterministic_capture: report.deterministic_capture,
-      strategies: Object.fromEntries(
-        [...new Set(firstRun.map((entry) => entry.projection))].map((projection) => [
-          projection,
-          firstRun.filter((entry) => entry.projection === projection).length,
-        ]),
-      ),
-      exact_recovery: firstRun.every((entry) => entry.exact_recovery),
+async function main() {
+  const firstRun = Object.fromEntries(
+    ["compact", "extreme"].map((mode) => [mode, CASES.map((fixture) => runCase(fixture, mode))]),
+  );
+  const secondRun = Object.fromEntries(
+    ["compact", "extreme"].map((mode) => [mode, CASES.map((fixture) => runCase(fixture, mode))]),
+  );
+  const suite = {
+    schema_version: 1,
+    id: "mode-result-projection",
+    kind: "result-projection",
+    fixture_digest: measurement.sha256(CASES),
+    profiles: ["compact", "extreme"],
+    cases: CASES.map(({ id, category, marker, expectedKind }) => ({
+      id,
+      category,
+      expected_marker: marker,
+      expected_content_kind: expectedKind,
+    })),
+  };
+  const report = await evaluate({
+    candidate: captureCandidateIdentity(ROOT),
+    environment: {
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      tokenizer: TOKENIZER,
     },
-    null,
-    2,
-  ),
-);
+    suite,
+    adapter: {
+      id: "in-process-result-capsule-fixture",
+      async run() {
+        return { observations: flatten(firstRun), repeat_observations: flatten(secondRun) };
+      },
+    },
+  });
+  fs.writeFileSync(REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  console.log(
+    JSON.stringify(
+      {
+        report: REPORT_PATH,
+        candidate_digest: report.candidate.digest,
+        cases: report.suite.case_count,
+        verdict: report.verdict,
+        hard_gates: report.hard_gates,
+        comparisons: report.comparisons,
+      },
+      null,
+      2,
+    ),
+  );
+  if (report.verdict !== "pass") process.exitCode = 1;
+}
 
-encoding.free();
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => measurement.close());

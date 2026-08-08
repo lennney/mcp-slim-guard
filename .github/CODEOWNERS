@@ -1,0 +1,3 @@
+# Keep review ownership explicit for public changes.
+* @lennney
+/.github/CODEOWNERS @lennney

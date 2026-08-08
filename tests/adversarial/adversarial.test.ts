@@ -968,7 +968,7 @@ describe("ConfigLoader — Robustness", () => {
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
     const bomYaml =
       "\uFEFF" +
-      "version: 1\n" +
+      "version: 2\n" +
       "tools:\n" +
       "  allow: ['*']\n" +
       "  deny: []\n" +
@@ -981,13 +981,12 @@ describe("ConfigLoader — Robustness", () => {
       "  default: '60/min'\n" +
       "injection_detection:\n" +
       "  enabled: false\n" +
-      "compressor: { enabled: false, level: light }\n" +
       "servers: {}\n";
     fs.writeFileSync(ymlPath, bomYaml, "utf-8");
     // js-yaml handles BOM in recent versions; if not, it should throw instead of silently producing wrong config
     try {
       const config = ConfigLoader.loadGuardConfig(ymlPath);
-      expect(config.version).toBe(1);
+      expect(config.version).toBe(2);
     } catch {
       // BOM handling varies by js-yaml version — both outcomes are acceptable
       // as long as we don't crash or produce corrupt config
@@ -997,7 +996,7 @@ describe("ConfigLoader — Robustness", () => {
   it("handles YAML with extremely deep nesting (stack safety)", () => {
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
     // Create deeply nested structure (500 levels)
-    let deepYaml = "version: 1\n";
+    let deepYaml = "version: 2\n";
     deepYaml += "tools:\n  allow: ['*']\n  deny: []\n";
     deepYaml += "ssrf:\n  mode: block\n  block_private_ips: true\n  allow_domains: []\n  block_domains: []\n";
     deepYaml += "rate_limit:\n  default: '60/min'\n";
@@ -1014,7 +1013,7 @@ describe("ConfigLoader — Robustness", () => {
     // Should either parse correctly or throw — not crash the process
     try {
       const config = ConfigLoader.loadGuardConfig(ymlPath);
-      expect(config.version).toBe(1);
+      expect(config.version).toBe(2);
     } catch {
       // Deeply nested structures may cause RangeError in js-yaml
       // That's acceptable behavior
@@ -1025,7 +1024,7 @@ describe("ConfigLoader — Robustness", () => {
     // js-yaml supports YAML anchors & aliases
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
     const yamlWithAlias =
-      "version: 1\n" +
+      "version: 2\n" +
       "tools: &tools\n" +
       "  allow: ['*']\n" +
       "  deny: []\n" +
@@ -1042,7 +1041,7 @@ describe("ConfigLoader — Robustness", () => {
       "tools_copy: *tools\n";
     fs.writeFileSync(ymlPath, yamlWithAlias);
     const config = ConfigLoader.loadGuardConfig(ymlPath);
-    expect(config.version).toBe(1);
+    expect(config.version).toBe(2);
     expect((config as any).tools_copy).toBeDefined();
   });
 
@@ -1060,12 +1059,12 @@ describe("ConfigLoader — Robustness", () => {
     // 10MB YAML with repeated content
     const largeContent = ("# " + "x".repeat(1000) + "\n").repeat(10000);
     const header =
-      "version: 1\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}\n";
+      "version: 2\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}\n";
     fs.writeFileSync(ymlPath, header + largeContent);
     // Should not crash; may throw due to parsing depth or size
     try {
       const config = ConfigLoader.loadGuardConfig(ymlPath);
-      expect(config.version).toBe(1);
+      expect(config.version).toBe(2);
     } catch {
       // Throwing on extremely large files is acceptable
     }
@@ -1543,13 +1542,12 @@ describe("ConfigLoader — YAML Injection", () => {
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
     const yamlContent =
       "__proto__: { polluted: true }\n" +
-      "version: 1\n" +
+      "version: 2\n" +
       "tools: { allow: ['*'], deny: [] }\n" +
       "ssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\n" +
       "rate_limit: { default: '60/min' }\n" +
       "injection_detection:\n" +
       "  enabled: false\n" +
-      "compressor: { enabled: false, level: light }\n" +
       "servers: {}\n";
     fs.writeFileSync(ymlPath, yamlContent);
 
@@ -1564,32 +1562,30 @@ describe("ConfigLoader — YAML Injection", () => {
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
     const yamlContent =
       "constructor: evil\n" +
-      "version: 1\n" +
+      "version: 2\n" +
       "tools: { allow: ['*'], deny: [] }\n" +
       "ssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\n" +
       "rate_limit: { default: '60/min' }\n" +
       "injection_detection:\n" +
       "  enabled: false\n" +
-      "compressor: { enabled: false, level: light }\n" +
       "servers: {}\n";
     fs.writeFileSync(ymlPath, yamlContent);
 
     const config = ConfigLoader.loadGuardConfig(ymlPath);
-    expect(config.version).toBe(1);
+    expect(config.version).toBe(2);
   });
 
   it("YAML with duplicate keys throws gracefully (js-yaml behavior)", () => {
     const ymlPath = path.join(tmpDir, "mcp-guard.yml");
     expect(() => {
       const yamlContent =
-        "version: 1\n" +
+        "version: 2\n" +
         "version: 2\n" +
         "tools: { allow: ['*'], deny: [] }\n" +
         "ssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\n" +
         "rate_limit: { default: '60/min' }\n" +
         "injection_detection:\n" +
         "  enabled: false\n" +
-        "compressor: { enabled: false, level: light }\n" +
         "servers: {}\n";
       fs.writeFileSync(ymlPath, yamlContent);
       // js-yaml throws on duplicate mapping keys by default

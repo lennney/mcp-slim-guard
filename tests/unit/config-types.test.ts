@@ -10,9 +10,9 @@ import type {
 } from "../../src/config-types.js";
 
 describe("GuardConfig", () => {
-  it("should have correct structure with version 1", () => {
+  it("should have correct structure with version 2", () => {
     const config: GuardConfig = {
-      version: 1,
+      version: 2,
       tools: {
         allow: ["*"],
         deny: [],
@@ -42,6 +42,7 @@ describe("GuardConfig", () => {
         enabled: true,
         sensitivity: "medium",
       },
+      audit: { output: "file", filePath: "audit.log" },
       servers: {
         github: {
           command: "node",
@@ -51,7 +52,7 @@ describe("GuardConfig", () => {
       },
     };
 
-    expect(config.version).toBe(1);
+    expect(config.version).toBe(2);
     expect(config.tools.allow).toEqual(["*"]);
     expect(config.tools.deny).toEqual([]);
     expect(config.ssrf.mode).toBe("block");
@@ -62,7 +63,7 @@ describe("GuardConfig", () => {
 
   it("should accept empty servers and restrictions", () => {
     const config: GuardConfig = {
-      version: 1,
+      version: 2,
       tools: { allow: [], deny: [] },
       ssrf: {
         mode: "off",
@@ -72,11 +73,11 @@ describe("GuardConfig", () => {
       },
       rate_limit: { default: 50 },
       injection_detection: { enabled: false },
-      compressor: { enabled: false, level: "light" },
+      audit: { output: "file", filePath: "audit.log" },
       servers: {},
     };
 
-    expect(config.version).toBe(1);
+    expect(config.version).toBe(2);
     expect(config.tools.allow).toEqual([]);
     expect(config.tools.deny).toEqual([]);
     expect(config.ssrf.mode).toBe("off");

@@ -7,6 +7,12 @@ test-workspace/
 scripts/benchmark/results/
 .artifacts/
 docs/evidence/*.json
+!docs/evidence/2026-08-06-three-modes-24-task.json
+!docs/evidence/2026-08-06-mode-result-projection.json
+!docs/evidence/2026-08-06-three-modes-stress.json
+!docs/evidence/2026-08-06-protocol-evaluation.json
+!docs/evidence/2026-08-06-result-evaluation.json
+!docs/evidence/2026-08-06-stress-evaluation.json
 
 # Generated test artifacts (from tsconfig declaration)
 tests/**/*.d.ts

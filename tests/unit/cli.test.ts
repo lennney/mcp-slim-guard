@@ -8,9 +8,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 
-const { mockOpen } = vi.hoisted(() => ({ mockOpen: vi.fn().mockResolvedValue(undefined) }));
+const { mockOpen, mockVerifyModeAcceptance } = vi.hoisted(() => ({
+  mockOpen: vi.fn().mockResolvedValue(undefined),
+  mockVerifyModeAcceptance: vi.fn(),
+}));
 
 vi.mock("open", () => ({ default: mockOpen }));
+
+vi.mock("../../src/mode-acceptance.js", () => ({
+  verifyModeAcceptance: mockVerifyModeAcceptance,
+}));
 
 // ── Mock all CLI dependencies ──────────────────────────────────────────
 // NOTE: vi.mock() is hoisted to top. Factories execute when module loads.
@@ -30,7 +37,7 @@ vi.mock("../../src/config-loader.js", () => ({
 }));
 
 vi.mock("../../src/version.js", () => ({
-  VERSION: "0.1.1-alpha.1",
+  VERSION: "0.2.0-alpha.1",
 }));
 
 vi.mock("../../src/policies/base.js", () => ({
@@ -115,7 +122,7 @@ const MockConfigLoader = ConfigLoaderModule as unknown as {
 // ── Fixtures ───────────────────────────────────────────────────────────
 
 const MOCK_GUARD_CONFIG: Record<string, unknown> = {
-  version: 1,
+  version: 2,
   tools: { allow: ["github_*"], deny: ["*_delete_*"] },
   ssrf: {
     mode: "block",
@@ -125,7 +132,6 @@ const MOCK_GUARD_CONFIG: Record<string, unknown> = {
   },
   rate_limit: { default: "60/min" },
   injection_detection: { enabled: false, sensitivity: "medium" },
-  compressor: { enabled: false, level: "light" },
   audit: {
     output: "file",
     filePath: "mcp-guard-audit.log",
@@ -160,9 +166,19 @@ describe("CLI", () => {
     MockConfigLoader.ConfigLoader.loadGuardConfig.mockReset();
     MockConfigLoader.ConfigLoader.findAndLoad.mockReset();
     MockConfigLoader.ConfigLoader.serializeGeneratedConfig.mockReset();
-    MockConfigLoader.ConfigLoader.serializeGeneratedConfig.mockReturnValue("version: 1\n");
+    MockConfigLoader.ConfigLoader.serializeGeneratedConfig.mockReturnValue("version: 2\n");
     mockOpen.mockReset();
     mockOpen.mockResolvedValue(undefined);
+    mockVerifyModeAcceptance.mockReset();
+    mockVerifyModeAcceptance.mockResolvedValue({
+      schemaVersion: 1,
+      kind: "mcp-slim-guard/mode-acceptance",
+      status: "passed",
+      mode: "native",
+      upstream: { catalogTools: 1, authorizedTools: 1 },
+      host: { tools: ["search", "read_result"], schemaCheck: "exact" },
+      safety: { hostConfigurationWrites: 0, upstreamToolCalls: 0, resultRecovery: "not_run" },
+    });
 
     // Reset GuardProxy mock
     vi.mocked(GuardProxy).mockClear();
@@ -434,12 +450,46 @@ describe("CLI", () => {
         host: "codex",
         support: "supported",
         server: {
-          surface: "native",
+          mode: "native",
           command: "mcp-slim-guard",
-          args: ["start", "--surface", "native"],
+          args: ["start", "--mode", "native"],
         },
         writesPerformed: 0,
       });
+    });
+  });
+
+  describe("verify", () => {
+    it("runs the Host default as a read-only mode acceptance check", async () => {
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+
+      await main(["node", "cli.js", "verify", "--host", "codex", "--json"]);
+
+      expect(mockVerifyModeAcceptance).toHaveBeenCalledWith(
+        MOCK_GUARD_CONFIG,
+        "native",
+        expect.objectContaining({ manager: expect.anything(), pipeline: expect.anything(), audit: expect.anything() }),
+      );
+      expect(vi.mocked(await import("node:fs")).writeFileSync).not.toHaveBeenCalled();
+      expect(mockManagerCallTool).not.toHaveBeenCalled();
+      expect(JSON.parse(String(consoleLogSpy.mock.calls[0]?.[0]))).toMatchObject({
+        kind: "mcp-slim-guard/mode-acceptance",
+        mode: "native",
+        host: "codex",
+        safety: { hostConfigurationWrites: 0, upstreamToolCalls: 0 },
+      });
+    });
+
+    it("rejects unverified Claude Code Native mode before starting a runtime", async () => {
+      MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
+
+      await main(["node", "cli.js", "verify", "--host", "claude-code", "--mode", "native"]);
+
+      expect(mockVerifyModeAcceptance).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Claude Code native mode is not a verified"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 
@@ -488,7 +538,7 @@ describe("CLI", () => {
         expect.anything(),
         expect.anything(),
         expect.anything(),
-        { surface: "generic" },
+        { mode: "compact" },
       );
       // proxy.start was called on the returned instance
       const instance = vi.mocked(GuardProxy).mock.results[0]?.value as {
@@ -497,17 +547,17 @@ describe("CLI", () => {
       expect(instance.start).toHaveBeenCalled();
     });
 
-    it("starts the explicit native Tool surface without changing the default", async () => {
+    it("starts the explicit native mode without changing the compact default", async () => {
       MockConfigLoader.ConfigLoader.findAndLoad.mockReturnValue(MOCK_GUARD_CONFIG);
 
-      await main(["node", "cli.js", "start", "--surface", "native"]);
+      await main(["node", "cli.js", "start", "--mode", "native"]);
 
       expect(vi.mocked(GuardProxy)).toHaveBeenCalledWith(
         MOCK_GUARD_CONFIG,
         expect.anything(),
         expect.anything(),
         expect.anything(),
-        { surface: "native" },
+        { mode: "native" },
       );
     });
   });
@@ -624,7 +674,7 @@ describe("CLI", () => {
       await main(["node", "cli.js", "--version"]);
 
       // Commander writes version to stdout
-      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.1.1"));
+      expect(stdoutWriteSpy).toHaveBeenCalledWith(expect.stringContaining("0.2.0-alpha.1"));
     });
 
     it("shows help text with --help", async () => {

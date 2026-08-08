@@ -15,6 +15,7 @@ import {
   type ResultCapsuleObservation,
   type ResultCapsuleObserver,
 } from "./result-capsule-store.js";
+import { isInvalidToolArgumentsResult } from "./tool-input-validator.js";
 
 export const FIND_TOOL = "find_tool";
 export const CALL_TOOL = "call_tool";
@@ -38,7 +39,7 @@ interface SearchField {
 export type ProjectionInvoker = (toolName: string, args: Record<string, unknown>) => Promise<CallToolResult>;
 
 export interface ResultDeliveryStore {
-  capture(result: CallToolResult, observer?: ResultCapsuleObserver): CallToolResult;
+  capture(result: CallToolResult, observer?: ResultCapsuleObserver, tool?: Tool): CallToolResult;
   read(args: Record<string, unknown>, observer?: ResultCapsuleObserver): CallToolResult;
   clear(): number | void;
 }
@@ -52,6 +53,8 @@ export type ProjectionCallOutcome =
   | "fail_open"
   | "chunk"
   | "complete"
+  | "search"
+  | "structured"
   | "rejected";
 
 export interface ProjectionCallReport {
@@ -256,7 +259,7 @@ function buildCatalogPreview(tools: Tool[]): string {
 function readResultTool(native = false): Tool {
   return {
     name: READ_RESULT,
-    description: `Read the next bounded chunk of a captured large result. The first text block is the raw chunk; the second carries cursor metadata. Use only when ${native ? "an authorized Tool" : "call_tool"} returns a result_ref.`,
+    description: `Read exact captured chunks, or query local fragments. Omit cursor with query. Use only when ${native ? "an authorized Tool" : "call_tool"} returns a result_ref.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -269,8 +272,90 @@ function readResultTool(native = false): Tool {
           minimum: 0,
           description: "The next_cursor from the previous chunk. Omit for the first chunk.",
         },
+        query: {
+          type: "string",
+          maxLength: 256,
+          description: "Optional local fragment terms. Omit cursor.",
+        },
+        fallback_query: {
+          type: "string",
+          minLength: 1,
+          maxLength: 256,
+          description: "Literal fallback used only when a typed selector cannot apply.",
+        },
+        selector: {
+          oneOf: [
+            {
+              type: "object",
+              properties: {
+                kind: { const: "json_pointer" },
+                pointer: { type: "string", minLength: 1, maxLength: 512 },
+              },
+              required: ["kind", "pointer"],
+              additionalProperties: false,
+            },
+            {
+              type: "object",
+              properties: {
+                kind: { const: "row_field_equals" },
+                field: { type: "string", minLength: 1, maxLength: 128 },
+                value: {
+                  oneOf: [
+                    { type: "string", maxLength: 256 },
+                    { type: "number" },
+                    { type: "boolean" },
+                    { type: "null" },
+                  ],
+                },
+              },
+              required: ["kind", "field", "value"],
+              additionalProperties: false,
+            },
+            {
+              type: "object",
+              properties: {
+                kind: { const: "log_anchor_window" },
+                anchor: { type: "string", minLength: 1, maxLength: 256 },
+                before: { type: "integer", minimum: 0, maximum: 4 },
+                after: { type: "integer", minimum: 0, maximum: 4 },
+              },
+              required: ["kind", "anchor", "before", "after"],
+              additionalProperties: false,
+            },
+          ],
+        },
       },
       required: ["result_ref"],
+      oneOf: [
+        {
+          not: {
+            anyOf: [
+              { required: ["cursor"] },
+              { required: ["query"] },
+              { required: ["selector"] },
+              { required: ["fallback_query"] },
+            ],
+          },
+        },
+        {
+          required: ["cursor"],
+          not: {
+            anyOf: [{ required: ["query"] }, { required: ["selector"] }, { required: ["fallback_query"] }],
+          },
+        },
+        {
+          required: ["query"],
+          not: {
+            anyOf: [{ required: ["cursor"] }, { required: ["selector"] }, { required: ["fallback_query"] }],
+          },
+        },
+        {
+          required: ["selector", "fallback_query"],
+          not: {
+            anyOf: [{ required: ["cursor"] }, { required: ["query"] }],
+          },
+        },
+      ],
       additionalProperties: false,
     },
   };
@@ -482,12 +567,28 @@ export class SecureProjectionKernel {
     }
 
     const upstreamResult = await invoke(entry.tool.name, callArgs);
+    if (isInvalidToolArgumentsResult(upstreamResult)) {
+      return {
+        result: upstreamResult,
+        report: {
+          toolName: CALL_TOOL,
+          outcome: "invalid_request",
+          upstreamInvoked: false,
+          upstreamToolName: entry.tool.name,
+          upstreamIsError: true,
+        },
+      };
+    }
     let capsule: ResultCapsuleObservation | undefined;
     let result: CallToolResult;
     try {
-      result = this.results.capture(upstreamResult, (observation) => {
-        capsule = observation;
-      });
+      result = this.results.capture(
+        upstreamResult,
+        (observation) => {
+          capsule = observation;
+        },
+        entry.tool,
+      );
     } catch {
       capsule = {
         phase: "delivery",
@@ -521,8 +622,4 @@ export class SecureProjectionKernel {
       },
     };
   }
-}
-
-export function usesSecureProjection(config: { enabled: boolean; level: string; lazy_loading?: boolean }): boolean {
-  return config.enabled && config.level === "light" && !config.lazy_loading;
 }

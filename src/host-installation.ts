@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { buildClaudeConfigPlan, type ClaudeConfigPlan } from "./claude-config-plan.js";
 import { buildCodexConfigPlan, type CodexConfigPlan } from "./codex-config-plan.js";
 import type { InstallationHost, InstallationSpec } from "./installation-transaction.js";
+import { assertClaudeInstallationMode, type ClaudeInstallationMode, type GuardMode } from "./modes.js";
 
 export type HostConfigPlan = CodexConfigPlan | ClaudeConfigPlan;
 
@@ -98,7 +99,7 @@ function renderClaudeConfig(targetPath: string, plan: ClaudeConfigPlan): string 
   return `${JSON.stringify({ ...current, mcpServers: proposed.mcpServers }, null, 2)}\n`;
 }
 
-function validateClaudeConfig(content: string): void {
+function validateClaudeConfig(content: string, expectedMode: ClaudeInstallationMode): void {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -124,17 +125,21 @@ function validateClaudeConfig(content: string): void {
   if (
     server.type !== "stdio" ||
     server.command !== "mcp-slim-guard" ||
-    JSON.stringify(server.args) !== JSON.stringify(["start"])
+    JSON.stringify(server.args) !== JSON.stringify(["start", "--mode", expectedMode])
   ) {
     throw new Error("Written Claude Code MCP config does not match the planned Slim Guard entry.");
   }
 }
 
-export function buildHostInstallationSpec(projectRoot: string, host: InstallationHost): HostInstallationSpec {
+export function buildHostInstallationSpec(
+  projectRoot: string,
+  host: InstallationHost,
+  mode?: GuardMode,
+): HostInstallationSpec {
   const cwd = path.resolve(projectRoot);
   if (host === "codex") {
     assertConfigTargetIsRegular(path.join(cwd, ".codex", "config.toml"));
-    const plan = buildCodexConfigPlan(cwd);
+    const plan = buildCodexConfigPlan(cwd, mode ?? "native");
     const current = plan.target.exists ? fs.readFileSync(plan.target.path, "utf8") : "";
     const content = renderCodexConfig(current, plan.proposedChange.toml);
     return {
@@ -148,14 +153,16 @@ export function buildHostInstallationSpec(projectRoot: string, host: Installatio
   }
 
   assertConfigTargetIsRegular(path.join(cwd, ".mcp.json"));
-  const plan = buildClaudeConfigPlan(cwd);
+  const selectedMode = mode ?? "compact";
+  assertClaudeInstallationMode(selectedMode);
+  const plan = buildClaudeConfigPlan(cwd, selectedMode);
   const content = renderClaudeConfig(plan.target.path, plan);
   return {
     projectRoot: cwd,
     host,
     targetPath: plan.target.path,
     content,
-    validate: validateClaudeConfig,
+    validate: (value) => validateClaudeConfig(value, selectedMode),
     plan,
   };
 }

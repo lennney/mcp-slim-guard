@@ -227,7 +227,7 @@ function deliveryRecords(entries: AuditEntry[]): DeliveryRecord[] {
     if (entry.traceId) deliveredTraces.add(entry.traceId);
   }
 
-  // The compressor-off path has no projection event. Its upstream event is
+  // A direct result has no projection event. Its upstream event is
   // still a complete pass-through delivery observation.
   for (const entry of entries) {
     if (entry.event !== "upstream") continue;

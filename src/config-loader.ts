@@ -15,18 +15,6 @@ import { validateConfigSchema, formatSchemaErrors } from "./config-schema.js";
 import { assertEnvironmentBackedSecrets, importUpstreamServer } from "./upstream-config.js";
 
 /**
- * Normalize compression level. Maps deprecated `"tight"` to `"normal"` and
- * logs a deprecation warning.
- */
-function normalizeCompressionLevel(level: string): "off" | "light" | "normal" | "extreme" | "maximum" {
-  if (level === "tight") {
-    console.warn("[mcp-slim-guard] Compression level 'tight' is deprecated. Use 'normal' instead.");
-    return "normal";
-  }
-  return level as "off" | "light" | "normal" | "extreme" | "maximum";
-}
-
-/**
  * 配置加载器 — 扫描和解析 MCP Guard 及上游 MCP 配置。
  */
 export class ConfigLoader {
@@ -72,7 +60,7 @@ export class ConfigLoader {
     }
 
     return {
-      version: 1,
+      version: 2,
       tools: {
         allow: toolNames,
         deny: ["*_delete_*", "*_drop_*", "*_admin_*"],
@@ -90,12 +78,6 @@ export class ConfigLoader {
         enabled: true,
         sensitivity: "medium",
         mode: "block",
-      },
-      compressor: {
-        enabled: true,
-        level: "light",
-        lazy_loading: false,
-        lazy_budget: 8,
       },
       cache: {
         enabled: false,
@@ -120,17 +102,12 @@ export class ConfigLoader {
    * loadGuardConfig restores byte-for-byte in effective configuration.
    */
   static serializeGeneratedConfig(config: GuardConfig): string {
-    const compressor = { ...config.compressor };
-    if (compressor.lazy_loading === false) delete compressor.lazy_loading;
-    if (compressor.lazy_budget === 8) delete compressor.lazy_budget;
-
     const rendered: Record<string, unknown> = {
       version: config.version,
       tools: config.tools,
       ssrf: config.ssrf,
       rate_limit: config.rate_limit,
       injection_detection: config.injection_detection,
-      compressor,
       servers: config.servers,
     };
 
@@ -167,7 +144,7 @@ export class ConfigLoader {
     if (!config || typeof config !== "object") {
       throw new Error("Invalid config: expected an object");
     }
-    if ((config as GuardConfig).version !== 1) {
+    if ((config as GuardConfig).version !== 2) {
       throw new Error(`Invalid config: unsupported version ${(config as GuardConfig).version}`);
     }
     if (!config.tools || !config.ssrf || !config.rate_limit) {
@@ -194,26 +171,6 @@ export class ConfigLoader {
         maxFiles: 5,
         compress: false,
       };
-    }
-
-    // Fill compressor defaults when not specified in config
-    if (!config.compressor) {
-      config.compressor = {
-        enabled: false,
-        level: "off",
-        lazy_loading: false,
-        lazy_budget: 8,
-      };
-    }
-
-    // Normalize deprecated compression level aliases
-    config.compressor.level = normalizeCompressionLevel(config.compressor.level);
-    // Apply lazy_loading / lazy_budget defaults if not set
-    if (config.compressor.lazy_loading === undefined) {
-      config.compressor.lazy_loading = false;
-    }
-    if (config.compressor.lazy_budget === undefined) {
-      config.compressor.lazy_budget = 8;
     }
 
     // Fill cache defaults

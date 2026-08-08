@@ -20,7 +20,7 @@ assignees: ""
 
 ## Scope
 
-<!-- Affected Host, Server, transport, surface, and result shape. -->
+<!-- Affected Host, Server, transport, mode, and result shape. -->
 
 ## Evidence
 

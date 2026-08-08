@@ -48,7 +48,7 @@ try {
     path.join(temporaryDirectory, "mcp-slim-guard.yml"),
     JSON.stringify(
       {
-        version: 1,
+        version: 2,
         tools: { allow: ["fixture_*"], deny: [] },
         ssrf: {
           mode: "off",
@@ -58,7 +58,6 @@ try {
         },
         rate_limit: { default: "1000/min" },
         injection_detection: { enabled: false },
-        compressor: { enabled: true, level: "light" },
         audit: { output: "file", filePath: path.join(temporaryDirectory, "audit.log") },
         servers: {
           fixture: {
@@ -79,7 +78,7 @@ try {
   await slim.connect(
     new StdioClientTransport({
       command: process.execPath,
-      args: [slimGuardCli, "start"],
+      args: [slimGuardCli, "start", "--mode", "compact"],
       cwd: temporaryDirectory,
       stderr: "pipe",
     }),
@@ -114,9 +113,9 @@ try {
 
   const projectedNames = projectedTools.tools.map((tool) => tool.name);
   console.log(`1. Upstream catalog: ${upstreamTools.tools.length} tools`);
-  console.log(`2. Agent catalog: ${projectedNames.length} tools -> ${projectedNames.join(", ")}`);
+  console.log(`2. Compact catalog: ${projectedNames.length} tools -> ${projectedNames.join(", ")}`);
   console.log(`3. Discovery: fixture_generate_report -> ${String(match.tool_ref).slice(0, 20)}...`);
-  console.log(`4. Large result: ${capsule.projection}, ${capsule.original_chars} chars -> capsule`);
+  console.log(`4. Large result: ${capsule.original_chars} chars -> recoverable preview`);
   console.log(`5. On-demand recovery: ${recovered.content?.[0]?.text?.length ?? 0} exact chars`);
   console.log(`6. Upstream execution count: ${auditCount()}`);
   console.log("PASS: Compress what agents see. Preserve what tools do.");

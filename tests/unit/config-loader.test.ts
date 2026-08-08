@@ -1,324 +1,95 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-import * as yaml from "js-yaml";
+import { afterEach, describe, expect, it } from "vitest";
 import { ConfigLoader } from "../../src/config-loader.js";
-import { validateConfigSchema } from "../../src/config-schema.js";
 
-describe("ConfigLoader", () => {
-  const tmpDir = "/tmp/mcp-guard-test";
-  const mcpJsonPath = path.join(tmpDir, ".mcp.json");
-  const guardYmlPath = path.join(tmpDir, "mcp-slim-guard.yml");
+const temporaryDirectories: string[] = [];
 
-  beforeEach(() => {
-    fs.mkdirSync(tmpDir, { recursive: true });
+function temporaryDirectory(): string {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-slim-guard-config-"));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+function write(directory: string, name: string, value: string): string {
+  const target = path.join(directory, name);
+  fs.writeFileSync(target, value, "utf8");
+  return target;
+}
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+});
+
+describe("ConfigLoader v2", () => {
+  it("initializes v2 security and upstream configuration without a mode or compressor", () => {
+    const directory = temporaryDirectory();
+    const source = write(
+      directory,
+      ".mcp.json",
+      JSON.stringify({ mcpServers: { search: { command: "node", args: ["server.mjs"] } } }),
+    );
+
+    const config = ConfigLoader.generateGuardConfig(source);
+
+    expect(config.version).toBe(2);
+    expect(config.tools.allow).toEqual(["search_*"]);
+    expect(config).not.toHaveProperty("compressor");
+    expect(ConfigLoader.serializeGeneratedConfig(config)).not.toContain("compressor:");
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+  it("loads a v2 file and restores optional cache and audit defaults", () => {
+    const directory = temporaryDirectory();
+    const configPath = write(
+      directory,
+      "mcp-slim-guard.yml",
+      [
+        "version: 2",
+        'tools: { allow: ["search_*"], deny: [] }',
+        'ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }',
+        'rate_limit: { default: "60/min" }',
+        "injection_detection: { enabled: false }",
+        "servers: {}",
+      ].join("\n"),
+    );
+
+    const config = ConfigLoader.loadGuardConfig(configPath);
+
+    expect(config.cache).toMatchObject({ enabled: false, ttl: 30, max_entries: 500 });
+    expect(config.audit).toMatchObject({ output: "file", filePath: "mcp-slim-guard-audit.log" });
   });
 
-  describe("discoverMCPConfig", () => {
-    it("finds .mcp.json", () => {
-      fs.writeFileSync(mcpJsonPath, "{}");
-      const found = ConfigLoader.discoverMCPConfig(tmpDir);
-      expect(found).toBe(mcpJsonPath);
-    });
+  it("rejects v1 rather than migrating it", () => {
+    const directory = temporaryDirectory();
+    const configPath = write(
+      directory,
+      "mcp-slim-guard.yml",
+      'version: 1\ntools: { allow: [], deny: [] }\nssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: "" }\ninjection_detection: { enabled: false }\nservers: {}',
+    );
 
-    it("finds mcp.json", () => {
-      const altPath = path.join(tmpDir, "mcp.json");
-      fs.writeFileSync(altPath, "{}");
-      const found = ConfigLoader.discoverMCPConfig(tmpDir);
-      expect(found).toBe(altPath);
-    });
-
-    it("finds claude_desktop_config.json", () => {
-      const altPath = path.join(tmpDir, "claude_desktop_config.json");
-      fs.writeFileSync(altPath, "{}");
-      const found = ConfigLoader.discoverMCPConfig(tmpDir);
-      expect(found).toBe(altPath);
-    });
-
-    it("finds .cursor/mcp.json", () => {
-      const cursorDir = path.join(tmpDir, ".cursor");
-      fs.mkdirSync(cursorDir, { recursive: true });
-      const altPath = path.join(cursorDir, "mcp.json");
-      fs.writeFileSync(altPath, "{}");
-      const found = ConfigLoader.discoverMCPConfig(tmpDir);
-      expect(found).toBe(altPath);
-    });
-
-    it("finds .vscode/mcp.json", () => {
-      const vscodeDir = path.join(tmpDir, ".vscode");
-      fs.mkdirSync(vscodeDir, { recursive: true });
-      const altPath = path.join(vscodeDir, "mcp.json");
-      fs.writeFileSync(altPath, "{}");
-      const found = ConfigLoader.discoverMCPConfig(tmpDir);
-      expect(found).toBe(altPath);
-    });
-
-    it("returns null when no config found", () => {
-      const found = ConfigLoader.discoverMCPConfig(tmpDir);
-      expect(found).toBeNull();
-    });
+    expect(() => ConfigLoader.loadGuardConfig(configPath)).toThrow("unsupported version 1");
   });
 
-  describe("generateGuardConfig", () => {
-    it("generates guard config from mcp.json", () => {
-      const mcpConfig = {
-        mcpServers: {
-          github: {
-            command: "npx",
-            args: ["-y", "@modelcontextprotocol/server-github"],
-          },
-          playwright: {
-            command: "npx",
-            args: ["-y", "@playwright/mcp"],
-          },
-        },
-      };
-      fs.writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig));
-      const config = ConfigLoader.generateGuardConfig(mcpJsonPath);
+  it("rejects a removed compressor block in v2", () => {
+    const directory = temporaryDirectory();
+    const configPath = write(
+      directory,
+      "mcp-slim-guard.yml",
+      'version: 2\ntools: { allow: [], deny: [] }\nssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: "" }\ninjection_detection: { enabled: false }\ncompressor: { enabled: true, level: light }\nservers: {}',
+    );
 
-      expect(config.version).toBe(1);
-      expect(config.servers.github.command).toBe("npx");
-      expect(config.tools.allow).toContain("github_*");
-      expect(config.tools.allow).toContain("playwright_*");
-      expect(config.tools.deny).toContain("*_delete_*");
-      expect(config.ssrf.mode).toBe("block");
-      expect(config.rate_limit.default).toBe("60/min");
-      expect(config.compressor).toMatchObject({
-        enabled: true,
-        level: "light",
-        lazy_loading: false,
-      });
-    });
-
-    it("handles empty servers", () => {
-      fs.writeFileSync(mcpJsonPath, JSON.stringify({ mcpServers: {} }));
-      const config = ConfigLoader.generateGuardConfig(mcpJsonPath);
-      expect(config.servers).toEqual({});
-      expect(config.tools.allow).toEqual([]);
-    });
-
-    it("handles servers with missing args and env", () => {
-      fs.writeFileSync(
-        mcpJsonPath,
-        JSON.stringify({
-          mcpServers: {
-            simple: { command: "npx" },
-          },
-        }),
-      );
-      const config = ConfigLoader.generateGuardConfig(mcpJsonPath);
-      expect(config.servers.simple.args).toEqual([]);
-      expect(config.servers.simple.env).toEqual({});
-    });
-
-    it("imports VS Code servers with stdio and remote MCP entries", () => {
-      const vscodeDir = path.join(tmpDir, ".vscode");
-      fs.mkdirSync(vscodeDir, { recursive: true });
-      const vscodePath = path.join(vscodeDir, "mcp.json");
-      fs.writeFileSync(
-        vscodePath,
-        JSON.stringify({
-          servers: {
-            local: {
-              type: "stdio",
-              command: "node",
-              args: ["${workspaceFolder}/server.js"],
-              cwd: "${workspaceFolder}",
-            },
-            remote: {
-              type: "http",
-              url: "https://mcp.example.test/mcp",
-              headers: {
-                Authorization: "Bearer ${REMOTE_AUTH}",
-              },
-            },
-          },
-          inputs: [],
-        }),
-      );
-
-      const config = ConfigLoader.generateGuardConfig(vscodePath);
-
-      expect(config.servers.local).toMatchObject({
-        type: "stdio",
-        command: "node",
-        cwd: path.resolve(tmpDir),
-      });
-      expect(config.servers.remote).toEqual({
-        type: "http",
-        url: "https://mcp.example.test/mcp",
-        headers: { Authorization: "Bearer ${REMOTE_AUTH}" },
-      });
-      expect(config.tools.allow).toEqual(["local_*", "remote_*"]);
-    });
-
-    it("rejects ambiguous top-level server maps", () => {
-      fs.writeFileSync(
-        mcpJsonPath,
-        JSON.stringify({
-          mcpServers: {},
-          servers: {},
-        }),
-      );
-
-      expect(() => ConfigLoader.generateGuardConfig(mcpJsonPath)).toThrow('use either "mcpServers" or "servers"');
-    });
-
-    it("rejects plaintext sensitive headers during import", () => {
-      fs.writeFileSync(
-        mcpJsonPath,
-        JSON.stringify({
-          mcpServers: {
-            remote: {
-              url: "https://mcp.example.test/mcp",
-              headers: { Authorization: "" },
-            },
-          },
-        }),
-      );
-
-      expect(() => ConfigLoader.generateGuardConfig(mcpJsonPath)).toThrow("must reference an environment variable");
-    });
-
-    it("serializes generated config without defaults and restores the same effective config", () => {
-      fs.writeFileSync(
-        mcpJsonPath,
-        JSON.stringify({ mcpServers: { example: { command: "node", args: ["server.js"] } } }),
-      );
-      const generated = ConfigLoader.generateGuardConfig(mcpJsonPath);
-      const serialized = ConfigLoader.serializeGeneratedConfig(generated);
-      const document = yaml.load(serialized) as Record<string, unknown>;
-
-      expect(document).not.toHaveProperty("cache");
-      expect(document).not.toHaveProperty("audit");
-      expect(document.compressor).not.toHaveProperty("lazy_loading");
-      expect(document.compressor).not.toHaveProperty("lazy_budget");
-
-      fs.writeFileSync(guardYmlPath, serialized);
-      expect(ConfigLoader.loadGuardConfig(guardYmlPath)).toEqual(generated);
-    });
-
-    it("preserves non-default cache, audit, and lazy options", () => {
-      fs.writeFileSync(mcpJsonPath, JSON.stringify({ mcpServers: {} }));
-      const generated = ConfigLoader.generateGuardConfig(mcpJsonPath);
-      generated.cache.enabled = true;
-      generated.audit.maxFiles = 2;
-      generated.compressor.lazy_loading = true;
-      generated.compressor.lazy_budget = 3;
-
-      const document = yaml.load(ConfigLoader.serializeGeneratedConfig(generated)) as Record<string, unknown>;
-      expect(document).toHaveProperty("cache.enabled", true);
-      expect(document).toHaveProperty("audit.maxFiles", 2);
-      expect(document).toHaveProperty("compressor.lazy_loading", true);
-      expect(document).toHaveProperty("compressor.lazy_budget", 3);
-    });
+    expect(() => ConfigLoader.loadGuardConfig(configPath)).toThrow("removed in configuration version 2");
   });
 
-  describe("loadGuardConfig", () => {
-    it("loads and validates YAML config", () => {
-      const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      const ymlContent = fs.readFileSync(path.join(__dirname, "../fixtures/mcp-guard.test.yml"), "utf-8");
-      fs.writeFileSync(guardYmlPath, ymlContent);
-      const config = ConfigLoader.loadGuardConfig(guardYmlPath);
-      expect(config.version).toBe(1);
-      expect(config.tools.allow).toContain("github_*");
-      expect(config.ssrf.mode).toBe("block");
-    });
+  it("rejects a Host mode stored in YAML", () => {
+    const directory = temporaryDirectory();
+    const configPath = write(
+      directory,
+      "mcp-slim-guard.yml",
+      'version: 2\ntools: { allow: [], deny: [] }\nssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: "" }\ninjection_detection: { enabled: false }\nmode: extreme\nservers: {}',
+    );
 
-    it("throws on invalid version", () => {
-      fs.writeFileSync(
-        guardYmlPath,
-        "version: 2\ntools: { allow: [], deny: [] }\nssrf: { mode: 'block', block_private_ips: true, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}",
-      );
-      expect(() => ConfigLoader.loadGuardConfig(guardYmlPath)).toThrow("unsupported version");
-    });
-
-    it("throws on missing required sections", () => {
-      fs.writeFileSync(guardYmlPath, "version: 1\ntools: { allow: [], deny: [] }\nservers: {}");
-      expect(() => ConfigLoader.loadGuardConfig(guardYmlPath)).toThrow("missing required sections");
-    });
-  });
-
-  describe("findAndLoad", () => {
-    it("finds and loads mcp-slim-guard.yml", () => {
-      const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      const guardYmlPath = path.join(tmpDir, "mcp-slim-guard.yml");
-      const ymlContent = fs.readFileSync(path.join(__dirname, "../fixtures/mcp-guard.test.yml"), "utf-8");
-      fs.writeFileSync(guardYmlPath, ymlContent);
-      const config = ConfigLoader.findAndLoad(tmpDir);
-      expect(config).not.toBeNull();
-      expect(config!.version).toBe(1);
-    });
-
-    it("finds and loads mcp-slim-guard.yaml", () => {
-      const altPath = path.join(tmpDir, "mcp-slim-guard.yaml");
-      fs.writeFileSync(
-        altPath,
-        "version: 1\ntools: { allow: ['*'], deny: [] }\nssrf: { mode: 'off', block_private_ips: false, allow_domains: [], block_domains: [] }\nrate_limit: { default: '60/min' }\ninjection_detection: { enabled: false, sensitivity: 'medium' }\nservers: {}",
-      );
-      const config = ConfigLoader.findAndLoad(tmpDir);
-      expect(config).not.toBeNull();
-      expect(config!.version).toBe(1);
-    });
-
-    it("returns null when no YAML found", () => {
-      const config = ConfigLoader.findAndLoad(tmpDir);
-      expect(config).toBeNull();
-    });
-  });
-
-  describe("compressor lazy_loading config", () => {
-    it("applies defaults lazy_loading=false, lazy_budget=8 when omitted", () => {
-      const config = ConfigLoader.loadGuardConfig("tests/fixtures/config-minimal.yaml");
-      expect(config.compressor.lazy_loading).toBe(false);
-      expect(config.compressor.lazy_budget).toBe(8);
-    });
-
-    it("loads lazy_loading=true and lazy_budget=4 from YAML", () => {
-      const yamlContent = `
-version: 1
-tools: { allow: ["*"], deny: [] }
-ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }
-rate_limit: { default: "" }
-injection_detection: { enabled: false }
-compressor: { enabled: true, level: "off", lazy_loading: true, lazy_budget: 4 }
-servers: {}
-`;
-      const tmpPath = path.join(tmpDir, `test-lazy-config-${Date.now()}.yaml`);
-      fs.writeFileSync(tmpPath, yamlContent);
-      try {
-        const config = ConfigLoader.loadGuardConfig(tmpPath);
-        expect(config.compressor.lazy_loading).toBe(true);
-        expect(config.compressor.lazy_budget).toBe(4);
-      } finally {
-        fs.unlinkSync(tmpPath);
-      }
-    });
-
-    it("schema validates lazy_budget range (0-100)", () => {
-      const yamlContent = `
-version: 1
-tools: { allow: ["*"], deny: [] }
-ssrf: { mode: "off", block_private_ips: false, allow_domains: [], block_domains: [] }
-rate_limit: { default: "" }
-injection_detection: { enabled: false }
-compressor: { enabled: true, level: "off", lazy_budget: 200 }
-servers: {}
-`;
-      const tmpPath = path.join(tmpDir, `test-lazy-budget-${Date.now()}.yaml`);
-      fs.writeFileSync(tmpPath, yamlContent);
-      try {
-        const errors = validateConfigSchema(yaml.load(fs.readFileSync(tmpPath, "utf-8")) as Record<string, unknown>);
-        expect(errors.length).toBeGreaterThan(0);
-        expect(errors.some((e) => e.path.includes("lazy_budget") || e.message.includes("lazy_budget"))).toBe(true);
-      } finally {
-        fs.unlinkSync(tmpPath);
-      }
-    });
+    expect(() => ConfigLoader.loadGuardConfig(configPath)).toThrow("do not store it in YAML");
   });
 });

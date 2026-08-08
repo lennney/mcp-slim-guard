@@ -19,21 +19,23 @@ import type { CallToolResult, JSONRPCMessage, RequestId, Tool } from "@modelcont
 import { PolicyPipeline } from "./policies/base.js";
 import { AuditLogger } from "./audit.js";
 import { ServerManager, type FailedUpstreamLifecycle } from "./server-manager.js";
-import { activeWrapperToolNames, generateTools, handleWrapperTool, whitelistFilter } from "./compressor.js";
+import { authorizedTools } from "./authorized-catalog.js";
 import { ToolCache } from "./cache.js";
 import {
   CALL_TOOL,
   FIND_TOOL,
   READ_RESULT,
   SecureProjectionKernel,
-  usesSecureProjection,
   type ObservedProjectionCall,
   type ProjectionCallReport,
 } from "./secure-projection.js";
 import { ResultCapsuleStore } from "./result-capsule-store.js";
 import { NativeToolAdapter, type NativeToolRoute } from "./native-tool-adapter.js";
-import { ToolInputValidator } from "./tool-input-validator.js";
+import { invalidToolArgumentsResult, ToolInputValidator } from "./tool-input-validator.js";
 import { VERSION } from "./version.js";
+import type { GuardMode } from "./modes.js";
+
+export type { GuardMode } from "./modes.js";
 
 function projectionAuditArguments(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   if (toolName === CALL_TOOL) {
@@ -79,11 +81,9 @@ interface ForwardTraceState {
   upstreamToolName?: string;
 }
 
-export type GuardSurface = "generic" | "native";
-
 export interface GuardProxyOptions {
   /** Explicit integration selection; the runtime never infers this from Host identity. */
-  surface?: GuardSurface;
+  mode?: GuardMode;
 }
 
 interface ProxyCallRequest {
@@ -144,13 +144,13 @@ export class GuardProxy {
   private fullTools: Tool[] = [];
   /** Optional request cache (null when cache.enabled=false) */
   private cache: ToolCache | null = null;
-  /** Fixed three-tool product surface for newly generated light configs. */
+  /** Fixed three-tool product surface for compact and extreme modes. */
   private projection: SecureProjectionKernel | null = null;
-  /** Explicit Host-native surface; null for the generic or legacy adapters. */
+  /** Explicit Host-native surface; null for compact and extreme modes. */
   private native: NativeToolAdapter | null = null;
   /** One recovery store shared by whichever public adapter is active. */
-  private results = new ResultCapsuleStore();
-  private surface: GuardSurface;
+  private results: ResultCapsuleStore;
+  private mode: GuardMode;
   private readonly inputValidator = new ToolInputValidator();
   /** Requests admitted by tools/call; reload and stop wait for the next idle boundary. */
   private inFlightToolCalls = 0;
@@ -182,7 +182,8 @@ export class GuardProxy {
     this.pipeline = pipeline;
     this.audit = audit;
     this.serverManager = serverManager;
-    this.surface = options.surface ?? "generic";
+    this.mode = options.mode ?? "compact";
+    this.results = new ResultCapsuleStore({ mode: this.mode === "extreme" ? "extreme" : "compact" });
   }
 
   /**
@@ -227,20 +228,13 @@ export class GuardProxy {
       // Full tool list (from upstream, with prefixed names)
       this.fullTools = this.serverManager.getTools();
       this.native =
-        this.surface === "native" ? this.buildNativeAdapter(this.config, this.serverManager, this.fullTools) : null;
+        this.mode === "native" ? this.buildNativeAdapter(this.config, this.serverManager, this.fullTools) : null;
       this.projection = this.native ? null : this.buildProjection(this.config, this.serverManager, this.fullTools);
 
-      // Register tools/list handler — compressor aware
+      // Register the selected public tool mode.
       this.server.setRequestHandler(ListToolsRequestSchema, async () => {
         try {
-          const compressor = this.config.compressor ?? { enabled: false, level: "off" as const };
-          const tools = this.native
-            ? this.native.listTools()
-            : this.projection
-              ? this.projection.listTools()
-              : generateTools(this.fullTools, compressor, this.config.tools.allow, this.config.tools.deny, (name) =>
-                  this.serverManager.getLegacyCatalogNames(name),
-                );
+          const tools = this.native ? this.native.listTools() : (this.projection?.listTools() ?? []);
           const visibleNames = tools.map((tool) => tool.name);
           this.recordDiscovery(
             this.sessionId,
@@ -380,10 +374,7 @@ export class GuardProxy {
             0,
             { traceId, event: "validation", outcome: "invalid_request" },
           );
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            `Invalid arguments for Tool "${prefixedName}": ${validation.errorMessage ?? "inputSchema validation failed"}`,
-          );
+          return invalidToolArgumentsResult(nativeRoute?.tool.name ?? prefixedName, validation.errorMessage);
         }
         const ctx: PolicyContext = {
           toolName: prefixedName,
@@ -530,7 +521,7 @@ export class GuardProxy {
         return callResult;
       };
 
-      // Register tools/call handler — compressor aware, all calls go through policy pipeline
+      // Register tools/call handler; all calls go through the policy pipeline.
       registerCallHandler(this.server, async (request, extra) => {
         if (this.runtimeState === "starting") {
           await this.waitForAdmission();
@@ -713,72 +704,19 @@ export class GuardProxy {
             return observed.result;
           }
 
-          // mcp__* prefix → wrapper/discovery tools (handleWrapperTool)
-          if (this.projection) {
-            this.recordAudit(
-              { toolName: prefixedName, arguments: {}, serverName: "routing" },
-              { allowed: false, reason: "Tool is not on the active projection surface", policy: "routing" },
-              [],
-              this.sessionId,
-              ++this.requestCounter,
-              0,
-              { traceId, event: "routing", outcome: "invalid_request" },
-            );
-            return {
-              content: [{ type: "text" as const, text: `Unknown tool: ${prefixedName}` }],
-              isError: true,
-            };
-          }
-
-          const compressor = this.config.compressor ?? { enabled: false, level: "off" as const };
-          const advertisedNames = new Set(
-            generateTools(this.fullTools, compressor, this.config.tools.allow, this.config.tools.deny, (name) =>
-              this.serverManager.getLegacyCatalogNames(name),
-            ).map((tool) => tool.name),
+          this.recordAudit(
+            { toolName: prefixedName, arguments: {}, serverName: "routing" },
+            { allowed: false, reason: "Tool is not on the active mode surface", policy: "routing" },
+            [],
+            this.sessionId,
+            ++this.requestCounter,
+            0,
+            { traceId, event: "routing", outcome: "invalid_request" },
           );
-          if (!advertisedNames.has(prefixedName)) {
-            this.recordAudit(
-              { toolName: prefixedName, arguments: {}, serverName: "routing" },
-              { allowed: false, reason: "Tool is not on the active legacy surface", policy: "routing" },
-              [],
-              this.sessionId,
-              ++this.requestCounter,
-              0,
-              { traceId, event: "routing", outcome: "invalid_request" },
-            );
-            return {
-              content: [{ type: "text" as const, text: `Unknown tool: ${prefixedName}` }],
-              isError: true,
-            };
-          }
-
-          if (activeWrapperToolNames(compressor).has(prefixedName)) {
-            // Whitelist-filter fullTools before passing to handleWrapperTool
-            // (pipeline stage 0 logic, applied here for the call path)
-            const filteredTools = whitelistFilter(this.config.tools.allow, this.config.tools.deny, (name) =>
-              this.serverManager.getLegacyCatalogNames(name),
-            )(this.fullTools);
-            const wrapperResult = await handleWrapperTool(prefixedName, args, filteredTools, (targetName, targetArgs) =>
-              forwardToolCall(targetName, targetArgs, traceId),
-            );
-            if (wrapperResult) {
-              // Audit the wrapper call (for discovery tools that don't go through forwardToolCall)
-              const reqId = ++this.requestCounter;
-              this.recordAudit(
-                { toolName: prefixedName, arguments: args, serverName: "compressor" },
-                { allowed: true },
-                [],
-                this.sessionId,
-                reqId,
-                0,
-                { traceId, event: "projection", outcome: "success" },
-              );
-              return wrapperResult;
-            }
-          }
-
-          // Real tool → security pipeline
-          return await forwardToolCall(prefixedName, receivedArgs, traceId);
+          return {
+            content: [{ type: "text" as const, text: `Unknown tool: ${prefixedName}` }],
+            isError: true,
+          };
         } finally {
           handlerSettled = true;
           if (requestId === undefined) this.endToolCall();
@@ -925,12 +863,10 @@ export class GuardProxy {
   ): Promise<void> {
     const nextServerManager = newServerManager ?? this.serverManager;
     const nextFullTools = newServerManager ? nextServerManager.getTools() : this.fullTools;
-    const nextResults = new ResultCapsuleStore();
+    const nextResults = new ResultCapsuleStore({ mode: this.mode === "extreme" ? "extreme" : "compact" });
     // Prepare every fallible derived object before mutating the active runtime.
     const nextNative =
-      this.surface === "native"
-        ? this.buildNativeAdapter(newConfig, nextServerManager, nextFullTools, nextResults)
-        : null;
+      this.mode === "native" ? this.buildNativeAdapter(newConfig, nextServerManager, nextFullTools, nextResults) : null;
     const nextProjection = nextNative
       ? null
       : this.buildProjection(newConfig, nextServerManager, nextFullTools, nextResults);
@@ -1261,16 +1197,15 @@ export class GuardProxy {
     projection: SecureProjectionKernel | null,
   ): Tool[] {
     if (native) return native.listTools();
-    if (projection) return projection.listTools();
-    const compressor = config.compressor ?? { enabled: false, level: "off" as const };
-    return generateTools(fullTools, compressor, config.tools.allow, config.tools.deny, (name) =>
-      serverManager.getLegacyCatalogNames(name),
-    );
+    return projection?.listTools() ?? [];
   }
 
   private authorizedCatalogTools(config: GuardConfig, serverManager: ServerManager, fullTools: Tool[]): Tool[] {
-    return whitelistFilter(config.tools.allow, config.tools.deny, (name) => serverManager.getLegacyCatalogNames(name))(
-      fullTools,
+    return authorizedTools(
+      config.tools.allow.length === 0 ? [] : fullTools,
+      config.tools.allow,
+      config.tools.deny,
+      (name) => serverManager.getLegacyCatalogNames(name),
     );
   }
 
@@ -1280,30 +1215,23 @@ export class GuardProxy {
 
   /**
    * Rebuild the fixed product projection from the one authorized catalog.
-   * The legacy compressor remains available for old configs and unadvertised
-   * mcp__* aliases, but newly generated light configs use this kernel.
    */
   private buildProjection(
     config: GuardConfig,
     serverManager: ServerManager,
     fullTools: Tool[],
     results: ResultCapsuleStore = this.results,
-  ): SecureProjectionKernel | null {
-    const compressor = config.compressor ?? { enabled: false, level: "off" as const };
-    if (!usesSecureProjection(compressor)) {
-      return null;
-    }
-
+  ): SecureProjectionKernel {
     const allow = config.tools.allow.filter(Boolean);
     const deny = config.tools.deny.filter(Boolean);
-    const authorizedTools =
+    const visibleAuthorizedTools =
       allow.length === 0
         ? []
-        : whitelistFilter(allow, deny, (name) => serverManager.getLegacyCatalogNames(name))(fullTools);
+        : authorizedTools(fullTools, allow, deny, (name) => serverManager.getLegacyCatalogNames(name));
     // A flattened legacy name can collide when server and tool names both
     // contain underscores. Never advertise a reference that cannot resolve to
     // exactly one catalog route.
-    const visibleTools = authorizedTools.filter((tool) => serverManager.resolveTool(tool.name) !== null);
+    const visibleTools = visibleAuthorizedTools.filter((tool) => serverManager.resolveTool(tool.name) !== null);
     return new SecureProjectionKernel(visibleTools, results);
   }
 
@@ -1314,8 +1242,8 @@ export class GuardProxy {
     results: ResultCapsuleStore = this.results,
   ): NativeToolAdapter {
     const authorizedNames = new Set(
-      whitelistFilter(config.tools.allow, config.tools.deny, (name) => serverManager.getLegacyCatalogNames(name))(
-        fullTools,
+      authorizedTools(config.tools.allow.length === 0 ? [] : fullTools, config.tools.allow, config.tools.deny, (name) =>
+        serverManager.getLegacyCatalogNames(name),
       ).map((tool) => tool.name),
     );
     const managerWithNativeTools = serverManager as ServerManager & {

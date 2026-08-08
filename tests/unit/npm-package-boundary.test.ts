@@ -5,7 +5,7 @@ function manifest(paths: string[]) {
   return [
     {
       name: "mcp-slim-guard",
-      version: "0.1.1-alpha.1",
+      version: "0.2.0-alpha.1",
       unpackedSize: 1234,
       files: paths.map((path) => ({ path, size: 1, mode: 0o644 })),
     },
